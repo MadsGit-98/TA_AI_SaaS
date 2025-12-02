@@ -48,9 +48,11 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Create Django project structure with accounts, jobs, applications, analysis, and subscription apps
+- [ ] T002 Initialize project with Pipenv for environment management and Django/DRF dependencies
+- [ ] T003 [P] Configure linting and formatting tools with PEP 8 compliance
+- [ ] T004 Create top-level celery.py file for task management
+- [ ] T005 Set up Sqlite3 database configuration
 
 ---
 
@@ -62,12 +64,14 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T006 Setup database schema and migrations framework with Sqlite3
+- [ ] T007 [P] Implement authentication/authorization framework with RBAC
+- [ ] T008 [P] Setup API routing and middleware structure with DRF
+- [ ] T009 Create base models/entities that all stories depend on
+- [ ] T010 Configure error handling and logging infrastructure
+- [ ] T011 Setup environment configuration management with Pipenv
+- [ ] T012 Implement SSL configuration with secure cookies, HSTS, HTTPS redirection
+- [ ] T013 Ensure each Django app has proper directory structure (templates/, static/js/, static/css/, static/images/, tasks.py, tests/)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -153,9 +157,11 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Documentation updates in docs/
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
+- [ ] TXXX [P] Additional unit tests to achieve minimum 90% coverage using Python unittest module
+- [ ] TXXX Security hardening to meet SSL and RBAC requirements
 - [ ] TXXX Run quickstart.md validation
+- [ ] TXXX Verify AI results include proper disclaimer about supplementary nature
+- [ ] TXXX Ensure applicant state is persisted immediately upon submission
 
 ---
 
