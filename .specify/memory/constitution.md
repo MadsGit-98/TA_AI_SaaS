@@ -1,50 +1,67 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+- Version change: N/A → 1.0.0
+- Added sections: All principles for X-Crewter project based on user requirements
+- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md
+- Follow-up TODOs: RATIFICATION_DATE needs to be set to actual adoption date
+-->
+# X-Crewter Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### Non-Negotiable Governing Principles
+Goal: Create X-Crewter, an AI-powered platform for Talent Acquisition Specialists (TAS) in SMBs to automatically analyze, score (0-100), and categorize bulk resumes (PDF/Docx), significantly reducing screening time.
+UX Philosophy: Radical Simplicity. Clean, minimalist, distraction-free design utilizing shadcn_django components.
+Typography & Aesthetics: Sans-Serif (Primary), Monospace (Scores/Data). Muted color palette, high contrast.
+Applicant View: Public, unauthenticated, mobile-responsive form. Strict file validation (.pdf/.docx only). Must reject unsupported files immediately.
+AI Disclaimer: Mandatory clear disclosure that AI results are supplementary and not the sole decision criteria.
+Data Integrity: Applicant state MUST be persisted immediately upon submission.
+Legal Footer: Required on all pages with anchors for Terms and Conditions, Refund Policies, and Cancellation/Replacement Policies.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### Architecture and Structure Mandate
+Core Setup: Framework: Django, Django REST Framework (DRF). Environment Management: Pipenv. Database: Sqlite3 (Initial). Root Structure: Must include a top-level celery.py file.
+Django Applications: The project MUST be divided into the following Django applications -
+- accounts: TAS User Authentication, Registration, Login/Logout, Profile Management.
+- jobs: Job Listing CRUD (Create, Read, Update, Deactivate), screening questions, and requirements definition.
+- applications: Public form handler, Resume Upload/Storage, Applicant persistence, and initiates parsing/analysis via Celery.
+- analysis: TAS Dashboard View, AI results display, bulk analysis initiation/filtering.
+- subscription: Subscription scaffolding, Amazon Payment Services (APS) integration.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### App Subdirectory Structure
+Each Django application MUST contain the following structure:
+- templates/: For all application-specific .html files.
+- static/:
+  - js/: Non-negotiable location for all JavaScript scripts.
+  - css/: Non-negotiable location for all CSS styling files.
+  - images/: Non-negotiable location for all static image assets.
+- tasks.py: Required only for Celery integration (applications and analysis apps).
+- tests/: Must house all tests, divided into: tests/Integration/, tests/Unit/, tests/E2E/
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### Decoupled Services
+The following services MUST be implemented as distinct, decoupled Python modules:
+- ai_analysis_service: LLM/Langchain/Langgraph integration for scoring, justification, and categorization. Handles the "Unprocessed" flag on analysis failure.
+- resume_parsing_service: PYPDF/python-docx validation and text extraction.
+- reporting_utils: Utilities for result sorting, filtering, and retrieval.
+- logging_service: Centralized debugging utility (staged for removal in production).
+- ai_email_assistance_service: TAS support for drafting follow-up emails.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### Quality, Testing, and Security Standards
+Coding & Quality: Coding Style: PEP 8 compliant Python. Naming Conventions: Models = Singular PascalCase (e.g., JobListing). Functions/Variables = snake_case.
+Testing Mandate: Unit Tests: Python native unittest module. Minimum 90% line coverage. Integration/E2E Tests: Selenium.
+Security Compliance: Access Control: Implement Role-Based Access Control (RBAC) scaffolding. SSL Configuration (Mandatory): Secure cookies, HSTS, HTTPS Redirection Enforcement, Content Security Policy (CSP), and addressing Mixed Content/Referrer Policy.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Implementation Standards
+Technology Stack: Django with Django REST Framework for backend API, Pipenv for environment management, Sqlite3 for initial database.
+Application Structure: The system is divided into five core Django applications (accounts, jobs, applications, analysis, subscription) following the separation of concerns principle.
+File Handling: Strict validation for .pdf/.docx files only, with immediate rejection of unsupported formats.
+Security: Mandatory SSL configuration, RBAC implementation, and secure data handling practices.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Development Workflow
+Code Quality: All code must comply with PEP 8 standards, with 90% unit test coverage minimum using Python's unittest module.
+Testing Strategy: Integration and E2E tests to be implemented with Selenium, with emphasis on TDD practices.
+Review Process: All pull requests must be reviewed for compliance with architectural constraints and security requirements.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+The X-Crewter Constitution supersedes all other development practices and guidelines. All amendments to this constitution require formal documentation, approval by project maintainers, and a migration plan if applicable. All pull requests and code reviews must verify compliance with these principles. All contributors must ensure that complexity is justified by clear business or technical requirements.
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE): Date of original adoption | **Last Amended**: 2025-12-02

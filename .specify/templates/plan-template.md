@@ -31,7 +31,19 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+### X-Crewter Constitution Compliance Check
+- [ ] Framework: Django and Django REST Framework (DRF) must be used
+- [ ] Environment Management: Pipenv must be used for dependency management
+- [ ] Database: Sqlite3 for initial implementation (upgrade path considered)
+- [ ] Project Structure: Top-level celery.py file must be present
+- [ ] Django Applications: Must follow the 5-app structure (accounts, jobs, applications, analysis, subscription)
+- [ ] App Structure: Each app must contain templates/, static/, tasks.py, and tests/ directories
+- [ ] Testing: Minimum 90% unit test coverage with Python unittest module
+- [ ] Security: SSL configuration and RBAC implementation is mandatory
+- [ ] File Handling: Only .pdf/.docx files accepted with strict validation
+- [ ] Code Style: PEP 8 compliance required
+- [ ] AI Disclaimer: Clear disclosure that AI results are supplementary
+- [ ] Data Integrity: Applicant state must be persisted immediately upon submission
 
 ## Project Structure
 

@@ -84,16 +84,25 @@
 
 ### Functional Requirements
 
-- **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
-- **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
-- **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
-- **FR-005**: System MUST [behavior, e.g., "log all security events"]
+- **FR-001**: System MUST use Django and Django REST Framework (DRF) as the primary framework
+- **FR-002**: System MUST use Pipenv for environment and dependency management
+- **FR-003**: System MUST use Sqlite3 as the initial database with consideration for upgrade path
+- **FR-004**: System MUST include a top-level celery.py file for task management
+- **FR-005**: System MUST be structured with the following Django applications: accounts, jobs, applications, analysis, subscription
+- **FR-006**: Each Django application MUST contain templates/, static/, tasks.py, and tests/ directories as specified
+- **FR-007**: System MUST implement Role-Based Access Control (RBAC) for security
+- **FR-008**: System MUST have SSL configuration with secure cookies, HSTS, HTTPS redirection enforcement
+- **FR-009**: System MUST accept only .pdf/.docx files with strict validation and immediate rejection of unsupported formats
+- **FR-010**: System MUST implement AI result scoring (0-100) for resume analysis
+- **FR-011**: System MUST provide clear disclaimer that AI results are supplementary and not sole decision criteria
+- **FR-012**: System MUST persist applicant state immediately upon submission
+- **FR-013**: System MUST have minimum 90% unit test coverage using Python unittest module
+- **FR-014**: System MUST comply with PEP 8 coding standards
 
 *Example of marking unclear requirements:*
 
-- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
-- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+- **FR-015**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
+- **FR-016**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
 
 ### Key Entities *(include if feature involves data)*
 
