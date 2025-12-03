@@ -4,6 +4,9 @@ from celery import shared_task
 @shared_task
 def dummy_applications_task():
     """
-    Dummy task for the applications app - to be replaced with real functionality in future features
+    Placeholder Celery task for the applications app intended to be replaced by real functionality.
+    
+    Returns:
+        str: Success message "Dummy applications task completed successfully".
     """
     return "Dummy applications task completed successfully"

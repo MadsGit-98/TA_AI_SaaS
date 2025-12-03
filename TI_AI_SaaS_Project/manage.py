@@ -5,7 +5,14 @@ import sys
 
 
 def main():
-    """Run administrative tasks."""
+    """
+    Configure Django settings and run the project's command-line management utility.
+    
+    If the environment variable DJANGO_SETTINGS_MODULE is not set, it is set to 'x_crewter.settings' before invoking Django's command runner with the current process arguments.
+    
+    Raises:
+        ImportError: If Django cannot be imported; the exception message explains the likely causes (missing installation, PYTHONPATH, or inactive virtual environment).
+    """
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'x_crewter.settings')
     try:
         from django.core.management import execute_from_command_line
