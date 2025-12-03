@@ -4,6 +4,9 @@ from celery import shared_task
 @shared_task
 def dummy_analysis_task():
     """
-    Dummy task for the analysis app - to be replaced with real functionality in future features
+    Placeholder Celery task for the analysis app that performs no work.
+    
+    Returns:
+        str: The static success message "Dummy analysis task completed successfully".
     """
     return "Dummy analysis task completed successfully"

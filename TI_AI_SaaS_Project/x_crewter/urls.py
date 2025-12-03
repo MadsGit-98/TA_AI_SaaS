@@ -21,12 +21,27 @@ from django.http import JsonResponse
 
 
 def home_view(request):
-    """Simple home page view"""
+    """
+    Render and return the site's home page.
+    
+    Parameters:
+        request (HttpRequest): The incoming Django request.
+    
+    Returns:
+        HttpResponse: Response containing the rendered 'home.html' template.
+    """
     return TemplateView.as_view(template_name='home.html')(request)
 
 
 def health_check(request):
-    """API health check endpoint"""
+    """
+    Provide a simple JSON health check for the API.
+    
+    Returns:
+        JsonResponse: JSON object with keys:
+            - 'status': 'healthy'
+            - 'timestamp': placeholder string 'datetime' (will be replaced with an actual timestamp)
+    """
     return JsonResponse({'status': 'healthy', 'timestamp': 'datetime'})  # Timestamp will be implemented in future
 
 
