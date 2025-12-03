@@ -78,20 +78,20 @@ mkdir -p static templates config/settings
 ### 9. Create the requirements.txt File
 Create a `requirements.txt` file with the following content:
 ```
-Django==5.0.0
-celery==5.3.0
-redis==4.6.0
-selenium==4.11.0
+Django==5.1.14
+celery==5.6.0
+redis==7.1.0
+selenium==4.38.0
 webdriver-manager==4.0.0
 django-environ==0.11.2
-djangorestframework==3.14.0
+djangorestframework==3.15.2
 python-dotenv==1.0.0
 django-cors-headers==4.2.0
-langchain==0.0.300
-langgraph==0.0.18
-pypdf==3.16.0
-python-docx==0.8.11
-shadcn-django==0.0.1
+langchain==0.3.80
+langgraph==0.2.9
+pypdf==5.1.0
+python-docx==1.1.2
+shadcn-django==0.23.0
 ```
 
 ### 10. Install Dependencies
