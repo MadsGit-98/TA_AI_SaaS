@@ -1,0 +1,44 @@
+{% extends "accounts/base.html" %}
+
+{% block title %}Terms and Conditions - X-Crewter{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center mb-12">
+        <h1 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">Terms and Conditions</h1>
+        <p class="mt-4 max-w-2xl mx-auto text-xl text-gray-500">
+            Important terms for using our service
+        </p>
+    </div>
+    
+    <div class="prose prose-lg prose-indigo mx-auto">
+        {% if legal_page %}
+            {{ legal_page.content|linebreaks }}
+        {% else %}
+            <h2>Terms and Conditions</h2>
+            <p><strong>Last updated:</strong> December 4, 2025</p>
+
+            <h3>Acceptance of Terms</h3>
+            <p>By accessing and using the X-Crewter platform, you accept and agree to be bound by the terms and provisions of this agreement.</p>
+
+            <h3>Description of Service</h3>
+            <p>X-Crewter provides an AI-powered platform for Talent Acquisition Specialists to analyze, score (0-100), and categorize bulk resumes (PDF/Docx), significantly reducing screening time.</p>
+
+            <h3>User Responsibilities</h3>
+            <p>You are responsible for maintaining the confidentiality of your account and password and for restricting access to your computer. You agree to accept responsibility for all activities that occur under your account or password.</p>
+
+            <h3>AI Results Disclaimer</h3>
+            <p>The AI results provided by our platform are supplementary and not the sole decision criteria for hiring. Users are advised to use their professional judgment when making hiring decisions.</p>
+
+            <h3>Limitation of Liability</h3>
+            <p>X-Crewter shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use of our platform.</p>
+
+            <h3>Changes to Terms</h3>
+            <p>We reserve the right to modify these terms at any time. We will notify users of any changes through the platform or via email.</p>
+
+            <h3>Contact Us</h3>
+            <p>If you have questions about these Terms and Conditions, please contact us at legal@x-crewter.com</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
