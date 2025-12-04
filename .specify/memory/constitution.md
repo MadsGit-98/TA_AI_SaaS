@@ -30,7 +30,7 @@ Sync Impact Report:
 
 **Data Integrity**: Applicant state MUST be persisted immediately upon submission.
 
-**Legal Footer**: Required on all pages with anchors for Terms and Conditions, Refund Policies, and Cancellation/Replacement Policies.
+**Legal Footer**: Required on all pages with anchors for Terms and Conditions, Refund Policies, Cancellation/Replacement Policies, Accepted payment methods and Accepted currencies.
 
 ### 2. Architecture and Structure Mandate
 
