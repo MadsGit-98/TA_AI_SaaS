@@ -18,7 +18,7 @@ Implementation of the Compliant Home Page & Core Navigation for the X-Crewter we
 **Target Platform**: Web server (Linux/Windows/Mac compatible)
 **Project Type**: Web application
 **Performance Goals**: Page load time under 3 seconds on standard broadband connections
-**Constraints**: Must adhere to "Radical Simplicity" design philosophy, responsive design for all screen sizes, HTTPS enforcement, security headers (HSTS, CSP, X-Frame-Options)
+**Constraints**: Must adhere to "Radical Simplicity" design philosophy, responsive design for mobile (320px+), tablet (768px+), desktop (1024px+), HTTPS enforcement, security headers (HSTS, CSP, X-Frame-Options)
 **Scale/Scope**: Handle variable traffic loads based on marketing campaigns
 
 ## Constitution Check

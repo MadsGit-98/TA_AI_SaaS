@@ -103,7 +103,7 @@ As a user, I want easy access to all legal and support information (policies, co
 - **FR-013**: Login and Register buttons MUST be easily visible and distinguished from standard navigational links
 - **FR-014**: Page MUST comply with all legal and disclosure requirements mandated by APS as mentioned in website_requirements.pdf
 - **FR-015**: Page MUST utilize consistent typography and aesthetics across header, main content, and footer sections
-- **FR-016**: System MUST provide responsive design that works across different screen sizes and devices
+- **FR-016**: System MUST provide responsive design that works across different screen sizes and devices, specifically supporting mobile (320px), tablet (768px), and desktop (1024px+) screen widths with appropriate layout adjustments
 - **FR-017**: All compliance links and policies MUST be accessible without user authentication
 - **FR-018**: Product pricing information MUST be clearly visible to unauthenticated users
 - **FR-019**: Subscription selection flow MUST guide users through registration if not already logged in
