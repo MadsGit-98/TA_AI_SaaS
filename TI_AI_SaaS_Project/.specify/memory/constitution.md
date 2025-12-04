@@ -36,7 +36,6 @@ Sync Impact Report:
 
 **Core Setup**:
 - Framework: Django, Django REST Framework (DRF)
-- Environment Management: Pipenv
 - Database: Sqlite3 (Initial)
 - Root Structure: Must include a top-level celery.py file
 
@@ -84,7 +83,7 @@ The following services MUST be implemented as distinct, decoupled Python modules
 
 ## Implementation Standards
 
-**Technology Stack**: Django with Django REST Framework for backend API, Pipenv for environment management, Sqlite3 for initial database.
+**Technology Stack**: Django with Django REST Framework for backend API, Sqlite3 for initial database.
 
 **Application Structure**: The system is divided into five core Django applications (accounts, jobs, applications, analysis, subscription) following the separation of concerns principle.
 

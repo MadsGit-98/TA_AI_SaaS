@@ -33,7 +33,6 @@
 
 ### X-Crewter Constitution Compliance Check
 - [ ] Framework: Django and Django REST Framework (DRF) must be used
-- [ ] Environment Management: Pipenv must be used for dependency management
 - [ ] Database: Sqlite3 for initial implementation (upgrade path considered)
 - [ ] Project Structure: Top-level celery.py file must be present
 - [ ] Django Applications: Must follow the 5-app structure (accounts, jobs, applications, analysis, subscription)

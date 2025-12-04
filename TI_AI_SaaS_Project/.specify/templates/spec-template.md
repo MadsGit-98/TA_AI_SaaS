@@ -85,7 +85,7 @@
 ### Functional Requirements
 
 - **FR-001**: System MUST use Django and Django REST Framework (DRF) as the primary framework
-- **FR-002**: System MUST use Pipenv for environment and dependency management
+- **FR-002**: System MUST use Pip for environment and dependency management
 - **FR-003**: System MUST use Sqlite3 as the initial database with consideration for upgrade path
 - **FR-004**: System MUST include a top-level celery.py file for task management
 - **FR-005**: System MUST be structured with the following Django applications: accounts, jobs, applications, analysis, subscription
