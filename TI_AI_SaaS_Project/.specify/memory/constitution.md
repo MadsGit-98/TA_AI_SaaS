@@ -72,6 +72,7 @@ The following services MUST be implemented as distinct, decoupled Python modules
 **Coding & Quality**:
 - Coding Style: PEP 8 compliant Python
 - Naming Conventions: Models = Singular PascalCase (e.g., JobListing), Functions/Variables = snake_case
+- Strictly use the django template language (DTL) in developing html pages.
 
 **Testing Mandate**:
 - Unit Tests: Python native unittest module with minimum 90% line coverage
