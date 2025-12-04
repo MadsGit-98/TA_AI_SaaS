@@ -49,7 +49,7 @@ description: "Task list template for feature implementation"
 **Purpose**: Project initialization and basic structure
 
 - [ ] T001 Create Django project structure with accounts, jobs, applications, analysis, and subscription apps
-- [ ] T002 Initialize project with Pipenv for environment management and Django/DRF dependencies
+- [ ] T002 Initialize project with Pip for environment management and Django/DRF dependencies
 - [ ] T003 [P] Configure linting and formatting tools with PEP 8 compliance
 - [ ] T004 Create top-level celery.py file for task management
 - [ ] T005 Set up Sqlite3 database configuration
@@ -69,7 +69,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T008 [P] Setup API routing and middleware structure with DRF
 - [ ] T009 Create base models/entities that all stories depend on
 - [ ] T010 Configure error handling and logging infrastructure
-- [ ] T011 Setup environment configuration management with Pipenv
+- [ ] T011 Setup environment configuration management with Pip
 - [ ] T012 Implement SSL configuration with secure cookies, HSTS, HTTPS redirection
 - [ ] T013 Ensure each Django app has proper directory structure (templates/, static/js/, static/css/, static/images/, tasks.py, tests/)
 
