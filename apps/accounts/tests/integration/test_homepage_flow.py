@@ -29,6 +29,9 @@ class TestHomePageFlow(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
             title="X-Crewter - AI-Powered Resume Analysis",
@@ -52,6 +55,9 @@ class TestHomePageFlow(TestCase):
             description="Currency display options"
         )
 
+        # Initialize the request factory
+        self.factory = RequestFactory()
+
     def test_home_page_content_exists(self):
         """Test that homepage content exists in the database"""
         content = HomePageContent.objects.first()
@@ -60,11 +66,11 @@ class TestHomePageFlow(TestCase):
         self.assertEqual(content.subtitle, "Automate Your Hiring Process")
 
     def test_home_page_view_function(self):
-        """Test the home view function directly with mocked request"""
-        from django.http import HttpRequest
+        """Test the home view function directly with RequestFactory"""
+        from django.contrib.auth.models import AnonymousUser
 
-        request = HttpRequest()
-        request.method = 'GET'
+        request = self.factory.get('/')
+        request.user = AnonymousUser()
 
         # Call the view function directly
         response = home_view(request)
@@ -78,6 +84,9 @@ class TestAuthenticationFlow(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
             title="X-Crewter - AI-Powered Resume Analysis",
@@ -94,12 +103,15 @@ class TestAuthenticationFlow(TestCase):
             is_active=True
         )
 
+        # Initialize the request factory
+        self.factory = RequestFactory()
+
     def test_view_functions_exist(self):
         """Test that authentication views exist and are callable"""
-        from django.http import HttpRequest
+        from django.contrib.auth.models import AnonymousUser
 
-        request = HttpRequest()
-        request.method = 'GET'
+        request = self.factory.get('/')
+        request.user = AnonymousUser()
 
         # Test login view
         login_response = login_view(request)
@@ -115,6 +127,9 @@ class TestLegalPageAccess(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
             title="X-Crewter - AI-Powered Resume Analysis",
@@ -156,6 +171,9 @@ class TestLegalPageAccess(TestCase):
             is_active=True
         )
 
+        # Initialize the request factory
+        self.factory = RequestFactory()
+
     def test_legal_pages_exist(self):
         """Test that legal pages exist in the database"""
         privacy = LegalPage.objects.filter(page_type="privacy").first()
@@ -171,11 +189,11 @@ class TestLegalPageAccess(TestCase):
         self.assertEqual(contact.title, "Contact Information")
 
     def test_view_functions_directly(self):
-        """Test legal page views directly with mocked request"""
-        from django.http import HttpRequest
+        """Test legal page views directly with RequestFactory"""
+        from django.contrib.auth.models import AnonymousUser
 
-        request = HttpRequest()
-        request.method = 'GET'
+        request = self.factory.get('/')
+        request.user = AnonymousUser()
 
         # Test each view function
         privacy_response = privacy_policy_view(request)
