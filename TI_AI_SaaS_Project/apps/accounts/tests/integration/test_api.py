@@ -36,7 +36,7 @@ class TestAPIContract(APITestCase):
     
     def test_homepage_content_api_contract(self):
         """Contract test for homepage-content API"""
-        url = reverse('accounts_api:homepage_content_api')
+        url = reverse('accounts:api:homepage_content_api')
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
@@ -55,7 +55,7 @@ class TestAPIContract(APITestCase):
     
     def test_legal_pages_api_contract(self):
         """Contract test for legal-pages API"""
-        url = reverse('accounts_api:legal_pages_api', kwargs={'slug': 'privacy-policy'})
+        url = reverse('accounts:api:legal_pages_api', kwargs={'slug': 'privacy-policy'})
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
@@ -72,7 +72,7 @@ class TestAPIContract(APITestCase):
     
     def test_card_logos_api_contract(self):
         """Contract test for card-logos API"""
-        url = reverse('accounts_api:card_logos_api')
+        url = reverse('accounts:api:card_logos_api')
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
