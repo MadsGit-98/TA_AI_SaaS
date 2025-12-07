@@ -19,7 +19,7 @@ def home_view(request):
 
     # Get card logos for footer
     try:
-        card_logos = CardLogo.objects.filter(is_active=True).order_by('display_order')
+        card_logos = list(CardLogo.objects.filter(is_active=True).order_by('display_order'))
     except (DatabaseError, OperationalError) as e:
         # Log the exception for debugging purposes
         import logging
