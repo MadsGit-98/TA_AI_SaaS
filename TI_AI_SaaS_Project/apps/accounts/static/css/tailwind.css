@@ -2,112 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles following "Radical Simplicity" philosophy */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #0E1015 !important; /* primary-bg: Deep Charcoal - Base dark mode background */
-  color: #FFFFFF !important; /* primary-text: Pure White - High contrast main text */
-}
+@layer base {
+  /* Base styles for consistent typography */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    @apply bg-primary-bg text-primary-text;
+  }
 
-/* Ensure consistent typography */
-h1, h2, h3, h4, h5, h6 {
-  @apply font-sans;
-  color: #FFFFFF !important; /* primary-text: Pure White - High contrast main text */
-}
-
-/* Monospace for data/scores */
-.data-score {
-  @apply font-mono;
-  color: #FFFFFF !important; /* primary-text: Pure White - High contrast main text */
-}
-
-/* Muted color palette */
-.text-muted {
-  color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-.bg-muted {
-  background-color: #1C1F26 !important; /* code-block-bg: Subtle Dark Grey - Code and card background */
-}
-
-.border-muted {
-  border-color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-/* Primary background color */
-.bg-primary {
-  background-color: #0E1015 !important; /* primary-bg: Deep Charcoal - Base dark mode background */
-}
-
-/* Primary text color */
-.text-primary {
-  color: #FFFFFF !important; /* primary-text: Pure White - High contrast main text */
-}
-
-/* Secondary text color */
-.text-secondary {
-  color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-/* Accent color for CTAs */
-.accent-cta {
-  color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teal - Primary call-to-action/link color */
-}
-
-.bg-accent-cta {
-  background-color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teal - Primary call-to-action/link color */
-}
-
-.hover-accent-cta:hover {
-  color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teal - Primary call-to-action/link color */
-}
-
-.bg-hover-accent-cta:hover {
-  background-color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teal - Primary call-to-action/link color */
-}
-
-/* Code block background */
-.code-block-bg {
-  background-color: #1C1F26 !important; /* code-block-bg: Subtle Dark Grey - Code and card background */
-}
-
-/* Specific overrides for dark mode consistency */
-.text-gray-800 {
-  color: #FFFFFF !important; /* primary-text: Pure White - High contrast main text */
-}
-
-.text-gray-600 {
-  color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-.text-gray-500 {
-  color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-.bg-white {
-  background-color: #0E1015 !important; /* primary-bg: Deep Charcoal - Base dark mode background */
-}
-
-.bg-gray-50 {
-  background-color: #1C1F26 !important; /* code-block-bg: Subtle Dark Grey - Code and card background */
-}
-
-.border-gray-200 {
-  border-color: #A0A0A0 !important; /* secondary-text: Medium Grey - Subtle metadata/supporting text */
-}
-
-.text-indigo-600 {
-  color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teal - Primary call-to-action/link color */
-}
-
-.bg-indigo-600 {
-  background-color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teel - Primary call-to-action/link color */
-}
-
-.hover-text-indigo-600:hover {
-  color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teel - Primary call-to-action/link color */
-}
-
-.hover-bg-indigo-600:hover {
-  background-color: #00FFC0 !important; /* accent-cta: Vibrant Cyan/Teel - Primary call-to-action/link color */
+  /* Ensure consistent typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans text-primary-text;
+  }
 }
