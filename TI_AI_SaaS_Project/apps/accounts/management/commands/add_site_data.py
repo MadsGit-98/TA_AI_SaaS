@@ -55,8 +55,7 @@ class Command(BaseCommand):
                 name=card['name'],
                 defaults={
                     'display_order': card['display_order'],
-                    'is_active': True,
-                    'description': card['description']
+                    'is_active': True
                 }
             )
             if created:

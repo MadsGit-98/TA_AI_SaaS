@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
     './templates/**/*.html',
     './apps/**/templates/**/*.html',
@@ -13,6 +13,9 @@ module.exports = {
         'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
         'accent-cta': '#00FFC0',          // Vibrant Cyan/Teal - Primary call-to-action/link color
         'code-block-bg': '#1C1F26',       // Subtle Dark Grey - Code and card background
+      },
+      accentColor: {
+        'cta': '#00FFC0',
       }
     },
   },
