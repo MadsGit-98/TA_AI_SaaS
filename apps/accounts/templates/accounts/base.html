@@ -12,20 +12,20 @@
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-white text-gray-800 min-h-screen flex flex-col">
-    <header class="bg-white shadow-sm">
+<body class="bg-primary text-primary min-h-screen flex flex-col">
+    <header class="bg-primary shadow-sm border-b border-muted">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <div class="flex items-center">
                     <!-- Logo on the left -->
                     <a href="/" class="flex-shrink-0 flex items-center">
-                        <span class="text-xl font-bold text-indigo-600">X-Crewter</span>
+                        <span class="text-xl font-bold accent-cta">X-Crewter</span>
                     </a>
                 </div>
                 <div class="flex items-center space-x-4">
                     <!-- Login and Register anchors on the right -->
-                    <a href="{% url 'accounts:login' %}" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Login</a>
-                    <a href="{% url 'accounts:register' %}" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition duration-150 ease-in-out">Register</a>
+                    <a href="{% url 'accounts:login' %}" class="text-secondary hover-accent-cta px-3 py-2 rounded-md text-sm font-medium">Login</a>
+                    <a href="{% url 'accounts:register' %}" class="bg-accent-cta text-primary px-4 py-2 rounded-md text-sm font-medium hover:bg-hover-accent-cta transition duration-150 ease-in-out">Register</a>
                 </div>
             </div>
         </div>
@@ -35,25 +35,25 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-gray-50 border-t border-gray-200">
+    <footer class="bg-muted border-t border-muted">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div class="md:col-span-1">
-                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Legal</h3>
+                    <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider">Legal</h3>
                     <ul class="mt-4 space-y-2">
-                        <li><a href="{% url 'accounts:privacy_policy' %}" class="text-base text-gray-600 hover:text-indigo-600">Privacy Policy</a></li>
-                        <li><a href="{% url 'accounts:terms_conditions' %}" class="text-base text-gray-600 hover:text-indigo-600">Terms & Conditions</a></li>
-                        <li><a href="{% url 'accounts:refund_policy' %}" class="text-base text-gray-600 hover:text-indigo-600">Refund Policy</a></li>
+                        <li><a href="{% url 'accounts:privacy_policy' %}" class="text-base text-secondary hover-accent-cta">Privacy Policy</a></li>
+                        <li><a href="{% url 'accounts:terms_conditions' %}" class="text-base text-secondary hover-accent-cta">Terms & Conditions</a></li>
+                        <li><a href="{% url 'accounts:refund_policy' %}" class="text-base text-secondary hover-accent-cta">Refund Policy</a></li>
                     </ul>
                 </div>
                 <div class="md:col-span-1">
-                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Contact</h3>
+                    <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider">Contact</h3>
                     <ul class="mt-4 space-y-2">
-                        <li><a href="{% url 'accounts:contact' %}" class="text-base text-gray-600 hover:text-indigo-600">Contact Us</a></li>
+                        <li><a href="{% url 'accounts:contact' %}" class="text-base text-secondary hover-accent-cta">Contact Us</a></li>
                     </ul>
                 </div>
                 <div class="md:col-span-1">
-                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Accepted Payment Methods</h3>
+                    <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider">Accepted Payment Methods</h3>
                     <div class="mt-4 flex space-x-2">
                         <!-- Card logos inserted dynamically from database -->
                         {% for card_logo in card_logos %}
@@ -61,7 +61,7 @@
                                 <img src="{{ card_logo.logo_image.url }}" alt="{{ card_logo.name }}" class="h-6">
                             {% elif card_logo.is_active %}
                                 <!-- Placeholder for missing logo -->
-                                <div class="bg-gray-200 border border-gray-300 rounded text-xs px-2 py-1 h-6 flex items-center justify-center">
+                                <div class="code-block-bg border border-secondary rounded text-xs px-2 py-1 h-6 flex items-center justify-center">
                                     {{ card_logo.name|truncatechars:8 }}
                                 </div>
                             {% endif %}
@@ -69,12 +69,12 @@
                     </div>
                 </div>
                 <div class="md:col-span-1">
-                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Currency</h3>
-                    <p class="mt-4 text-base text-gray-600">{{ currency_display|default:"USD, EUR, GBP" }}</p>
+                    <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider">Currency</h3>
+                    <p class="mt-4 text-base text-secondary">{{ currency_display|default:"USD, EUR, GBP" }}</p>
                 </div>
             </div>
-            <div class="mt-8 border-t border-gray-200 pt-8">
-                <p class="text-center text-base text-gray-500">&copy; 2025 X-Crewter. All rights reserved.</p>
+            <div class="mt-8 border-t border-secondary pt-8">
+                <p class="text-center text-base text-secondary">&copy; 2025 X-Crewter. All rights reserved.</p>
             </div>
         </div>
     </footer>
