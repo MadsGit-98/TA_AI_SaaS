@@ -1,6 +1,9 @@
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
-from apps.accounts.models import HomePageContent, LegalPage
+from unittest.mock import patch
+from django.db import DatabaseError
+from django.db.utils import OperationalError
+from apps.accounts.models import HomePageContent, LegalPage, CardLogo
 from apps.accounts.views import home_view, login_view, register_view, privacy_policy_view, terms_conditions_view, refund_policy_view, contact_view
 from django.http import HttpRequest
 
@@ -28,15 +31,51 @@ class TestHomePageView(TestCase):
 
     def test_home_page_content_exists(self):
         """Test that homepage content exists in the view context"""
-        # This verifies the model is accessible to the view
-        request = self.factory.get('/')
-        response = home_view(request)  # We'll check the view works without template errors
+        from django.template.response import TemplateResponse
 
-        # Check that homepage content exists in the database
-        content = HomePageContent.objects.first()
-        self.assertIsNotNone(content)
-        self.assertEqual(content.title, "X-Crewter - AI-Powered Resume Analysis")
-        self.assertEqual(content.subtitle, "Automate Your Hiring Process")
+        # Create request and call the view
+        request = self.factory.get('/')
+        response = home_view(request)
+
+        # For a rendered response, we need to ensure it's a TemplateResponse to access context
+        if isinstance(response, TemplateResponse):
+            response.render()  # Render the template to access context
+            # Check that the response contains the expected content in the context
+            self.assertIn('home_content', response.context_data)
+
+            # Verify the content matches what we created in setUp
+            content = response.context_data['home_content']
+            self.assertEqual(content.title, "X-Crewter - AI-Powered Resume Analysis")
+            self.assertEqual(content.subtitle, "Automate Your Hiring Process")
+        else:
+            # If it's a regular HttpResponse, we can still check for the content in the HTML
+            content = HomePageContent.objects.first()
+            self.assertContains(response, content.title)
+            self.assertContains(response, content.subtitle)
+
+    @patch('apps.accounts.views.CardLogo')
+    def test_home_page_view_database_error_handling(self, mock_card_logo):
+        """Test that the home page handles database errors when fetching card logos"""
+        # Mock CardLogo.objects.filter to raise a DatabaseError
+        mock_card_logo.objects.filter.side_effect = DatabaseError("Database connection failed")
+
+        request = self.factory.get('/')
+        response = home_view(request)
+
+        # The view should still return a 200 status even when database error occurs
+        self.assertEqual(response.status_code, 200)
+
+    @patch('apps.accounts.views.CardLogo')
+    def test_home_page_view_operational_error_handling(self, mock_card_logo):
+        """Test that the home page handles operational errors when fetching card logos"""
+        # Mock CardLogo.objects.filter to raise an OperationalError
+        mock_card_logo.objects.filter.side_effect = OperationalError("Database is locked")
+
+        request = self.factory.get('/')
+        response = home_view(request)
+
+        # The view should still return a 200 status even when operational error occurs
+        self.assertEqual(response.status_code, 200)
 
 
 class TestLoginView(TestCase):

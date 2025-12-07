@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
+from django.db import DatabaseError
+from django.db.utils import OperationalError
 from .models import HomePageContent, LegalPage, CardLogo, SiteSetting
 
 
@@ -18,7 +20,11 @@ def home_view(request):
     # Get card logos for footer
     try:
         card_logos = CardLogo.objects.filter(is_active=True).order_by('display_order')
-    except:
+    except (DatabaseError, OperationalError) as e:
+        # Log the exception for debugging purposes
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Database error when fetching card logos: {e}")
         card_logos = []
 
     # Get currency setting
@@ -92,6 +98,30 @@ def contact_view(request):
     """
     View for contact information page
     """
+    if request.method == 'POST':
+        # Process the form submission
+        name = request.POST.get('first-name', '') + ' ' + request.POST.get('last-name', '')
+        email = request.POST.get('email', '')
+        subject = request.POST.get('subject', '')
+        message = request.POST.get('message', '')
+
+        # Here you would typically send an email or save to database
+        # For now, just return to the contact page with a success message
+        context = {
+            'legal_page': None,
+            'message_sent': True
+        }
+
+        # Check if there's a contact page in the database
+        try:
+            contact_page = LegalPage.objects.get(page_type='contact', is_active=True)
+            context['legal_page'] = contact_page
+        except LegalPage.DoesNotExist:
+            pass
+
+        return render(request, 'accounts/contact.html', context)
+
+    # Handle GET request
     try:
         contact_page = LegalPage.objects.get(page_type='contact', is_active=True)
     except LegalPage.DoesNotExist:

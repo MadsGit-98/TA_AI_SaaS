@@ -4,13 +4,13 @@
 {% block title %}Register - X-Crewter{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center bg-muted py-12 px-4 sm:px-6 lg:px-8">
+<div class="min-h-screen flex items-center justify-center bg-code-block-bg py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
         <div class="flex flex-col items-center">
             <div class="h-40 w-auto">
                 <img src="{% static 'images/logo.png' %}" alt="X-Crewter Logo" class="h-32 max-w-[300px] w-auto mx-auto">
             </div>
-            <h2 class="mt-6 text-center text-3xl font-extrabold text-primary">
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-primary-text">
                 Create a new account
             </h2>
         </div>
@@ -20,34 +20,34 @@
             <div class="rounded-md shadow-sm -space-y-px">
                 <div>
                     <label for="full-name" class="sr-only">Full Name</label>
-                    <input id="full-name" name="full_name" type="text" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary placeholder-secondary text-primary rounded-t-md focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-muted" placeholder="Full Name">
+                    <input id="full-name" name="full_name" type="text" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary-text placeholder-secondary-text text-primary-text rounded-t-md focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-code-block-bg" placeholder="Full Name">
                 </div>
                 <div>
                     <label for="email" class="sr-only">Email address</label>
-                    <input id="email" name="email" type="email" autocomplete="email" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary placeholder-secondary text-primary focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-muted" placeholder="Email address">
+                    <input id="email" name="email" type="email" autocomplete="email" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary-text placeholder-secondary-text text-primary-text focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-code-block-bg" placeholder="Email address">
                 </div>
                 <div>
                     <label for="password" class="sr-only">Password</label>
-                    <input id="password" name="password" type="password" autocomplete="current-password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary placeholder-secondary text-primary focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-muted" placeholder="Password">
+                    <input id="password" name="password" type="password" autocomplete="current-password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary-text placeholder-secondary-text text-primary-text focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-code-block-bg" placeholder="Password">
                 </div>
                 <div>
                     <label for="confirm-password" class="sr-only">Confirm Password</label>
-                    <input id="confirm-password" name="confirm_password" type="password" autocomplete="current-password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary placeholder-secondary text-primary rounded-b-md focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-muted" placeholder="Confirm Password">
+                    <input id="confirm-password" name="confirm_password" type="password" autocomplete="current-password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border border-secondary-text placeholder-secondary-text text-primary-text rounded-b-md focus:outline-none focus:ring-accent-cta focus:border-accent-cta focus:z-10 sm:text-sm bg-code-block-bg" placeholder="Confirm Password">
                 </div>
             </div>
 
             <div class="flex items-center">
-                <input id="terms" name="terms" type="checkbox" required class="h-4 w-4 accent-cta focus:ring-accent-cta border-secondary rounded bg-primary">
-                <label for="terms" class="ml-2 block text-sm text-primary">
-                    I agree to the <a href="{% url 'accounts:terms_conditions' %}" class="text-accent-cta hover-accent-cta">Terms and Conditions</a>
+                <input id="terms" name="terms" type="checkbox" required class="h-4 w-4 accent-cta focus:ring-accent-cta border-secondary-text rounded bg-primary-text">
+                <label for="terms" class="ml-2 block text-sm text-primary-text">
+                    I agree to the <a href="{% url 'accounts:terms_conditions' %}" class="text-accent-cta hover:text-accent-cta">Terms and Conditions</a>
                 </label>
             </div>
 
             <div>
-                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary bg-accent-cta hover:bg-hover-accent-cta focus:outline-none focus:ring-2 focus:ring-offset-2 focus:bg-hover-accent-cta">
+                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-text bg-accent-cta hover:bg-accent-cta focus:outline-none focus:ring-2 focus:ring-offset-2 focus:bg-accent-cta">
                     <span class="absolute left-0 inset-y-0 flex items-center pl-3">
                         <!-- Heroicon name: solid/user-add -->
-                        <svg class="h-5 w-5 text-accent-cta group-hover:text-hover-accent-cta" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <svg class="h-5 w-5 text-accent-cta group-hover:text-accent-cta" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                             <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
                         </svg>
                     </span>
@@ -57,9 +57,9 @@
         </form>
 
         <div class="text-center">
-            <p class="text-sm text-secondary">
+            <p class="text-sm text-secondary-text">
                 Already have an account?
-                <a href="{% url 'accounts:login' %}" class="font-medium text-accent-cta hover-accent-cta">
+                <a href="{% url 'accounts:login' %}" class="font-medium text-accent-cta hover:text-accent-cta">
                     Sign in
                 </a>
             </p>
