@@ -85,11 +85,12 @@ The following services MUST be implemented as distinct, decoupled Python modules
 ### 6. Color Grading Non-Negotiables
 
 **Colors**:
-- **primary-bg**: #0E1015 (Deep Charcoal - Base dark mode background)
-- **primary-text**: #FFFFFF (Pure White - High contrast main text)
+- **primary-bg**: #FFFFFF (Pure White - Provides the bright, clean canvas for the Light Mode interface.)
+- **primary-text**: #000000 (Pure Black - Optimal contrast for high readability across all main text elements.)
 - **secondary-text**: #A0A0A0 (Medium Grey - Subtle metadata/supporting text)
-- **accent-cta**: #00FFC0 (Vibrant Cyan/Teal - Primary call-to-action/link color)
-- **code-block-bg**: #1C1F26 (Subtle Dark Grey - Code and card background)
+- **accent-cta**: #080707 (Black - Primary call-to-action/link color)
+- **code-block-bg**: #E0E0E0 (Subtle Dark Grey - Code and card background)
+- **cta-text**: (Pure White - Ensures the text is highly legible against the dark Charcoal Black background. )
 
 **UI Principles**:
 - **Theme**: Dark Mode, High Contrast.

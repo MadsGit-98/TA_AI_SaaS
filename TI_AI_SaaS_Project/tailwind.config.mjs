@@ -8,14 +8,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        'primary-bg': '#0E1015',           // Deep Charcoal - Base dark mode background
-        'primary-text': '#FFFFFF',        // Pure White - High contrast main text
+        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+        'primary-text': '#000000',        // Pure White - High contrast main text
         'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
-        'accent-cta': '#00FFC0',          // Vibrant Cyan/Teal - Primary call-to-action/link color
-        'code-block-bg': '#1C1F26',       // Subtle Dark Grey - Code and card background
+        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+        'cta-text': '#FFFFFF',
       },
       accentColor: {
-        'cta': '#00FFC0',
+        'cta': '#080707',
       }
     },
   },

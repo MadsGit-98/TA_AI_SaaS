@@ -6,22 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}X-Crewter - AI-Powered Resume Analysis{% endblock %}</title>
     <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        'primary-bg': '#0E1015',           // Deep Charcoal - Base dark mode background
-                        'primary-text': '#FFFFFF',        // Pure White - High contrast main text
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
                         'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
-                        'accent-cta': '#00FFC0',          // Vibrant Cyan/Teal - Primary call-to-action/link color
-                        'code-block-bg': '#1C1F26',       // Subtle Dark Grey - Code and card background
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
                     }
                 }
             }
         }
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Security Headers -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
@@ -41,7 +42,7 @@
                 <div class="flex items-center space-x-4">
                     <!-- Login and Register anchors on the right -->
                     <a href="{% url 'accounts:login' %}" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Login</a>
-                    <a href="{% url 'accounts:register' %}" class="bg-accent-cta text-primary-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Register</a>
+                    <a href="{% url 'accounts:register' %}" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Register</a>
                 </div>
             </div>
         </div>
@@ -51,7 +52,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-code-block-bg border-t border-secondary-text">
+    <footer class="bg-primary-bg border-t border-secondary-text bg-primary-bg">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div class="md:col-span-1">
