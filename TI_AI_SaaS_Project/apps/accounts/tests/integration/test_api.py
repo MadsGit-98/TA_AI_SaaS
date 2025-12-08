@@ -36,11 +36,11 @@ class TestAPIContract(APITestCase):
     
     def test_homepage_content_api_contract(self):
         """Contract test for homepage-content API"""
-        url = reverse('accounts:api:homepage_content_api')
+        url = reverse('api:homepage_content_api')
         response = self.client.get(url)
-        
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that the response contains expected fields
         self.assertIn('title', response.data)
         self.assertIn('subtitle', response.data)
@@ -48,36 +48,36 @@ class TestAPIContract(APITestCase):
         self.assertIn('call_to_action_text', response.data)
         self.assertIn('pricing_info', response.data)
         self.assertIn('updated_at', response.data)
-        
+
         # Check that the values match our test data
         self.assertEqual(response.data['title'], "X-Crewter - AI-Powered Resume Analysis")
         self.assertEqual(response.data['subtitle'], "Automate Your Hiring Process")
     
     def test_legal_pages_api_contract(self):
         """Contract test for legal-pages API"""
-        url = reverse('accounts:api:legal_pages_api', kwargs={'slug': 'privacy-policy'})
+        url = reverse('api:legal_pages_api', kwargs={'slug': 'privacy-policy'})
         response = self.client.get(url)
-        
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that the response contains expected fields
         self.assertIn('title', response.data)
         self.assertIn('content', response.data)
         self.assertIn('page_type', response.data)
         self.assertIn('updated_at', response.data)
-        
+
         # Check that the values match our test data
         self.assertEqual(response.data['title'], "Privacy Policy")
         self.assertEqual(response.data['page_type'], "privacy")
     
     def test_card_logos_api_contract(self):
         """Contract test for card-logos API"""
-        url = reverse('accounts:api:card_logos_api')
+        url = reverse('api:card_logos_api')
         response = self.client.get(url)
-        
+
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.data, list)
-        
+
         if response.data:  # If there are any card logos
             logo_data = response.data[0]
             # Check that the response contains expected fields

@@ -16,8 +16,5 @@ urlpatterns = [
     path('refund/', views.refund_policy_view, name='refund_policy'),
     path('contact/', views.contact_view, name='contact'),
 
-    # API endpoints
-    path('api/', include('apps.accounts.api_urls')),
-
     # Additional authentication URLs will be defined in future features
 ]

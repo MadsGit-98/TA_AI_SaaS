@@ -33,7 +33,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('apps.accounts.urls')),  # Include accounts URLs for home page and auth
     path('api/health/', health_check, name='health_check'),
-    path('api/auth/', include('apps.accounts.urls')),
+    path('api/accounts/', include('apps.accounts.api_urls')),
     path('api/jobs/', include('apps.jobs.urls')),
     path('api/applications/', include('apps.applications.urls')),
     path('api/analysis/', include('apps.analysis.urls')),
@@ -55,7 +55,7 @@ def fallback_view(request, *args, **kwargs):
 
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
-    re_path(r'^(?!api|admin).*$', fallback_view, name='fallback'),
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 
