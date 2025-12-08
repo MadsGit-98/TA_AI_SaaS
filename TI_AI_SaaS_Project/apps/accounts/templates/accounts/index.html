@@ -1,0 +1,245 @@
+{% extends "accounts/base.html" %}
+
+{% load static %}
+
+{% block title %}{{ home_content.title|default:"X-Crewter - AI-Powered Resume Analysis" }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center">
+        <h1 class="text-4xl tracking-tight font-extrabold text-primary-text sm:text-5xl md:text-6xl">
+            <span class="block">{{ home_content.title|default:"AI-Powered Resume Analysis" }}</span>
+            <span class="block text-accent-cta">{{ home_content.subtitle|default:"Automate Your Hiring Process" }}</span>
+        </h1>
+        <p class="mt-3 max-w-md mx-auto text-base text-secondary-text sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+            {{ home_content.description|default:"X-Crewter helps Talent Acquisition Specialists automatically analyze, score (0-100), and categorize bulk resumes (PDF/Docx), significantly reducing screening time." }}
+        </p>
+    </div>
+
+    <div class="mt-10 flex justify-center">
+        <div class="inline-flex rounded-md shadow">
+            <a href="{% url 'accounts:register' %}"
+               class="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-cta-text bg-accent-cta hover:bg-accent-cta-dark">
+                {{ home_content.call_to_action_text|default:"Get Started Free" }}
+            </a>
+        </div>
+        <div class="ml-3 inline-flex">
+            <a href="{% url 'accounts:login' %}"
+               class="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-secondary-text bg-code-block-bg hover:bg-accent-cta-dark">
+                Login
+            </a>
+        </div>
+    </div>
+
+    <div class="mt-12">
+        <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="pt-6">
+                <div class="flow-root bg-code-block-bg rounded-lg px-6 pb-8">
+                    <div class="-mt-6">
+                        <div>
+                            <span class="inline-flex items-center justify-center p-3 bg-accent-cta rounded-md shadow-sm">
+                                <svg class="h-6 w-6 text-cta-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </span>
+                        </div>
+                        <h3 class="mt-8 text-lg font-medium text-primary-text tracking-tight">AI-Powered Analysis</h3>
+                        <p class="mt-5 text-base text-secondary-text">
+                            Automatically analyze and score resumes with our advanced AI technology.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-6">
+                <div class="flow-root bg-code-block-bg rounded-lg px-6 pb-8">
+                    <div class="-mt-6">
+                        <div>
+                            <span class="inline-flex items-center justify-center p-3 bg-accent-cta rounded-md shadow-sm">
+                                <svg class="h-6 w-6 text-cta-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </span>
+                        </div>
+                        <h3 class="mt-8 text-lg font-medium text-primary-text tracking-tight">Time Savings</h3>
+                        <p class="mt-5 text-base text-secondary-text">
+                            Reduce screening time from hours to minutes with automated processing.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-6">
+                <div class="flow-root bg-code-block-bg rounded-lg px-6 pb-8">
+                    <div class="-mt-6">
+                        <div>
+                            <span class="inline-flex items-center justify-center p-3 bg-accent-cta rounded-md shadow-sm">
+                                <svg class="h-6 w-6 text-cta-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            </span>
+                        </div>
+                        <h3 class="mt-8 text-lg font-medium text-primary-text tracking-tight">Talent Specialists</h3>
+                        <p class="mt-5 text-base text-secondary-text">
+                            Designed specifically for SMB Talent Acquisition Specialists.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pricing Section -->
+    <div class="mt-20">
+        <div class="text-center">
+            <h2 class="text-3xl font-extrabold text-primary-text sm:text-4xl">Simple, transparent pricing</h2>
+            <p class="mt-4 max-w-2xl mx-auto text-xl text-secondary-text">
+                Choose the plan that works best for your team
+            </p>
+        </div>
+
+        <div class="mt-16 space-y-12 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-x-8">
+            <div class="relative p-8 bg-code-block-bg border border-secondary-text rounded-2xl shadow-sm flex flex-col">
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-primary-text">Basic</h3>
+                    <p class="mt-4 flex items-baseline text-primary-text">
+                        <span class="text-5xl font-extrabold tracking-tight">$29</span>
+                        <span class="ml-1 text-xl font-semibold">/month</span>
+                    </p>
+                    <p class="mt-6 text-secondary-text">Perfect for small teams</p>
+                    <ul role="list" class="mt-6 space-y-6">
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Up to 50 resume analyses</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Basic AI scoring</span>
+                        </li>
+                    </ul>
+                </div>
+                <a href="#" class="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-primary-text bg-code-block-bg hover:bg-accent-cta-dark">Get started</a>
+            </div>
+
+            <div class="relative p-8 bg-code-block-bg border border-secondary-text rounded-2xl shadow-sm flex flex-col">
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-primary-text">Professional</h3>
+                    <p class="mt-4 flex items-baseline text-primary-text">
+                        <span class="text-5xl font-extrabold tracking-tight">$79</span>
+                        <span class="ml-1 text-xl font-semibold">/month</span>
+                    </p>
+                    <p class="mt-6 text-secondary-text">For growing businesses</p>
+                    <ul role="list" class="mt-6 space-y-6">
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Up to 200 resume analyses</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Advanced AI scoring</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Custom screening questions</span>
+                        </li>
+                    </ul>
+                </div>
+                <a href="#" class="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-cta-text bg-accent-cta hover:bg-accent-cta-dark">Get started</a>
+            </div>
+
+            <div class="relative p-8 bg-code-block-bg border border-secondary-text rounded-2xl shadow-sm flex flex-col">
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-primary-text">Enterprise</h3>
+                    <p class="mt-4 flex items-baseline text-primary-text">
+                        <span class="text-5xl font-extrabold tracking-tight">$199</span>
+                        <span class="ml-1 text-xl font-semibold">/month</span>
+                    </p>
+                    <p class="mt-6 text-secondary-text">For large organizations</p>
+                    <ul role="list" class="mt-6 space-y-6">
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Unlimited resume analyses</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Priority AI processing</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">Dedicated account manager</span>
+                        </li>
+                        <li class="flex">
+                            <svg class="flex-shrink-0 w-6 h-6 text-accent-cta" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="ml-3 text-secondary-text">API access</span>
+                        </li>
+                    </ul>
+                </div>
+                <a href="#" class="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-primary-text bg-code-block-bg hover:bg-accent-cta-dark">Get started</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Testimonials Section -->
+    <div class="mt-20">
+        <div class="text-center">
+            <h2 class="text-3xl font-extrabold text-primary-text sm:text-4xl">Trusted by hiring professionals</h2>
+            <p class="mt-4 max-w-2xl mx-auto text-xl text-secondary-text">
+                Join thousands of Talent Acquisition Specialists who save hours every week
+            </p>
+        </div>
+        <div class="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="bg-code-block-bg p-6 rounded-lg shadow">
+                <div class="flex items-center">
+                    <div class="ml-4">
+                        <h4 class="text-lg font-bold text-primary-text">Sarah Johnson</h4>
+                        <p class="text-secondary-text">Talent Acquisition, TechCorp</p>
+                    </div>
+                </div>
+                <p class="mt-4 text-secondary-text">
+                    "X-Crewter has cut our resume screening time by 75%. We can now focus on the most promising candidates."
+                </p>
+            </div>
+            <div class="bg-code-block-bg p-6 rounded-lg shadow">
+                <div class="flex items-center">
+                    <div class="ml-4">
+                        <h4 class="text-lg font-bold text-primary-text">Michael Chen</h4>
+                        <p class="text-secondary-text">HR Director, StartupX</p>
+                    </div>
+                </div>
+                <p class="mt-4 text-secondary-text">
+                    "The AI analysis is spot-on. We've improved our candidate quality while reducing time to hire."
+                </p>
+            </div>
+            <div class="bg-code-block-bg p-6 rounded-lg shadow">
+                <div class="flex items-center">
+                    <div class="ml-4">
+                        <h4 class="text-lg font-bold text-primary-text">Emma Rodriguez</h4>
+                        <p class="text-secondary-text">Recruiter, Global Inc</p>
+                    </div>
+                </div>
+                <p class="mt-4 text-secondary-text">
+                    "Finally, a tool that actually understands what we need in the hiring process. Highly recommended!"
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,8 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: N/A → 1.0.0
-- Added sections: All principles for X-Crewter project based on user requirements
-- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md
+- Version change: 1.0.0 → 1.1.0
+- Added sections: 6. Color Grading Non-Negotiables with specific color values and UI principles
+- Modified sections: 1. Non-Negotiable Governing Principles (UX Philosophy and Typography & Aesthetics updated to reference color grading)
+- Templates requiring updates: ⚠ plan-template.md, spec-template.md, tasks-template.md (need to verify alignment with new color grading principles)
 - Follow-up TODOs: RATIFICATION_DATE needs to be set to actual adoption date
 -->
 # X-Crewter Constitution
@@ -13,12 +14,12 @@ Sync Impact Report:
 
 **Goal**: Create X-Crewter, an AI-powered platform for Talent Acquisition Specialists (TAS) in SMBs to automatically analyze, score (0-100), and categorize bulk resumes (PDF/Docx), significantly reducing screening time.
 
-**UX Philosophy**: Radical Simplicity. Clean, minimalist, distraction-free design utilizing shadcn_django components.
+**UX Philosophy**: Radical Simplicity. Clean, minimalist, distraction-free design utilizing shadcn_django components with strict adherence to the defined color grading philosophy.
 
 **Typography & Aesthetics**:
 - Primary: Sans-Serif
 - Data/Scores: Monospace
-- Color Palette: Muted colors with high contrast
+- Color Palette: Dark Mode with high contrast as defined in the Color Grading Non-Negotiables
 
 **Applicant View**:
 - Public, unauthenticated form
@@ -81,6 +82,22 @@ The following services MUST be implemented as distinct, decoupled Python modules
 - Access Control: Implement Role-Based Access Control (RBAC) scaffolding
 - SSL Configuration (Mandatory): Secure cookies, HSTS, HTTPS Redirection Enforcement, Content Security Policy (CSP), and addressing Mixed Content/Referrer Policy
 
+### 6. Color Grading Non-Negotiables
+
+**Colors**:
+- **primary-bg**: #FFFFFF (Pure White - Provides the bright, clean canvas for the Light Mode interface.)
+- **primary-text**: #000000 (Pure Black - Optimal contrast for high readability across all main text elements.)
+- **secondary-text**: #A0A0A0 (Medium Grey - Subtle metadata/supporting text)
+- **accent-cta**: #080707 (Black - Primary call-to-action/link color)
+- **code-block-bg**: #E0E0E0 (Subtle Dark Grey - Code and card background)
+- **cta-text**: (Pure White - Ensures the text is highly legible against the dark Charcoal Black background. )
+
+**UI Principles**:
+- **Theme**: Dark Mode, High Contrast.
+- **Contrast Rule**: All primary text elements must achieve WCAG AAA contrast ratio against the primary-bg color.
+- **Emphasis Rule**: The accent-cta color must be reserved exclusively for primary interactive elements (buttons, links, active states) to drive conversion and focus.
+- **Hierarchy Rule**: The secondary-text color must be used to de-emphasize less critical information, creating a clear visual hierarchy.
+
 ## Implementation Standards
 
 **Technology Stack**: Django with Django REST Framework for backend API, Sqlite3 for initial database.
@@ -103,4 +120,4 @@ The following services MUST be implemented as distinct, decoupled Python modules
 
 The X-Crewter Constitution supersedes all other development practices and guidelines. All amendments to this constitution require formal documentation, approval by project maintainers, and a migration plan if applicable. All pull requests and code reviews must verify compliance with these principles. All contributors must ensure that complexity is justified by clear business or technical requirements.
 
-**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE): Date of original adoption | **Last Amended**: 2025-12-02
+**Version**: 1.1.0 | **Ratified**: TODO(RATIFICATION_DATE): Date of original adoption | **Last Amended**: 2025-12-07

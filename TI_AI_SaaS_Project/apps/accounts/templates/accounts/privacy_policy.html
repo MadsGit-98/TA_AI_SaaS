@@ -1,0 +1,39 @@
+{% extends "accounts/base.html" %}
+
+{% load static %}
+{% block title %}Privacy Policy - X-Crewter{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center mb-12">
+        <h1 class="text-3xl font-extrabold text-primary-text sm:text-4xl">Privacy Policy</h1>
+        <p class="mt-4 max-w-2xl mx-auto text-xl text-secondary-text">
+            Your privacy is important to us
+        </p>
+    </div>
+
+    <div class="prose prose-lg prose-accent-cta mx-auto text-primary-text">
+        {% if legal_page %}
+            {{ legal_page.content|linebreaks }}
+        {% else %}
+            <h2 class="text-primary-text">Privacy Policy</h2>
+            <p class="text-secondary-text"><strong>Last updated:</strong> December 4, 2025</p>
+
+            <h3 class="text-primary-text">Introduction</h3>
+            <p class="text-secondary-text">This Privacy Policy describes how X-Crewter ("we", "us", or "our") collects, uses, and shares your personal information when you use our AI-powered resume analysis platform for Talent Acquisition Specialists.</p>
+
+            <h3 class="text-primary-text">Information We Collect</h3>
+            <p class="text-secondary-text">We collect information you provide directly to us, including when you create an account, use our services, or communicate with us. This may include your name, email address, company information, and resumes that you upload for analysis.</p>
+
+            <h3 class="text-primary-text">How We Use Your Information</h3>
+            <p class="text-secondary-text">We use your information to provide, maintain, and improve our services, to communicate with you, and to comply with legal obligations. We also use your information to provide AI-powered resume analysis and generate corresponding reports.</p>
+
+            <h3 class="text-primary-text">Data Security</h3>
+            <p class="text-secondary-text">We implement appropriate technical and organizational measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
+
+            <h3 class="text-primary-text">Contact Us</h3>
+            <p class="text-secondary-text">If you have questions about this Privacy Policy, please contact us at privacy@x-crewter.com</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

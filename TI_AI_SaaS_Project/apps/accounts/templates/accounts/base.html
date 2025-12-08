@@ -1,0 +1,101 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}X-Crewter - AI-Powered Resume Analysis{% endblock %}</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
+                        'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <!-- Logo on the left -->
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Login and Register anchors on the right -->
+                    <a href="{% url 'accounts:login' %}" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Login</a>
+                    <a href="{% url 'accounts:register' %}" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Register</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-primary-bg border-t border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="md:col-span-1">
+                    <h3 class="text-sm font-semibold text-secondary-text uppercase tracking-wider">Legal</h3>
+                    <ul class="mt-4 space-y-2">
+                        <li><a href="{% url 'accounts:privacy_policy' %}" class="text-base text-secondary-text hover:text-accent-cta">Privacy Policy</a></li>
+                        <li><a href="{% url 'accounts:terms_conditions' %}" class="text-base text-secondary-text hover:text-accent-cta">Terms & Conditions</a></li>
+                        <li><a href="{% url 'accounts:refund_policy' %}" class="text-base text-secondary-text hover:text-accent-cta">Refund Policy</a></li>
+                    </ul>
+                </div>
+                <div class="md:col-span-1">
+                    <h3 class="text-sm font-semibold text-secondary-text uppercase tracking-wider">Contact</h3>
+                    <ul class="mt-4 space-y-2">
+                        <li><a href="{% url 'accounts:contact' %}" class="text-base text-secondary-text hover:text-accent-cta">Contact Us</a></li>
+                    </ul>
+                </div>
+                <div class="md:col-span-1">
+                    <h3 class="text-sm font-semibold text-secondary-text uppercase tracking-wider">Accepted Payment Methods</h3>
+                    <div class="mt-4 flex space-x-2">
+                        <!-- Card logos inserted dynamically from database -->
+                        {% for card_logo in card_logos %}
+                            {% if card_logo.is_active and card_logo.logo_image %}
+                                <img src="{{ card_logo.logo_image.url }}" alt="{{ card_logo.name }}" class="h-6">
+                            {% elif card_logo.is_active %}
+                                <!-- Placeholder for missing logo -->
+                                <div class="bg-code-block-bg border border-secondary-text rounded text-xs px-2 py-1 h-6 flex items-center justify-center">
+                                    {{ card_logo.name|truncatechars:8 }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="md:col-span-1">
+                    <h3 class="text-sm font-semibold text-secondary-text uppercase tracking-wider">Currency</h3>
+                    <p class="mt-4 text-base text-secondary-text">{{ currency_display|default:"USD, EUR, GBP" }}</p>
+                </div>
+            </div>
+            <div class="mt-8 border-t border-secondary-text pt-8">
+                <p class="text-center text-base text-secondary-text">&copy; 2025 X-Crewter. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
