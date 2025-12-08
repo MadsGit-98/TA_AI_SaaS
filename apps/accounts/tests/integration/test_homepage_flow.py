@@ -67,7 +67,6 @@ class TestHomePageFlow(TestCase):
 
     def test_home_page_view_function(self):
         """Test the home view function directly with RequestFactory"""
-        from django.contrib.auth.models import AnonymousUser
 
         request = self.factory.get('/')
         request.user = AnonymousUser()
@@ -84,9 +83,6 @@ class TestAuthenticationFlow(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        from django.test import RequestFactory
-        from django.contrib.auth.models import AnonymousUser
-
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
             title="X-Crewter - AI-Powered Resume Analysis",
@@ -108,7 +104,6 @@ class TestAuthenticationFlow(TestCase):
 
     def test_view_functions_exist(self):
         """Test that authentication views exist and are callable"""
-        from django.contrib.auth.models import AnonymousUser
 
         request = self.factory.get('/')
         request.user = AnonymousUser()
@@ -127,8 +122,6 @@ class TestLegalPageAccess(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        from django.test import RequestFactory
-        from django.contrib.auth.models import AnonymousUser
 
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
@@ -190,7 +183,6 @@ class TestLegalPageAccess(TestCase):
 
     def test_view_functions_directly(self):
         """Test legal page views directly with RequestFactory"""
-        from django.contrib.auth.models import AnonymousUser
 
         request = self.factory.get('/')
         request.user = AnonymousUser()
