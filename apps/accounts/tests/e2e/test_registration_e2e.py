@@ -1,4 +1,3 @@
-from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -6,7 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from .models import UserProfile
+from apps.accounts.models import UserProfile
 import time
 
 

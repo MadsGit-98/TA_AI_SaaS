@@ -3,14 +3,13 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
 from rest_framework import status
-from .models import UserProfile, VerificationToken
+from apps.accounts.models import UserProfile, VerificationToken
 from datetime import timedelta
 from django.utils import timezone
 
 
 class AuthenticationIntegrationTestCase(APITestCase):
     def setUp(self):
-        self.client = Client()
         self.user_data = {
             'first_name': 'John',
             'last_name': 'Doe',
@@ -29,7 +28,7 @@ class AuthenticationIntegrationTestCase(APITestCase):
         register_response = self.client.post(
             reverse('api:register'), 
             self.user_data, 
-            content_type='application/json'
+            format='json'
         )
         
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
