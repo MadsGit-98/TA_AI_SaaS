@@ -85,20 +85,23 @@ As a Talent Acquisition Specialist, I want to receive a confirmation email once 
 
 - **FR-001**: System MUST allow new Talent Acquisition Specialists to register accounts with email and password
 - **FR-002**: System MUST implement email confirmation functionality after registration with verification links expiring after 24 hours
-- **FR-003**: System MUST provide login functionality using email and password with password complexity requirements (minimum 8 characters with uppercase, lowercase, numbers, and special characters)
+- **FR-003**: System MUST provide login functionality using email and password with comprehensive validation including: password complexity requirements (minimum 8 characters with uppercase, lowercase, numbers, and special characters), email format validation, and input sanitization on both client and server sides
 - **FR-004**: System MUST provide social login integration for Google Gmail, LinkedIn, and Microsoft accounts
 - **FR-005**: System MUST provide a password reset mechanism that sends secure links to users' registered emails with reset links expiring after 24 hours
 - **FR-006**: System MUST implement Role-Based Access Control (RBAC) to restrict dashboard access to authenticated specialists only
 - **FR-007**: System MUST ensure that unauthenticated users cannot access protected resources
 - **FR-008**: System MUST securely hash and store user passwords using industry standard practices
-- **FR-009**: System MUST implement secure session management with automatic timeout after 30 minutes of inactivity
+- **FR-009**: System MUST implement secure session management with automatic timeout after 30 minutes of inactivity, as measured by the time elapsed since the last authenticated request, implemented using JWT refresh tokens that expire after 30 minutes of inactivity
 - **FR-010**: System MUST implement security measures with rate limiting of 5 failed attempts per 15 minutes to prevent brute-force attacks
 - **FR-011**: System MUST provide intuitive and clear user interface elements for registration, login, and password recovery
-- **FR-012**: System MUST handle user input validation on both client and server sides
+- **FR-012**: [REMOVED - incorporated into FR-003]
 - **FR-013**: System MUST comply with OAuth 2.0 standards for social login integrations
 - **FR-014**: System MUST send properly formatted and branded confirmation and password reset emails to users
 - **FR-015**: System MUST provide appropriate error messages during authentication processes without revealing sensitive information
-- **FR-016**: System MUST log authentication events for security monitoring purposes
+- **FR-016**: System MUST log authentication events for security monitoring purposes, including login attempts (successful and failed), logout events, password reset requests, account registration, and session timeout events
+- **FR-017**: System MUST implement dashboard access restrictions ensuring only authenticated users with appropriate roles can access the dashboard, with Role-Based Access Control (RBAC) properly enforced at the endpoint level
+- **FR-018**: System MUST include mandatory AI disclaimer on all relevant pages stating that AI results are supplementary and not the sole decision criteria
+- **FR-019**: System MUST include legal footer on all authentication pages with anchors for Terms and Conditions, Refund Policies, Cancellation/Replacement Policies, Accepted payment methods and Accepted currencies
 
 ### Testing Requirements
 
@@ -112,10 +115,11 @@ As a Talent Acquisition Specialist, I want to receive a confirmation email once 
 
 ### Key Entities
 
-- **User**: Represents a Talent Acquisition Specialist with properties like email, password hash, role, account status, and registration date
+- **User**: Represents a Talent Acquisition Specialist with properties like email, password hash, role, account status, registration date, subscription_status (active, inactive, trial, cancelled), subscription_end_date, chosen_subscription_plan (none, basic, pro, enterprise), and is_talent_acquisition_specialist flag
 - **Role**: Represents user permissions and access levels (e.g., "Talent Acquisition Specialist", "Admin")
 - **Session**: Represents an authenticated user's session state with properties like session ID, creation time, and expiration
 - **Authentication Token**: Represents temporary credentials for password reset or email confirmation
+- **SocialAccount**: Represents social login connections with properties like provider, provider account ID, and extra profile data from the provider
 
 ## Clarifications
 
