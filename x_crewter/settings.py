@@ -49,6 +49,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',  # For handling CORS
     'csp',  # For Content Security Policy
+    'django.contrib.sites',  # Required for social auth
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'djoser',
+    'social_django',  # Social authentication
     'apps.accounts',
     'apps.jobs',
     'apps.applications',
@@ -64,6 +69,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'social_django.middleware.SocialAuthExceptionMiddleware',  # Social auth middleware
+    'apps.accounts.middleware.RBACMiddleware',  # Role-Based Access Control middleware
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -89,6 +96,90 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+
+# REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',  # General anonymous request limit
+        'user': '1000/day',  # General user request limit
+        'login_attempts': '5/15m',  # 5 attempts per 15 minutes for login
+    }
+}
+
+# JWT Configuration
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Matches session timeout requirement
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': False,
+}
+
+# Djoser Configuration
+DJOSER = {
+    'USER_CREATE_PASSWORD_RETYPE': True,
+    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
+    'USERNAME_RESET_CONFIRM_URL': 'username/reset/confirm/{uid}/{token}',
+    'ACTIVATION_URL': 'activate/{uid}/{token}',
+    'SEND_ACTIVATION_EMAIL': True,
+    'SERIALIZERS': {},
+}
+
+# Authentication Backends for social auth
+AUTHENTICATION_BACKENDS = [
+    'social_core.backends.google.GoogleOpenId',
+    'social_core.backends.google.GoogleOAuth2',
+    'social_core.backends.linkedin.LinkedinOAuth2',
+    'social_core.backends.microsoft.MicrosoftOAuth2',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# Site ID for Django Sites Framework (required for social auth)
+SITE_ID = 1
+
+# Social Auth Settings (add your actual keys in production)
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = env('GOOGLE_OAUTH2_KEY', default='')
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env('GOOGLE_OAUTH2_SECRET', default='')
+
+SOCIAL_AUTH_LINKEDIN_OAUTH2_KEY = env('LINKEDIN_OAUTH2_KEY', default='')
+SOCIAL_AUTH_LINKEDIN_OAUTH2_SECRET = env('LINKEDIN_OAUTH2_SECRET', default='')
+
+SOCIAL_AUTH_MICROSOFT_GRAPH_KEY = env('MICROSOFT_GRAPH_KEY', default='')
+SOCIAL_AUTH_MICROSOFT_GRAPH_SECRET = env('MICROSOFT_GRAPH_SECRET', default='')
+
+# Social Auth Pipeline (to connect social auth with existing users)
+SOCIAL_AUTH_PIPELINE = [
+    'social_core.pipeline.social_auth.social_details',
+    'social_core.pipeline.social_auth.social_uid',
+    'social_core.pipeline.social_auth.auth_allowed',
+    'social_core.pipeline.social_auth.social_user',
+    'social_core.pipeline.user.get_username',
+    'social_core.pipeline.user.create_user',
+    'apps.accounts.pipeline.save_profile',  # Custom pipeline for extended user data
+    'social_core.pipeline.social_auth.associate_user',
+    'social_core.pipeline.social_auth.load_extra_data',
+    'social_core.pipeline.user.user_details',
+]
+
+# Password Hashing Configuration (Argon2 as primary hasher)
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
 
 ROOT_URLCONF = 'x_crewter.urls'
@@ -182,7 +273,13 @@ SECURE_BROWSER_XSS_FILTER = env('SECURE_BROWSER_XSS_FILTER', default=True)
 SECURE_CONTENT_TYPE_NOSNIFF = env('SECURE_CONTENT_TYPE_NOSNIFF', default=True)
 SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE', default=False)  # Set to True in production
 CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE', default=False)  # Set to True in production
+CSRF_COOKIE_HTTPONLY = True  # Prevent CSRF token access from JavaScript
+SESSION_COOKIE_HTTPONLY = True  # Prevent session cookie access from JavaScript
 X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='DENY')
+
+# Additional SSL/Security Configuration
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # For use with reverse proxies
+SECURE_REFERRER_POLICY = 'same-origin'  # Control referrer information
 
 # CSP Configuration
 CSP_DEFAULT_SRC = ("'self'",)
