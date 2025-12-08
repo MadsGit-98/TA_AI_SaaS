@@ -84,15 +84,15 @@ As a Talent Acquisition Specialist, I want to receive a confirmation email once 
 ### Functional Requirements
 
 - **FR-001**: System MUST allow new Talent Acquisition Specialists to register accounts with email and password
-- **FR-002**: System MUST implement email confirmation functionality after registration
-- **FR-003**: System MUST provide login functionality using email and password
+- **FR-002**: System MUST implement email confirmation functionality after registration with verification links expiring after 24 hours
+- **FR-003**: System MUST provide login functionality using email and password with password complexity requirements (minimum 8 characters with uppercase, lowercase, numbers, and special characters)
 - **FR-004**: System MUST provide social login integration for Google Gmail, LinkedIn, and Microsoft accounts
-- **FR-005**: System MUST provide a password reset mechanism that sends secure links to users' registered emails
+- **FR-005**: System MUST provide a password reset mechanism that sends secure links to users' registered emails with reset links expiring after 24 hours
 - **FR-006**: System MUST implement Role-Based Access Control (RBAC) to restrict dashboard access to authenticated specialists only
 - **FR-007**: System MUST ensure that unauthenticated users cannot access protected resources
 - **FR-008**: System MUST securely hash and store user passwords using industry standard practices
-- **FR-009**: System MUST implement secure session management to maintain authentication state
-- **FR-010**: System MUST implement security measures such as rate limiting for login attempts to prevent brute-force attacks
+- **FR-009**: System MUST implement secure session management with automatic timeout after 30 minutes of inactivity
+- **FR-010**: System MUST implement security measures with rate limiting of 5 failed attempts per 15 minutes to prevent brute-force attacks
 - **FR-011**: System MUST provide intuitive and clear user interface elements for registration, login, and password recovery
 - **FR-012**: System MUST handle user input validation on both client and server sides
 - **FR-013**: System MUST comply with OAuth 2.0 standards for social login integrations
@@ -116,6 +116,16 @@ As a Talent Acquisition Specialist, I want to receive a confirmation email once 
 - **Role**: Represents user permissions and access levels (e.g., "Talent Acquisition Specialist", "Admin")
 - **Session**: Represents an authenticated user's session state with properties like session ID, creation time, and expiration
 - **Authentication Token**: Represents temporary credentials for password reset or email confirmation
+
+## Clarifications
+
+### Session 2025-12-08
+
+- Q: Should users be required to create passwords with specific complexity rules? → A: Require complex passwords with minimum 8 characters, including uppercase, lowercase, numbers, and special characters
+- Q: How long should user sessions remain active before requiring re-authentication? → A: 30 minutes of inactivity
+- Q: How many failed login attempts should be allowed before temporarily blocking access? → A: 5 attempts per 15 minutes
+- Q: How long should email verification links remain valid before expiring? → A: 24 hours
+- Q: How long should password reset links remain valid before expiring? → A: 24 hours
 
 ## Success Criteria *(mandatory)*
 
