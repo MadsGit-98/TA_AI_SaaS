@@ -3,6 +3,8 @@ from django.urls import reverse, resolve
 from django.conf import settings
 from apps.accounts.views import home_view, login_view, register_view, privacy_policy_view, terms_conditions_view, contact_view
 from apps.accounts.models import HomePageContent, LegalPage, CardLogo, SiteSetting
+from django.test import RequestFactory
+from django.contrib.auth.models import AnonymousUser
 
 
 class TestHomePageURLs(SimpleTestCase):
@@ -29,8 +31,6 @@ class TestHomePageFlow(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        from django.test import RequestFactory
-        from django.contrib.auth.models import AnonymousUser
 
         # Create sample homepage content
         self.home_content = HomePageContent.objects.create(
