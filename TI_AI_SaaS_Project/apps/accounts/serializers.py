@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 from .models import UserProfile, VerificationToken, SocialAccount
 from djoser.serializers import UserCreateSerializer
 from django.utils import timezone
@@ -79,24 +80,26 @@ class UserRegistrationSerializer(UserCreateSerializer):
 
     def create(self, validated_data):
         """
-        Create the user and associated profile
+        Create the user and associated profile atomically
         """
-        # Extract profile-related data
+        # Extract profile-related data immediately before the atomic block
         subscription_status = validated_data.pop('subscription_status', 'inactive')
         chosen_subscription_plan = validated_data.pop('chosen_subscription_plan', 'none')
         is_talent_acquisition_specialist = validated_data.pop('is_talent_acquisition_specialist', True)
-        
-        # Create the user
-        user = super().create(validated_data)
-        
-        # Create the associated profile
-        UserProfile.objects.create(
-            user=user,
-            subscription_status=subscription_status,
-            chosen_subscription_plan=chosen_subscription_plan,
-            is_talent_acquisition_specialist=is_talent_acquisition_specialist
-        )
-        
+
+        # Create both user and profile within the same atomic transaction
+        with transaction.atomic():
+            # Create the user
+            user = super().create(validated_data)
+
+            # Create the associated profile
+            UserProfile.objects.create(
+                user=user,
+                subscription_status=subscription_status,
+                chosen_subscription_plan=chosen_subscription_plan,
+                is_talent_acquisition_specialist=is_talent_acquisition_specialist
+            )
+
         return user
 
 
@@ -131,19 +134,20 @@ class UserSerializer(serializers.ModelSerializer):
 class VerificationTokenSerializer(serializers.ModelSerializer):
     """
     Serializer for verification tokens
+    NOTE: This serializer must never expose tokens in responses due to security concerns.
+    The token field is excluded from API responses to prevent token leakage.
     """
     class Meta:
         model = VerificationToken
         fields = [
             'id',
             'user',
-            'token',
             'token_type',
             'expires_at',
             'created_at',
             'is_used'
         ]
-        read_only_fields = ['id', 'created_at', 'is_used']
+        read_only_fields = ['id', 'created_at', 'is_used', 'token']
 
 
 class SocialAccountSerializer(serializers.ModelSerializer):
@@ -161,3 +165,66 @@ class SocialAccountSerializer(serializers.ModelSerializer):
             'extra_data'
         ]
         read_only_fields = ['id', 'date_connected']
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user information
+    """
+    class Meta:
+        model = User
+        fields = [
+            'first_name',
+            'last_name',
+            'email'
+        ]
+
+    def validate_email(self, value):
+        """
+        Ensure email format is valid and email is unique
+        """
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+
+        try:
+            validate_email(value)
+        except ValidationError:
+            raise serializers.ValidationError("Enter a valid email address.")
+
+        # Check if email is already taken by another user
+        user_id = self.context['request'].user.id
+        if User.objects.exclude(id=user_id).filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+
+        return value
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user profile information
+    """
+    class Meta:
+        model = UserProfile
+        fields = [
+            'subscription_status',
+            'subscription_end_date',
+            'chosen_subscription_plan',
+        ]
+
+    def validate_subscription_status(self, value):
+        """
+        Ensure the value is one of the valid choices
+        """
+        valid_choices = [choice[0] for choice in UserProfile.SUBSCRIPTION_STATUS_CHOICES]
+        if value not in valid_choices:
+            raise serializers.ValidationError(f"Invalid subscription status. Valid choices are: {valid_choices}")
+        return value
+
+    def validate_chosen_subscription_plan(self, value):
+        """
+        Ensure the value is one of the valid choices
+        """
+        valid_choices = [choice[0] for choice in UserProfile.SUBSCRIPTION_PLAN_CHOICES]
+        if value not in valid_choices:
+            raise serializers.ValidationError(f"Invalid subscription plan. Valid choices are: {valid_choices}")
+        return value

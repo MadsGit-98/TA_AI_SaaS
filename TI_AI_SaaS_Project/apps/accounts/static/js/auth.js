@@ -1,5 +1,26 @@
 // auth.js - Authentication functionality for X-Crewter
 
+// Unified function to get token from either localStorage or sessionStorage
+function getToken(tokenName) {
+    // Try localStorage first, then sessionStorage
+    return localStorage.getItem(tokenName) || sessionStorage.getItem(tokenName);
+}
+
+// Unified function to set token
+function setToken(tokenName, tokenValue, isPersistent) {
+    if (isPersistent) {
+        localStorage.setItem(tokenName, tokenValue);
+    } else {
+        sessionStorage.setItem(tokenName, tokenValue);
+    }
+}
+
+// Unified function to remove token
+function removeToken(tokenName) {
+    localStorage.removeItem(tokenName);
+    sessionStorage.removeItem(tokenName);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
@@ -84,21 +105,25 @@ async function handleRegister(e) {
 
 async function handleLogin(e) {
     e.preventDefault();
-    
+
     const submitBtn = document.getElementById('login-submit-btn');
     const errorMessage = document.getElementById('login-error-message');
     const errorText = document.getElementById('login-error-text');
-    
+
     // Get form data
     const formData = {
         email: document.getElementById('login-email').value,
         password: document.getElementById('login-password').value
     };
-    
+
+    // Get remember me setting
+    const rememberMeCheckbox = document.getElementById('remember-me');
+    const rememberMe = rememberMeCheckbox ? rememberMeCheckbox.checked : false;
+
     // Show loading state
     submitBtn.disabled = true;
     submitBtn.textContent = 'Logging in...';
-    
+
     try {
         const response = await fetch('/api/accounts/auth/login/', {
             method: 'POST',
@@ -107,14 +132,14 @@ async function handleLogin(e) {
             },
             body: JSON.stringify(formData)
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
-            // Store tokens
-            localStorage.setItem('access_token', data.access);
-            localStorage.setItem('refresh_token', data.refresh);
-            
+            // Store tokens based on remember me setting
+            setToken('access_token', data.access, rememberMe);
+            setToken('refresh_token', data.refresh, rememberMe);
+
             // Redirect to dashboard or previous page
             window.location.href = '/dashboard/'; // or wherever the user should go
         } else {
@@ -125,7 +150,7 @@ async function handleLogin(e) {
             } else if (typeof data === 'string') {
                 errorMsg = data;
             }
-            
+
             errorText.textContent = errorMsg;
             errorMessage.classList.remove('hidden');
         }

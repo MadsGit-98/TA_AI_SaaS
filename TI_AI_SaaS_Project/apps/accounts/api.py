@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.core.mail.backends.smtp import SMTPException
 from django.conf import settings
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -22,6 +23,11 @@ from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer)
 import uuid
+# This endpoint would handle the response from social providers
+# after the user has authenticated with the provider
+from social_django.utils import load_strategy, load_backend
+from social_core.backends.oauth import BaseOAuth2
+from social_core.exceptions import MissingBackend
 
 # Set up logging for authentication events
 logger = logging.getLogger('django_auth')
@@ -52,11 +58,62 @@ def send_activation_email(user, token):
             html_message=message,  # HTML version of the email
             fail_silently=False,
         )
+        # Log success if needed for debugging
+        if settings.DEBUG:
+            logger.debug(f"Activation email sent successfully to {user.email}")
+    except SMTPException as e:
+        # Log the SMTP-related error with details
+        logger.error(f"SMTP error: Failed to send activation email to {user.email}: {str(e)}", exc_info=True)
+        # For development, we'll also print the activation link if DEBUG is enabled
+        if settings.DEBUG:
+            logger.debug(f"Activation link for {user.email}: {activation_link}")
     except Exception as e:
-        # In a real application, you'd want to log this error
-        print(f"Failed to send activation email to {user.email}: {str(e)}")
-        # For development, we'll also print the activation link
-        print(f"Activation link would be: {activation_link}")
+        # Log other email-related errors
+        logger.error(f"Email error: Failed to send activation email to {user.email}: {str(e)}", exc_info=True)
+        # Don't re-raise email-related exceptions so user account creation isn't interrupted
+        # The function can continue without sending email
+        if settings.DEBUG:
+            logger.debug(f"Activation link for {user.email}: {activation_link}")
+
+
+def send_password_reset_email(user, token):
+    """
+    Send password reset email to user with reset link
+    """
+    subject = 'Reset your X-Crewter password'
+
+    # The reset link includes the token
+    reset_link = f"{settings.FRONTEND_URL}/reset-password/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"http://localhost:3000/reset-password/{token}/"
+
+    message = render_to_string('accounts/password_reset_email.html', {
+        'user': user,
+        'reset_link': reset_link,
+        'site_name': 'X-Crewter',
+    })
+
+    try:
+        # Send the email
+        send_mail(
+            subject=subject,
+            message='',  # Plain text version (empty since we're using HTML)
+            from_email=settings.DEFAULT_FROM_EMAIL if hasattr(settings, 'DEFAULT_FROM_EMAIL') else 'noreply@x-crewter.com',
+            recipient_list=[user.email],
+            html_message=message,  # HTML version of the email
+            fail_silently=False,
+        )
+    except SMTPException as e:
+        # Log the SMTP-related error with details
+        logger.error(f"SMTP error: Failed to send password reset email to {user.email}: {str(e)}", exc_info=True)
+        # For development, we'll also print the reset link if DEBUG is enabled
+        if settings.DEBUG:
+            logger.debug(f"Password reset link for {user.email}: {reset_link}")
+    except Exception as e:
+        # Log other email-related errors
+        logger.error(f"Email error: Failed to send password reset email to {user.email}: {str(e)}", exc_info=True)
+        # Don't re-raise email-related exceptions so user account creation isn't interrupted
+        # The function can continue without sending email
+        if settings.DEBUG:
+            logger.debug(f"Password reset link for {user.email}: {reset_link}")
 
 
 @api_view(['GET'])
@@ -171,12 +228,19 @@ def activate_account(request, uid, token):
     Activate account using the confirmation token
     """
     try:
-        # Find the verification token
+        # Find the verification token by token and token_type first
         verification_token = VerificationToken.objects.get(
             token=token,
             token_type='email_confirmation',
             is_used=False
         )
+
+        # Verify that the provided uid matches the token's user
+        if str(uid) != str(verification_token.user.pk):
+            return Response(
+                {'error': 'UID does not match token owner.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Check if token is expired
         if verification_token.is_expired():
@@ -221,20 +285,25 @@ def password_reset_request(request):
     try:
         user = User.objects.get(email=email)
 
-        # Generate a password reset token
-        token = get_random_string(64)
-        VerificationToken.objects.update_or_create(
+        # Mark any existing password reset tokens as used first, to clean up old ones
+        VerificationToken.objects.filter(
             user=user,
             token_type='password_reset',
-            defaults={
-                'token': token,
-                'expires_at': timezone.now() + timezone.timedelta(hours=24),  # 24-hour expiry
-                'is_used': False
-            }
+            is_used=False
+        ).update(is_used=True)
+
+        # Generate a new password reset token
+        token = get_random_string(64)
+        new_verification_token = VerificationToken.objects.create(
+            user=user,
+            token=token,
+            token_type='password_reset',
+            expires_at=timezone.now() + timezone.timedelta(hours=24),  # 24-hour expiry
+            is_used=False
         )
 
-        # Send password reset email (for now, just print the token to console)
-        print(f"Password reset token for {user.email}: {token}")
+        # Send password reset email
+        send_password_reset_email(user, token)
 
         return Response(
             {'detail': 'Password reset e-mail has been sent.'},
@@ -249,16 +318,14 @@ def password_reset_request(request):
 
 
 @api_view(['POST'])
-def password_reset_confirm(request):
+def password_reset_confirm(request, uid, token):
     """
     Confirm password reset with token and new password
     """
-    uid = request.data.get('uid')
-    token = request.data.get('token')
     new_password = request.data.get('new_password')
     re_new_password = request.data.get('re_new_password')
 
-    if not all([uid, token, new_password, re_new_password]):
+    if not all([new_password, re_new_password]):
         return Response(
             {'error': 'All fields are required'},
             status=status.HTTP_400_BAD_REQUEST
@@ -271,12 +338,19 @@ def password_reset_confirm(request):
         )
 
     try:
-        # Find the verification token
+        # Find the verification token by token and token_type first
         verification_token = VerificationToken.objects.get(
             token=token,
             token_type='password_reset',
             is_used=False
         )
+
+        # Verify that the provided uid matches the token's user
+        if str(uid) != str(verification_token.user.pk):
+            return Response(
+                {'error': 'UID does not match token owner.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Check if token is expired
         if verification_token.is_expired():
@@ -285,12 +359,9 @@ def password_reset_confirm(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if the user is the same as in the token
-        user = verification_token.user
-
         # Validate new password
         try:
-            validate_password(new_password, user=user)
+            validate_password(new_password, user=verification_token.user)
         except ValidationError as e:
             return Response(
                 {'new_password': e.messages},
@@ -298,6 +369,7 @@ def password_reset_confirm(request):
             )
 
         # Set new password
+        user = verification_token.user
         user.set_password(new_password)
         user.save()
 
@@ -385,31 +457,6 @@ def logout(request):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(['POST'])
-def token_refresh(request):
-    """
-    Refresh JWT access token using refresh token
-    """
-    refresh_token = request.data.get('refresh')
-
-    if not refresh_token:
-        return Response(
-            {'refresh': ['This field is required.']},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        token = RefreshToken(refresh_token)
-        new_access_token = str(token.access_token)
-
-        return Response({'access': new_access_token}, status=status.HTTP_200_OK)
-    except Exception:
-        return Response(
-            {'refresh': ['Token is invalid or expired.']},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_profile(request):
@@ -427,59 +474,154 @@ def get_user_profile(request):
     return Response(response_data, status=status.HTTP_200_OK)
 
 
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    """
+    Get or Update authenticated user's profile information based on HTTP method
+    GET: Returns user profile information
+    PUT/PATCH: Updates user profile information
+    """
+    if request.method == 'GET':
+        # Use the existing get_user_profile functionality
+        user_serializer = UserSerializer(request.user)
+        response_data = user_serializer.data
+
+        # Include subscription details which are in the profile
+        if hasattr(request.user, 'profile'):
+            profile_serializer = UserProfileSerializer(request.user.profile)
+            response_data['profile'] = profile_serializer.data
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    elif request.method in ['PUT', 'PATCH']:
+        # Use the existing update_user_profile functionality
+        user = request.user
+
+        # Prepare data for user update
+        user_update_data = {}
+        for field in ['first_name', 'last_name', 'email']:
+            if field in request.data:
+                user_update_data[field] = request.data[field]
+
+        # Use the serializer for validation and saving
+        if user_update_data:
+            user_serializer = UserUpdateSerializer(instance=user, data=user_update_data, partial=True, context={'request': request})
+            try:
+                user_serializer.is_valid(raise_exception=True)
+                user_serializer.save()
+            except serializers.ValidationError as e:
+                return Response(
+                    e.detail,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error updating user for {user.email}: {str(e)}", exc_info=True)
+                return Response(
+                    {'error': 'An unexpected error occurred while updating user data'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Update profile fields if they exist and if profile update data is provided
+        profile_update_data = {}
+        for field in ['subscription_status', 'subscription_end_date', 'chosen_subscription_plan']:
+            if field in request.data:
+                profile_update_data[field] = request.data[field]
+
+        if profile_update_data and hasattr(user, 'profile'):
+            profile = user.profile
+            profile_serializer = UserProfileUpdateSerializer(instance=profile, data=profile_update_data, partial=True)
+            try:
+                profile_serializer.is_valid(raise_exception=True)
+                profile_serializer.save()
+            except serializers.ValidationError as e:
+                return Response(
+                    e.detail,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error updating user profile for {user.email}: {str(e)}", exc_info=True)
+                return Response(
+                    {'error': 'An unexpected error occurred while updating profile data'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Return updated user information with profile
+        user_serializer = UserSerializer(user)
+        response_data = user_serializer.data
+
+        # Include updated profile information if profile exists
+        if hasattr(user, 'profile'):
+            profile_serializer = UserProfileSerializer(user.profile)
+            response_data['profile'] = profile_serializer.data
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_user_profile(request):
     """
     Update authenticated user's profile information
+    NOTE: This endpoint is deprecated. Use user_profile (GET/PUT/PATCH) instead.
     """
+    # This is only preserved for backward compatibility
+    # The actual logic now lives in user_profile function
     user = request.user
 
-    # Update basic user fields
-    if 'first_name' in request.data:
-        user.first_name = request.data['first_name']
-    if 'last_name' in request.data:
-        user.last_name = request.data['last_name']
-    if 'email' in request.data:
-        user.email = request.data['email']
+    # Prepare data for user update
+    user_update_data = {}
+    for field in ['first_name', 'last_name', 'email']:
+        if field in request.data:
+            user_update_data[field] = request.data[field]
 
-    try:
-        user.save()
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # Use the serializer for validation and saving
+    if user_update_data:
+        user_serializer = UserUpdateSerializer(instance=user, data=user_update_data, partial=True, context={'request': request})
+        try:
+            user_serializer.is_valid(raise_exception=True)
+            user_serializer.save()
+        except serializers.ValidationError as e:
+            return Response(
+                e.detail,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error updating user for {user.email}: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred while updating user data'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-    # Update profile fields if they exist
-    if hasattr(user, 'profile'):
+    # Update profile fields if they exist and if profile update data is provided
+    profile_update_data = {}
+    for field in ['subscription_status', 'subscription_end_date', 'chosen_subscription_plan']:
+        if field in request.data:
+            profile_update_data[field] = request.data[field]
+
+    if profile_update_data and hasattr(user, 'profile'):
         profile = user.profile
+        profile_serializer = UserProfileUpdateSerializer(instance=profile, data=profile_update_data, partial=True)
+        try:
+            profile_serializer.is_valid(raise_exception=True)
+            profile_serializer.save()
+        except serializers.ValidationError as e:
+            return Response(
+                e.detail,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error updating user profile for {user.email}: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred while updating profile data'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        updated = False
-        if 'subscription_status' in request.data:
-            profile.subscription_status = request.data['subscription_status']
-            updated = True
-        if 'subscription_end_date' in request.data:
-            profile.subscription_end_date = request.data['subscription_end_date']
-            updated = True
-        if 'chosen_subscription_plan' in request.data:
-            profile.chosen_subscription_plan = request.data['chosen_subscription_plan']
-            updated = True
-
-        if updated:
-            try:
-                profile.save()
-            except Exception as e:
-                logger.error(f"Error updating user profile for {user.email}: {str(e)}")
-                return Response(
-                    {'error': f'Profile update error: {str(e)}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
+    # Return updated user information with profile
     user_serializer = UserSerializer(user)
     response_data = user_serializer.data
 
-    # Include updated profile information
+    # Include updated profile information if profile exists
     if hasattr(user, 'profile'):
         profile_serializer = UserProfileSerializer(user.profile)
         response_data['profile'] = profile_serializer.data
@@ -542,12 +684,6 @@ def social_login_complete(request, provider):
     """
     Complete the social login process
     """
-    # This endpoint would handle the response from social providers
-    # after the user has authenticated with the provider
-    from social_django.utils import load_strategy, load_backend
-    from social_core.backends.oauth import BaseOAuth2
-    from social_core.exceptions import MissingBackend
-
     try:
         # Load the appropriate backend for the provider
         strategy = load_strategy(request)
@@ -558,8 +694,8 @@ def social_login_complete(request, provider):
             # For OAuth2 providers, typically we'd get the code and exchange for tokens
             code = request.GET.get('code')
             if code:
-                # Complete the authentication process
-                user = backend.do_auth(request, code)
+                # Complete the authentication process - pass the Django HttpRequest instead of DRF request
+                user = backend.do_auth(request._request, code)
 
                 if user and user.is_active:
                     # Generate JWT tokens
@@ -584,4 +720,7 @@ def social_login_complete(request, provider):
     except MissingBackend:
         return handle_auth_error('Invalid provider', status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return handle_auth_error(f'Authentication error: {str(e)}', status.HTTP_400_BAD_REQUEST)
+        # Log the exception server-side without exposing details
+        logger.exception(f"Social login error for provider {provider}: {str(e)}")
+        # Return a generic error response
+        return handle_auth_error('Authentication error', status.HTTP_400_BAD_REQUEST)

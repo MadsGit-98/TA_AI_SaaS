@@ -3,10 +3,8 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.contrib.auth.tokens import default_token_generator
-from .models import VerificationToken
+from apps.accounts.models import VerificationToken
+from apps.accounts.models import VerificationToken
 import json
 
 
@@ -58,24 +56,28 @@ class PasswordResetTestCase(APITestCase):
         VerificationToken.objects.create(
             user=self.user,
             token=token,
-            token_type='password_reset'
+            token_type='password_reset',
+            is_used=False
         )
-        
-        # The actual implementation would involve a different flow,
-        # but we're testing the API endpoint as designed
+
+        # The endpoint now expects uid and token in the URL path
+        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': token})
+
+        # Post the payload with just the new passwords
         data = {
-            'uid': self.user.id,  # This might need to be base64 encoded in actual use
-            'token': token,
             'new_password': 'NewSecurePass123!',
             're_new_password': 'NewSecurePass123!'
         }
-        
-        # Note: This specific endpoint might require different parameter names
-        # based on the actual API implementation
-        response = self.client.post(self.password_reset_confirm_url, data, format='json')
-        
-        # Check if it's successful or requires other validation
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+        response = self.client.post(reset_confirm_url, data, format='json')
+
+        # Should return 200 OK for successful password reset
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['detail'], 'Password has been reset successfully.')
+
+        # Refresh user from DB to check that password was actually changed
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewSecurePass123!'))
 
     def test_password_reset_confirm_mismatched_passwords(self):
         """Test password reset confirmation with mismatched passwords"""
