@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from .models import UserProfile, VerificationToken, SocialAccount
+from .models import UserProfile, VerificationToken, SocialAccount, HomePageContent, LegalPage, CardLogo
 from djoser.serializers import UserCreateSerializer
 from django.utils import timezone
 import re
@@ -228,3 +228,58 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if value not in valid_choices:
             raise serializers.ValidationError(f"Invalid subscription plan. Valid choices are: {valid_choices}")
         return value
+
+
+class HomePageContentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for HomePageContent model
+    """
+    class Meta:
+        model = HomePageContent
+        fields = [
+            'id',
+            'title',
+            'subtitle',
+            'description',
+            'call_to_action_text',
+            'pricing_info',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class LegalPageSerializer(serializers.ModelSerializer):
+    """
+    Serializer for LegalPage model
+    """
+    class Meta:
+        model = LegalPage
+        fields = [
+            'id',
+            'title',
+            'slug',
+            'content',
+            'page_type',
+            'is_active',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CardLogoSerializer(serializers.ModelSerializer):
+    """
+    Serializer for CardLogo model
+    """
+    class Meta:
+        model = CardLogo
+        fields = [
+            'id',
+            'name',
+            'logo_image',
+            'display_order',
+            'is_active',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

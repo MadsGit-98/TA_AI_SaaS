@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
-from django.core.mail.backends.smtp import SMTPException
+from smtplib import SMTPException
 from django.conf import settings
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -724,3 +724,35 @@ def social_login_complete(request, provider):
         logger.exception(f"Social login error for provider {provider}: {str(e)}")
         # Return a generic error response
         return handle_auth_error('Authentication error', status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def token_refresh(request):
+    """
+    Refresh JWT token endpoint
+    Expects a refresh token in the request data and returns a new access token
+    """
+    refresh_token = request.data.get('refresh')
+
+    if not refresh_token:
+        return Response(
+            {'error': 'Refresh token is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Create a RefreshToken instance from the provided token
+        refresh = RefreshToken(refresh_token)
+
+        # Return a new access token
+        new_access_token = str(refresh.access_token)
+
+        return Response({'access': new_access_token}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        # Log the error server-side without exposing details to the client
+        logger.warning(f"Token refresh failed: {str(e)}")
+        return Response(
+            {'error': 'Invalid or expired refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
