@@ -727,6 +727,7 @@ def social_login_complete(request, provider):
 
 
 @api_view(['POST'])
+@throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
 def token_refresh(request):
     """
     Refresh JWT token endpoint
