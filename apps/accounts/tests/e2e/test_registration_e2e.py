@@ -1,11 +1,10 @@
-from django.contrib.auth.models import User
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from apps.accounts.models import UserProfile
+from apps.accounts.models import CustomUser, UserProfile
 import time
 
 
@@ -67,10 +66,10 @@ class RegistrationE2ETest(StaticLiveServerTestCase):
         self.assertTrue(success_message.is_displayed())
         
         # Verify that the user was created in the database
-        self.assertEqual(User.objects.filter(email="johndoe@example.com").count(), 1)
-        
+        self.assertEqual(CustomUser.objects.filter(email="johndoe@example.com").count(), 1)
+
         # Verify that the user profile was created
-        user = User.objects.get(email="johndoe@example.com")
+        user = CustomUser.objects.get(email="johndoe@example.com")
         self.assertTrue(UserProfile.objects.filter(user=user).exists())
 
     def test_registration_form_validation(self):

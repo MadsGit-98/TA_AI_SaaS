@@ -1,8 +1,7 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from .models import UserProfile, VerificationToken, SocialAccount, HomePageContent, LegalPage, CardLogo
+from .models import CustomUser, UserProfile, VerificationToken, SocialAccount, HomePageContent, LegalPage, CardLogo
 from djoser.serializers import UserCreateSerializer
 from django.utils import timezone
 import re
@@ -42,6 +41,7 @@ class UserRegistrationSerializer(UserCreateSerializer):
     is_talent_acquisition_specialist = serializers.BooleanField(default=True, required=False)
 
     class Meta(UserCreateSerializer.Meta):
+        model = CustomUser
         fields = UserCreateSerializer.Meta.fields + (
             'email',
             'password',
@@ -105,9 +105,9 @@ class UserRegistrationSerializer(UserCreateSerializer):
 
 class UserLoginSerializer(serializers.Serializer):
     """
-    Serializer for user login with email and password
+    Serializer for user login with username/email and password
     """
-    email = serializers.EmailField(required=True)
+    username = serializers.CharField(required=True, help_text="Username or email address")
     password = serializers.CharField(required=True, write_only=True)
 
 
@@ -116,9 +116,9 @@ class UserSerializer(serializers.ModelSerializer):
     General serializer for user data
     """
     profile = UserProfileSerializer(read_only=True)
-    
+
     class Meta:
-        model = User
+        model = CustomUser
         fields = [
             'id',
             'username',
@@ -172,7 +172,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     Serializer for updating user information
     """
     class Meta:
-        model = User
+        model = CustomUser
         fields = [
             'first_name',
             'last_name',
@@ -193,7 +193,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
         # Check if email is already taken by another user
         user_id = self.context['request'].user.id
-        if User.objects.exclude(id=user_id).filter(email=value).exists():
+        if CustomUser.objects.exclude(id=user_id).filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
 
         return value

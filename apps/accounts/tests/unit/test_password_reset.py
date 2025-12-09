@@ -1,16 +1,14 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from apps.accounts.models import VerificationToken
-from apps.accounts.models import VerificationToken
+from apps.accounts.models import CustomUser, VerificationToken
 import json
 
 
 class PasswordResetTestCase(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='SecurePass123!'

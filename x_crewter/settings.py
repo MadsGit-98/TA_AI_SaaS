@@ -140,12 +140,14 @@ DJOSER = {
 
 # Authentication Backends for social auth
 AUTHENTICATION_BACKENDS = [
-    'social_core.backends.google.GoogleOpenId',
-    'social_core.backends.google.GoogleOAuth2',
+    'apps.accounts.authentication.EmailOrUsernameBackend',  # Custom backend for email/username login
     'social_core.backends.linkedin.LinkedinOAuth2',
     'social_core.backends.microsoft.MicrosoftOAuth2',
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+# Custom User Model
+AUTH_USER_MODEL = 'accounts.CustomUser'
 
 # Site ID for Django Sites Framework (required for social auth)
 SITE_ID = 1
@@ -222,6 +224,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # For production
 STATICFILES_DIRS = [
     BASE_DIR / 'static',  # Project-level static files
+    BASE_DIR / 'apps' / 'accounts' / 'static',  # Accounts app static files
 ]
 
 # Celery Configuration

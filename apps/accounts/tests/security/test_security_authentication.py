@@ -1,9 +1,8 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from ..models import UserProfile, VerificationToken
+from ..models import CustomUser, UserProfile, VerificationToken
 from django.core.management import call_command
 from django.utils import timezone
 from datetime import timedelta
@@ -14,7 +13,7 @@ class SecurityTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
         # Create a regular user
-        self.user = User.objects.create_user(
+        self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='SecurePass123!'
@@ -24,7 +23,7 @@ class SecurityTestCase(TestCase):
             is_talent_acquisition_specialist=True
         )
         # Create a non-TAS user
-        self.non_tas_user = User.objects.create_user(
+        self.non_tas_user = CustomUser.objects.create_user(
             username='nontasuser',
             email='nontas@example.com',
             password='SecurePass123!'
@@ -56,15 +55,15 @@ class SecurityTestCase(TestCase):
 
     def test_secure_password_hashing(self):
         """Test that passwords are properly hashed using Argon2"""
-        user = User.objects.create_user(
+        user = CustomUser.objects.create_user(
             username='hashingtest',
             email='hash@example.com',
             password='SecurePass123!'
         )
-        
+
         # Check that the password is not stored in plain text
         self.assertNotEqual(user.password, 'SecurePass123!')
-        
+
         # Check that the password uses Argon2 (starts with argon2$)
         self.assertTrue(user.password.startswith('argon2$'))
 
@@ -73,13 +72,13 @@ class SecurityTestCase(TestCase):
         # Log in to get a session
         login_url = reverse('api:login')
         data = {
-            'email': 'test@example.com',
+            'username': 'test@example.com',  # Changed from 'email' to 'username'
             'password': 'SecurePass123!'
         }
-        
+
         response = self.client.post(login_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # The session management is primarily handled by JWTs with 30-minute timeout
         # which is configured in the settings
 
@@ -88,7 +87,7 @@ class SecurityTestCase(TestCase):
         # Try to access the user profile endpoint without authentication
         profile_url = reverse('api:get_user_profile')
         response = self.client.get(profile_url)
-        
+
         # Should return 401 Unauthorized
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -97,21 +96,21 @@ class SecurityTestCase(TestCase):
         # Log in as test user
         login_url = reverse('api:login')
         data = {
-            'email': 'test@example.com',
+            'username': 'test@example.com',  # Changed from 'email' to 'username'
             'password': 'SecurePass123!'
         }
-        
+
         response = self.client.post(login_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         token = response.json()['access']
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
-        
+
         # Try to access profile (for now, assume users can only access their own)
         profile_url = reverse('api:get_user_profile')
         response = self.client.get(profile_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # The user should receive their own profile data
         self.assertEqual(response.json()['email'], 'test@example.com')
 
