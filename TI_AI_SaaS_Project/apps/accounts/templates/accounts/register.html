@@ -16,7 +16,8 @@
         </div>
 
         <div id="registration-form-container">
-            <form id="register-form" class="mt-8 space-y-6">
+            <form id="register-form" action="{% url 'api:register' %}" method="post" class="mt-8 space-y-6">
+                {% csrf_token %}
                 <input type="hidden" name="remember" value="true">
                 <div class="rounded-md shadow-sm -space-y-px">
                     <div>
