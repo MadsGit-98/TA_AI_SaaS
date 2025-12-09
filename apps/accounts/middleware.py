@@ -1,6 +1,11 @@
 from django.http import JsonResponse
 from django.contrib.auth.models import Group
 from django.utils.deprecation import MiddlewareMixin
+from apps.accounts.models import UserProfile
+from django.core.exceptions import ObjectDoesNotExist
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RBACMiddleware(MiddlewareMixin):
@@ -31,17 +36,26 @@ class RBACMiddleware(MiddlewareMixin):
                     if hasattr(request.user, 'profile'):
                         if not request.user.profile.is_talent_acquisition_specialist:
                             return JsonResponse(
-                                {'error': 'Insufficient permissions'}, 
+                                {'error': 'Insufficient permissions'},
                                 status=403
                             )
                     else:  # User doesn't have a profile, which is unexpected
                         return JsonResponse(
-                            {'error': 'User profile not found'}, 
+                            {'error': 'User profile not found'},
                             status=403
                         )
-                except Exception:
+                except AttributeError:
+                    # This occurs when request.user doesn't have a profile attribute
+                    logger.debug(f"User {request.user.id if hasattr(request.user, 'id') else 'unknown'} missing profile attribute")
                     return JsonResponse(
-                        {'error': 'Permission check failed'}, 
+                        {'error': 'User profile not found'},
+                        status=403
+                    )
+                except UserProfile.DoesNotExist:
+                    # This occurs when the profile relation exists but the related object doesn't
+                    logger.debug(f"Profile for user {request.user.id if hasattr(request.user, 'id') else 'unknown'} does not exist")
+                    return JsonResponse(
+                        {'error': 'User profile not found'},
                         status=403
                     )
         

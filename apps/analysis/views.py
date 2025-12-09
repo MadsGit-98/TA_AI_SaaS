@@ -1,9 +1,14 @@
+import logging
+
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseForbidden
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_http_methods
 from django.views import View
+
+
+logger = logging.getLogger(__name__)
 
 
 def check_user_authorization(user):
@@ -15,11 +20,10 @@ def check_user_authorization(user):
         return False
 
     # Check if user has the appropriate profile (Talent Acquisition Specialist)
-    try:
-        if hasattr(user, 'profile'):
-            return user.profile.is_talent_acquisition_specialist
-        return False
-    except Exception:
+    if hasattr(user, 'profile'):
+        return user.profile.is_talent_acquisition_specialist
+    else:
+        logger.debug(f"User {user.id if hasattr(user, 'id') else 'unknown'} does not have a profile")
         return False
 
 

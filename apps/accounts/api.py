@@ -20,7 +20,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
 from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
-                         UserLoginSerializer, UserSerializer, UserProfileSerializer)
+                         UserLoginSerializer, UserSerializer, UserProfileSerializer,
+                         UserUpdateSerializer, UserProfileUpdateSerializer)
+from rest_framework import serializers
 import uuid
 # This endpoint would handle the response from social providers
 # after the user has authenticated with the provider
@@ -59,20 +61,23 @@ def send_activation_email(user, token):
         )
         # Log success if needed for debugging
         if settings.DEBUG:
-            logger.debug(f"Activation email sent successfully to {user.email}")
+            masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+            logger.debug(f"Activation email sent successfully to user {user.id} ({masked_email})")
     except SMTPException as e:
         # Log the SMTP-related error with details
-        logger.error(f"SMTP error: Failed to send activation email to {user.email}: {str(e)}", exc_info=True)
+        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        logger.error(f"SMTP error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # For development, we'll also print the activation link if DEBUG is enabled
         if settings.DEBUG:
-            logger.debug(f"Activation link for {user.email}: {activation_link}")
+            logger.debug(f"Activation link for user {user.id}: {activation_link}")
     except Exception as e:
         # Log other email-related errors
-        logger.error(f"Email error: Failed to send activation email to {user.email}: {str(e)}", exc_info=True)
+        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        logger.error(f"Email error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
         if settings.DEBUG:
-            logger.debug(f"Activation link for {user.email}: {activation_link}")
+            logger.debug(f"Activation link for user {user.id}: {activation_link}")
 
 
 def send_password_reset_email(user, token):
@@ -102,17 +107,19 @@ def send_password_reset_email(user, token):
         )
     except SMTPException as e:
         # Log the SMTP-related error with details
-        logger.error(f"SMTP error: Failed to send password reset email to {user.email}: {str(e)}", exc_info=True)
+        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        logger.error(f"SMTP error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # For development, we'll also print the reset link if DEBUG is enabled
         if settings.DEBUG:
-            logger.debug(f"Password reset link for {user.email}: {reset_link}")
+            logger.debug(f"Password reset link for user {user.id}: {reset_link}")
     except Exception as e:
         # Log other email-related errors
-        logger.error(f"Email error: Failed to send password reset email to {user.email}: {str(e)}", exc_info=True)
+        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        logger.error(f"Email error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
         if settings.DEBUG:
-            logger.debug(f"Password reset link for {user.email}: {reset_link}")
+            logger.debug(f"Password reset link for user {user.id}: {reset_link}")
 
 
 @api_view(['GET'])
@@ -320,6 +327,7 @@ def password_reset_request(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to confirm password reset
 def password_reset_confirm(request, uid, token):
     """
     Confirm password reset with token and new password
@@ -413,7 +421,7 @@ def login(request):
     if user is not None:
         if user.is_active:
             auth_login(request, user)
-            logger.info(f"Successful login for user: {user.email}")
+            logger.info(f"Successful login for user: {user.id}")
 
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
@@ -429,7 +437,7 @@ def login(request):
 
             return Response(response_data, status=status.HTTP_200_OK)
         else:
-            logger.warning(f"Login attempt for inactive account: {username}")
+            logger.warning(f"Login attempt for inactive account: {user.id}")
             return Response(
                 {'non_field_errors': ['Account is not activated.']},
                 status=status.HTTP_400_BAD_REQUEST

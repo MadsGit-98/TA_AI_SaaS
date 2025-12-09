@@ -147,7 +147,7 @@ class VerificationTokenSerializer(serializers.ModelSerializer):
             'created_at',
             'is_used'
         ]
-        read_only_fields = ['id', 'created_at', 'is_used', 'token']
+        read_only_fields = ['id', 'created_at', 'is_used']
 
 
 class SocialAccountSerializer(serializers.ModelSerializer):

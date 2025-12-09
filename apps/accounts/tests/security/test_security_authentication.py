@@ -36,22 +36,21 @@ class SecurityTestCase(TestCase):
     def test_rate_limiting_on_login_attempts(self):
         """Test that rate limiting works for failed login attempts"""
         login_url = reverse('api:login')
-        
+
         # Try to login with wrong password multiple times
         for i in range(6):  # More than the rate limit
             data = {
-                'email': 'test@example.com',
+                'username': 'test@example.com',  # Changed from 'email' to 'username' to match API changes
                 'password': 'WrongPassword123!'
             }
             response = self.client.post(login_url, data, format='json')
-        
+
         # The 6th attempt should be rate limited
         response = self.client.post(login_url, data, format='json')
-        
+
         # Check if we get a rate limiting response
-        # (This depends on exact DRF implementation)
-        # We expect it to either block the request or return a rate limit error
-        self.assertIn(response.status_code, [status.HTTP_429_TOO_MANY_REQUESTS, status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Should return 429 Too Many Requests or 403 Forbidden when rate limited
+        self.assertIn(response.status_code, [status.HTTP_429_TOO_MANY_REQUESTS, status.HTTP_403_FORBIDDEN])
 
     def test_secure_password_hashing(self):
         """Test that passwords are properly hashed using Argon2"""

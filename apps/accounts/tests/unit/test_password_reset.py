@@ -86,26 +86,30 @@ class PasswordResetTestCase(APITestCase):
             token_type='password_reset'
         )
         
+        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': token})
+        
         data = {
-            'uid': self.user.id,
-            'token': token,
             'new_password': 'NewSecurePass123!',
             're_new_password': 'DifferentPass456!'
         }
         
-        response = self.client.post(self.password_reset_confirm_url, data, format='json')
+        response = self.client.post(reset_confirm_url, data, format='json')
+        
+        response = self.client.post(reset_confirm_url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_password_reset_confirm_invalid_token(self):
         """Test password reset confirmation with invalid token"""
+        # The endpoint expects uid and token in the URL path
+        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': 'invalidtoken'})
+
+        # Post the payload with just the new passwords
         data = {
-            'uid': self.user.id,
-            'token': 'invalidtoken',
             'new_password': 'NewSecurePass123!',
             're_new_password': 'NewSecurePass123!'
         }
-        
-        response = self.client.post(self.password_reset_confirm_url, data, format='json')
-        
+
+        response = self.client.post(reset_confirm_url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
