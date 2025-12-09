@@ -1,8 +1,27 @@
-from django.contrib.auth.models import AbstractUser, User
+from django.contrib.auth.models import AbstractUser, User as DjangoUser
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 import uuid
+
+
+class CustomUser(AbstractUser):
+    """
+    Custom user model extending AbstractUser to ensure unique email addresses
+    """
+    email = models.EmailField(unique=True, help_text="Unique email address for the user")
+
+    USERNAME_FIELD = 'username'  # Use username for authentication
+    REQUIRED_FIELDS = ['email']  # Email is required when creating a superuser
+
+    def __str__(self):
+        return self.username
+
+    class Meta:
+        # Custom user table to avoid conflicts with default User model
+        # This assumes we're starting fresh or will handle the transition separately
+        verbose_name = 'Custom User'
+        verbose_name_plural = 'Custom Users'
 
 
 class UserProfile(models.Model):
@@ -23,7 +42,7 @@ class UserProfile(models.Model):
         ('enterprise', 'Enterprise'),
     ]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile')
     subscription_status = models.CharField(
         max_length=20,
         choices=SUBSCRIPTION_STATUS_CHOICES,
@@ -76,7 +95,7 @@ class VerificationToken(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='verification_tokens')
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='verification_tokens')
     token = models.CharField(max_length=255, unique=True, help_text="Secure token for verification")
     token_type = models.CharField(max_length=20, choices=TOKEN_TYPE_CHOICES, help_text="Type of verification this token is for")
     expires_at = models.DateTimeField(help_text="Time after which token becomes invalid")
@@ -103,7 +122,7 @@ class SocialAccount(models.Model):
     """
     Model for storing social authentication connections
     """
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='social_accounts')
     provider = models.CharField(max_length=50, help_text="Social provider (e.g., google, linkedin, microsoft)")
     provider_account_id = models.CharField(max_length=255, help_text="Unique ID from the provider")
     date_connected = models.DateTimeField(auto_now_add=True, help_text="When the account was connected")

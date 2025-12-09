@@ -1,5 +1,4 @@
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -17,8 +16,8 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.throttling import AnonRateThrottle
-from rest_framework.permissions import IsAuthenticated
-from .models import HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
 from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer)
@@ -159,6 +158,7 @@ def card_logos_api(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to register
 def register(request):
     """
     Register a new user with email and password
@@ -170,7 +170,7 @@ def register(request):
     if serializer.is_valid():
         # Check if user with email already exists
         email = serializer.validated_data.get('email')
-        if User.objects.filter(email=email).exists():
+        if CustomUser.objects.filter(email=email).exists():
             logger.warning(f"Registration attempt with existing email: {email}")
             return Response(
                 {'email': ['A user with this email already exists.']},
@@ -223,6 +223,7 @@ def register(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 def activate_account(request, uid, token):
     """
     Activate account using the confirmation token
@@ -270,6 +271,7 @@ def activate_account(request, uid, token):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to request password reset
 def password_reset_request(request):
     """
     Request for password reset - send reset email
@@ -283,7 +285,7 @@ def password_reset_request(request):
         )
 
     try:
-        user = User.objects.get(email=email)
+        user = CustomUser.objects.get(email=email)
 
         # Mark any existing password reset tokens as used first, to clean up old ones
         VerificationToken.objects.filter(
@@ -309,7 +311,7 @@ def password_reset_request(request):
             {'detail': 'Password reset e-mail has been sent.'},
             status=status.HTTP_200_OK
         )
-    except User.DoesNotExist:
+    except CustomUser.DoesNotExist:
         # Return success response even if user doesn't exist to avoid user enumeration
         return Response(
             {'detail': 'Password reset e-mail has been sent.'},
@@ -389,6 +391,7 @@ def password_reset_confirm(request, uid, token):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to log in
 @throttle_classes([AnonRateThrottle])  # Apply rate limiting
 def login(request):
     """
@@ -402,10 +405,10 @@ def login(request):
         logger.warning(f"Login validation failed: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    email = serializer.validated_data['email']
+    username = serializer.validated_data['username']
     password = serializer.validated_data['password']
 
-    user = authenticate(username=email, password=password)  # Django's auth uses username field
+    user = authenticate(request=request, username=username, password=password)
 
     if user is not None:
         if user.is_active:
@@ -426,13 +429,13 @@ def login(request):
 
             return Response(response_data, status=status.HTTP_200_OK)
         else:
-            logger.warning(f"Login attempt for inactive account: {email}")
+            logger.warning(f"Login attempt for inactive account: {username}")
             return Response(
                 {'non_field_errors': ['Account is not activated.']},
                 status=status.HTTP_400_BAD_REQUEST
             )
     else:
-        logger.warning(f"Failed login attempt for email: {email}")
+        logger.warning(f"Failed login attempt for username/email: {username}")
         return Response(
             {'non_field_errors': ['Unable to log in with provided credentials.']},
             status=status.HTTP_400_BAD_REQUEST
@@ -630,6 +633,7 @@ def update_user_profile(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to use social login
 def social_login(request, provider):
     """
     Handle social login for different providers (Google, LinkedIn, Microsoft)
@@ -727,6 +731,7 @@ def social_login_complete(request, provider):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to refresh tokens (they provide the refresh token)
 @throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
 def token_refresh(request):
     """

@@ -1,11 +1,10 @@
-from django.contrib.auth.models import User
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from apps.accounts.models import UserProfile
+from apps.accounts.models import CustomUser, UserProfile
 
 
 class LoginE2ETest(StaticLiveServerTestCase):
@@ -29,7 +28,7 @@ class LoginE2ETest(StaticLiveServerTestCase):
 
     def setUp(self):
         # Create a test user
-        self.user = User.objects.create_user(
+        self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='SecurePass123!'

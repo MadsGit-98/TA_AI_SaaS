@@ -1,9 +1,8 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from ...models import UserProfile
+from ...models import CustomUser, UserProfile
 
 
 class RegistrationTestCase(APITestCase):
@@ -23,10 +22,10 @@ class RegistrationTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(CustomUser.objects.count(), 1)
         self.assertEqual(UserProfile.objects.count(), 1)
-        
-        user = User.objects.get(email='john.doe@example.com')
+
+        user = CustomUser.objects.get(email='john.doe@example.com')
         self.assertEqual(user.first_name, 'John')
         self.assertEqual(user.last_name, 'Doe')
 

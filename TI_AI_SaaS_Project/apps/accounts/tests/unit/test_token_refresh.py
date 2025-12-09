@@ -11,12 +11,12 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'x_crewter.settings')
 django.setup()
 
 from django.test import TestCase
-from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.accounts.api import token_refresh
 from rest_framework.request import Request
 from django.http import QueryDict
 from rest_framework.test import APIRequestFactory
+from apps.accounts.models import CustomUser
 
 
 class TestTokenRefreshEndpoint(TestCase):
@@ -25,7 +25,7 @@ class TestTokenRefreshEndpoint(TestCase):
     def setUp(self):
         """Create a test user for use in tests"""
         self.factory = APIRequestFactory()
-        self.user = User.objects.create_user(
+        self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='testpass123'

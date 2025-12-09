@@ -1,9 +1,8 @@
 from django.test import TestCase, Client
 from django.urls import reverse
-from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
 from rest_framework import status
-from apps.accounts.models import UserProfile, VerificationToken
+from apps.accounts.models import CustomUser, UserProfile, VerificationToken
 from datetime import timedelta
 from django.utils import timezone
 
@@ -18,7 +17,7 @@ class AuthenticationIntegrationTestCase(APITestCase):
             'password_confirm': 'SecurePass123!'
         }
         self.login_data = {
-            'email': 'john.doe@example.com',
+            'username': 'john.doe@example.com',  # Changed from 'email' to 'username' as the API now expects this
             'password': 'SecurePass123!'
         }
 
@@ -32,9 +31,9 @@ class AuthenticationIntegrationTestCase(APITestCase):
         )
         
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(User.objects.count(), 1)
-        
-        user = User.objects.get(email='john.doe@example.com')
+        self.assertEqual(CustomUser.objects.count(), 1)
+
+        user = CustomUser.objects.get(email='john.doe@example.com')
         self.assertTrue(user.check_password('SecurePass123!'))
         
         # Step 2: Login with registered user
@@ -50,7 +49,7 @@ class AuthenticationIntegrationTestCase(APITestCase):
     def test_password_reset_flow(self):
         """Test the password reset flow"""
         # Create user
-        user = User.objects.create_user(
+        user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='OldPassword123!'
