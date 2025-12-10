@@ -28,6 +28,7 @@ class UserRegistrationSerializer(UserCreateSerializer):
     """
     Extended serializer for user registration with password complexity validation
     """
+    password_confirm = serializers.CharField(write_only=True)
     subscription_status = serializers.ChoiceField(
         choices=UserProfile.SUBSCRIPTION_STATUS_CHOICES,
         default='inactive',
@@ -45,6 +46,7 @@ class UserRegistrationSerializer(UserCreateSerializer):
         fields = UserCreateSerializer.Meta.fields + (
             'email',
             'password',
+            'password_confirm',
             'first_name',
             'last_name',
             'subscription_status',
@@ -52,30 +54,57 @@ class UserRegistrationSerializer(UserCreateSerializer):
             'is_talent_acquisition_specialist'
         )
 
+    def validate(self, attrs):
+        """
+        Override validate to handle password confirmation and remove profile fields
+        before calling parent validation to prevent djoser from creating the user
+        with profile-specific fields
+        """
+        # Check if passwords match
+        password = attrs.get('password')
+        password_confirm = attrs.get('password_confirm')
+
+        if password and password_confirm and password != password_confirm:
+            raise serializers.ValidationError({
+                'password_confirm': 'Passwords do not match.'
+            })
+
+        # If passwords match, remove password_confirm from attrs as it's not a model field
+        if 'password_confirm' in attrs:
+            attrs.pop('password_confirm')
+
+        # Extract profile-related fields before validating
+        self.subscription_status = attrs.pop('subscription_status', 'inactive')
+        self.chosen_subscription_plan = attrs.pop('chosen_subscription_plan', 'none')
+        self.is_talent_acquisition_specialist = attrs.pop('is_talent_acquisition_specialist', True)
+
+        # Call the parent validate method with only user fields
+        return super().validate(attrs)
+
     def validate_password(self, value):
         """
-        Validate password complexity requirements: minimum 8 characters with 
+        Validate password complexity requirements: minimum 8 characters with
         uppercase, lowercase, numbers, and special characters
         """
         # Use Django's built-in password validation
         validate_password(value, self.instance)
-        
+
         # Additional custom validation for complexity
         if len(value) < 8:
             raise serializers.ValidationError("Password must be at least 8 characters long.")
-        
+
         if not re.search(r'[A-Z]', value):
             raise serializers.ValidationError("Password must contain at least one uppercase letter.")
-        
+
         if not re.search(r'[a-z]', value):
             raise serializers.ValidationError("Password must contain at least one lowercase letter.")
-        
+
         if not re.search(r'[0-9]', value):
             raise serializers.ValidationError("Password must contain at least one number.")
-        
+
         if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', value):
             raise serializers.ValidationError("Password must contain at least one special character.")
-        
+
         return value
 
     def create(self, validated_data):
