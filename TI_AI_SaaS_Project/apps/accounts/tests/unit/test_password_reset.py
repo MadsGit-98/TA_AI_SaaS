@@ -3,6 +3,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from apps.accounts.models import CustomUser, VerificationToken
+from django.utils import timezone
+from datetime import timedelta
 import json
 
 
@@ -14,7 +16,6 @@ class PasswordResetTestCase(APITestCase):
             password='SecurePass123!'
         )
         self.password_reset_request_url = reverse('api:password_reset_request')
-        self.password_reset_confirm_url = reverse('api:password_reset_confirm')
 
     def test_password_reset_request_success(self):
         """Test successful password reset request"""
@@ -55,6 +56,7 @@ class PasswordResetTestCase(APITestCase):
             user=self.user,
             token=token,
             token_type='password_reset',
+            expires_at=timezone.now() + timedelta(hours=24),
             is_used=False
         )
 
@@ -83,7 +85,8 @@ class PasswordResetTestCase(APITestCase):
         VerificationToken.objects.create(
             user=self.user,
             token=token,
-            token_type='password_reset'
+            token_type='password_reset',
+            expires_at=timezone.now() + timedelta(hours=24)
         )
         
         reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': token})
@@ -101,6 +104,7 @@ class PasswordResetTestCase(APITestCase):
 
     def test_password_reset_confirm_invalid_token(self):
         """Test password reset confirmation with invalid token"""
+        # This test is for an invalid token, so we don't need to create a VerificationToken
         # The endpoint expects uid and token in the URL path
         reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': 'invalidtoken'})
 
