@@ -32,6 +32,7 @@ def health_check(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('apps.accounts.urls')),  # Include accounts URLs for home page and auth
+    path('social-auth/', include('social_django.urls', namespace='social')),  # Include social auth URLs
     path('api/health/', health_check, name='health_check'),
     path('api/accounts/', include('apps.accounts.api_urls')),
     path('api/jobs/', include('apps.jobs.urls')),
