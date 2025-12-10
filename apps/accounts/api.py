@@ -27,6 +27,25 @@ from rest_framework import serializers
 import uuid
 
 
+def mask_email(email):
+    """
+    Mask an email address by showing only the first character of the local part and the domain.
+    Returns "unknown" when email is falsy or missing '@', otherwise returns the masked form.
+    """
+    if not email or '@' not in email:
+        return "unknown"
+
+    email_parts = email.split('@')
+    local_part = email_parts[0]
+
+    if not local_part:
+        # If local part is empty (like @domain.com), return "***@domain.com"
+        return f"***@{email_parts[1]}"
+
+    # Otherwise return first char + "***" + "@" + domain
+    return f"{local_part[0]}***@{email_parts[1]}"
+
+
 class PasswordResetThrottle(SimpleRateThrottle):
     """
     Custom throttle for password reset requests to prevent abuse
@@ -47,7 +66,12 @@ class PasswordResetThrottle(SimpleRateThrottle):
 
         # Create a key that includes both IP and email
         if not ip or not email:
-            return None  # Don't throttle if we can't identify the request
+            # Use a fallback key when IP or email is missing to maintain throttling
+            email_or_unknown = email if email else 'unknown'
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            # Use a short, safe portion of the user agent to avoid sensitive info
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'password_reset_scope:unknown_ip:{email_or_unknown}:useragent:{user_agent_fragment}'
 
         return f'password_reset_scope:{ip}:{email}'
 
@@ -70,7 +94,11 @@ class PasswordResetConfirmThrottle(SimpleRateThrottle):
 
         # Create a key that limits attempts by IP
         if not ip:
-            return None  # Don't throttle if we can't identify the request
+            # Use a fallback key when IP is missing to maintain throttling
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            # Use a short, safe portion of the user agent to avoid sensitive info
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'password_reset_confirm_scope:unknown_ip:useragent:{user_agent_fragment}'
 
         return f'password_reset_confirm_scope:{ip}'
 # This endpoint would handle the response from social providers
@@ -110,30 +138,18 @@ def send_activation_email(user, token):
         )
         # Log success if needed for debugging
         if settings.DEBUG:
-            if user.email and '@' in user.email:
-                email_parts = user.email.split('@')
-                masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
-            else:
-                masked_email = "unknown"
+            masked_email = mask_email(user.email)
             logger.debug(f"Activation email sent successfully to user {user.id} ({masked_email})")
     except SMTPException as e:
         # Log the SMTP-related error with details
-        if user.email and '@' in user.email:
-            email_parts = user.email.split('@')
-            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
-        else:
-            masked_email = "unknown"
+        masked_email = mask_email(user.email)
         logger.error(f"SMTP error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # For development, we'll log that an activation email failed without the token
         if settings.DEBUG:
             logger.debug(f"Activation email failed for user {user.id}")
     except Exception as e:
         # Log other email-related errors
-        if user.email and '@' in user.email:
-            email_parts = user.email.split('@')
-            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
-        else:
-            masked_email = "unknown"
+        masked_email = mask_email(user.email)
         logger.error(f"Email error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
@@ -168,22 +184,14 @@ def send_password_reset_email(user, token):
         )
     except SMTPException as e:
         # Log the SMTP-related error with details
-        if user.email and '@' in user.email:
-            email_parts = user.email.split('@')
-            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
-        else:
-            masked_email = "unknown"
+        masked_email = mask_email(user.email)
         logger.error(f"SMTP error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # For development, we'll log that a password reset email failed without the token
         if settings.DEBUG:
             logger.debug(f"Password reset email failed for user {user.id}")
     except Exception as e:
         # Log other email-related errors
-        if user.email and '@' in user.email:
-            email_parts = user.email.split('@')
-            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
-        else:
-            masked_email = "unknown"
+        masked_email = mask_email(user.email)
         logger.error(f"Email error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
