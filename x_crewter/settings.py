@@ -114,6 +114,8 @@ REST_FRAMEWORK = {
         'anon': '100/day',  # General anonymous request limit
         'user': '1000/day',  # General user request limit
         'login_attempts': '5/15m',  # 5 attempts per 15 minutes for login
+        'password_reset': '3/15m',  # 3 password reset attempts per 15 minutes per IP+email
+        'password_reset_confirm': '5/15m',  # 5 password reset confirmation attempts per 15 minutes per IP
     }
 }
 

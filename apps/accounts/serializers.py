@@ -111,10 +111,10 @@ class UserRegistrationSerializer(UserCreateSerializer):
         """
         Create the user and associated profile atomically
         """
-        # Extract profile-related data immediately before the atomic block
-        subscription_status = validated_data.pop('subscription_status', 'inactive')
-        chosen_subscription_plan = validated_data.pop('chosen_subscription_plan', 'none')
-        is_talent_acquisition_specialist = validated_data.pop('is_talent_acquisition_specialist', True)
+        # Use the profile-related data that was extracted in the validate method
+        subscription_status = getattr(self, 'subscription_status', 'inactive')
+        chosen_subscription_plan = getattr(self, 'chosen_subscription_plan', 'none')
+        is_talent_acquisition_specialist = getattr(self, 'is_talent_acquisition_specialist', True)
 
         # Create both user and profile within the same atomic transaction
         with transaction.atomic():
