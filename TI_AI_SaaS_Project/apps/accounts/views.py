@@ -147,3 +147,10 @@ def register_view(request):
     Placeholder register view (to be implemented in future with proper authentication)
     """
     return render(request, 'accounts/register.html', {})
+
+
+def password_reset_view(request):
+    """
+    Password reset request view
+    """
+    return render(request, 'accounts/password_reset.html', {})
