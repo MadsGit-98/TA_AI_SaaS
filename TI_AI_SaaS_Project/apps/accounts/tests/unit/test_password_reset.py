@@ -96,10 +96,7 @@ class PasswordResetTestCase(APITestCase):
             're_new_password': 'DifferentPass456!'
         }
         
-        response = self.client.post(reset_confirm_url, data, format='json')
-        
-        response = self.client.post(reset_confirm_url, data, format='json')
-        
+        response = self.client.post(reset_confirm_url, data, format='json')        
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_password_reset_confirm_invalid_token(self):

@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from smtplib import SMTPException
 from django.conf import settings
+from django.db import transaction
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
@@ -15,7 +16,7 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
 from .serializers import (HomePageContentSerializer, LegalPageSerializer,
@@ -24,6 +25,54 @@ from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          UserUpdateSerializer, UserProfileUpdateSerializer)
 from rest_framework import serializers
 import uuid
+
+
+class PasswordResetThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for password reset requests to prevent abuse
+    Limits requests based on a combination of IP address and email
+    """
+    scope = 'password_reset'
+
+    def get_cache_key(self, request, view):
+        # Create a key that combines the user's IP and email to prevent abuse
+        # If the IP is behind a proxy, try to get the real IP
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+
+        email = request.data.get('email', '').lower()
+
+        # Create a key that includes both IP and email
+        if not ip or not email:
+            return None  # Don't throttle if we can't identify the request
+
+        return f'password_reset_scope:{ip}:{email}'
+
+
+class PasswordResetConfirmThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for password reset confirmation requests to prevent brute force attacks
+    Limits attempts based on IP address to prevent guessing valid tokens or UIDs
+    """
+    scope = 'password_reset_confirm'
+
+    def get_cache_key(self, request, view):
+        # Create a key based on the IP address to prevent brute force attempts
+        # If the IP is behind a proxy, try to get the real IP
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+
+        # Create a key that limits attempts by IP
+        if not ip:
+            return None  # Don't throttle if we can't identify the request
+
+        return f'password_reset_confirm_scope:{ip}'
 # This endpoint would handle the response from social providers
 # after the user has authenticated with the provider
 from social_django.utils import load_strategy, load_backend
@@ -61,23 +110,35 @@ def send_activation_email(user, token):
         )
         # Log success if needed for debugging
         if settings.DEBUG:
-            masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+            if user.email and '@' in user.email:
+                email_parts = user.email.split('@')
+                masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
+            else:
+                masked_email = "unknown"
             logger.debug(f"Activation email sent successfully to user {user.id} ({masked_email})")
     except SMTPException as e:
         # Log the SMTP-related error with details
-        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        if user.email and '@' in user.email:
+            email_parts = user.email.split('@')
+            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
+        else:
+            masked_email = "unknown"
         logger.error(f"SMTP error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
-        # For development, we'll also print the activation link if DEBUG is enabled
+        # For development, we'll log that an activation email failed without the token
         if settings.DEBUG:
-            logger.debug(f"Activation link for user {user.id}: {activation_link}")
+            logger.debug(f"Activation email failed for user {user.id}")
     except Exception as e:
         # Log other email-related errors
-        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        if user.email and '@' in user.email:
+            email_parts = user.email.split('@')
+            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
+        else:
+            masked_email = "unknown"
         logger.error(f"Email error: Failed to send activation email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
         if settings.DEBUG:
-            logger.debug(f"Activation link for user {user.id}: {activation_link}")
+            logger.debug(f"Activation email failed for user {user.id}")
 
 
 def send_password_reset_email(user, token):
@@ -107,19 +168,27 @@ def send_password_reset_email(user, token):
         )
     except SMTPException as e:
         # Log the SMTP-related error with details
-        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        if user.email and '@' in user.email:
+            email_parts = user.email.split('@')
+            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
+        else:
+            masked_email = "unknown"
         logger.error(f"SMTP error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
-        # For development, we'll also print the reset link if DEBUG is enabled
+        # For development, we'll log that a password reset email failed without the token
         if settings.DEBUG:
-            logger.debug(f"Password reset link for user {user.id}: {reset_link}")
+            logger.debug(f"Password reset email failed for user {user.id}")
     except Exception as e:
         # Log other email-related errors
-        masked_email = f"{user.email[0]}***@{user.email.split('@')[1]}" if user.email else "unknown"
+        if user.email and '@' in user.email:
+            email_parts = user.email.split('@')
+            masked_email = f"{email_parts[0][0]}***@{email_parts[1]}"
+        else:
+            masked_email = "unknown"
         logger.error(f"Email error: Failed to send password reset email to user {user.id} ({masked_email}): {str(e)}", exc_info=True)
         # Don't re-raise email-related exceptions so user account creation isn't interrupted
         # The function can continue without sending email
         if settings.DEBUG:
-            logger.debug(f"Password reset link for user {user.id}: {reset_link}")
+            logger.debug(f"Password reset email failed for user {user.id}")
 
 
 @api_view(['GET'])
@@ -257,14 +326,16 @@ def activate_account(request, uid, token):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Mark token as used
-        verification_token.is_used = True
-        verification_token.save()
+        # Mark token as used and activate the user account within an atomic transaction
+        with transaction.atomic():
+            # Mark token as used
+            verification_token.is_used = True
+            verification_token.save()
 
-        # Activate the user account
-        user = verification_token.user
-        user.is_active = True
-        user.save()
+            # Activate the user account
+            user = verification_token.user
+            user.is_active = True
+            user.save()
 
         return Response(
             {'message': 'Account activated successfully.'},
@@ -279,6 +350,7 @@ def activate_account(request, uid, token):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to request password reset
+@throttle_classes([AnonRateThrottle, PasswordResetThrottle])  # Apply rate limiting to prevent abuse
 def password_reset_request(request):
     """
     Request for password reset - send reset email
@@ -328,6 +400,7 @@ def password_reset_request(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to confirm password reset
+@throttle_classes([AnonRateThrottle, PasswordResetConfirmThrottle])  # Apply rate limiting to prevent brute force attacks
 def password_reset_confirm(request, uid, token):
     """
     Confirm password reset with token and new password
@@ -378,14 +451,19 @@ def password_reset_confirm(request, uid, token):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Set new password
-        user = verification_token.user
-        user.set_password(new_password)
-        user.save()
+        # Update the password and mark token as used within an atomic transaction with row locking
+        with transaction.atomic():
+            # Acquire a row lock on the verification token to prevent race conditions
+            verification_token_locked = VerificationToken.objects.select_for_update().get(pk=verification_token.pk)
 
-        # Mark token as used
-        verification_token.is_used = True
-        verification_token.save()
+            # Set new password
+            user = verification_token_locked.user
+            user.set_password(new_password)
+            user.save()
+
+            # Mark token as used
+            verification_token_locked.is_used = True
+            verification_token_locked.save()
 
         return Response(
             {'detail': 'Password has been reset successfully.'},
@@ -576,68 +654,8 @@ def update_user_profile(request):
     Update authenticated user's profile information
     NOTE: This endpoint is deprecated. Use user_profile (GET/PUT/PATCH) instead.
     """
-    # This is only preserved for backward compatibility
-    # The actual logic now lives in user_profile function
-    user = request.user
-
-    # Prepare data for user update
-    user_update_data = {}
-    for field in ['first_name', 'last_name', 'email']:
-        if field in request.data:
-            user_update_data[field] = request.data[field]
-
-    # Use the serializer for validation and saving
-    if user_update_data:
-        user_serializer = UserUpdateSerializer(instance=user, data=user_update_data, partial=True, context={'request': request})
-        try:
-            user_serializer.is_valid(raise_exception=True)
-            user_serializer.save()
-        except serializers.ValidationError as e:
-            return Response(
-                e.detail,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error updating user for {user.email}: {str(e)}", exc_info=True)
-            return Response(
-                {'error': 'An unexpected error occurred while updating user data'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    # Update profile fields if they exist and if profile update data is provided
-    profile_update_data = {}
-    for field in ['subscription_status', 'subscription_end_date', 'chosen_subscription_plan']:
-        if field in request.data:
-            profile_update_data[field] = request.data[field]
-
-    if profile_update_data and hasattr(user, 'profile'):
-        profile = user.profile
-        profile_serializer = UserProfileUpdateSerializer(instance=profile, data=profile_update_data, partial=True)
-        try:
-            profile_serializer.is_valid(raise_exception=True)
-            profile_serializer.save()
-        except serializers.ValidationError as e:
-            return Response(
-                e.detail,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error updating user profile for {user.email}: {str(e)}", exc_info=True)
-            return Response(
-                {'error': 'An unexpected error occurred while updating profile data'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    # Return updated user information with profile
-    user_serializer = UserSerializer(user)
-    response_data = user_serializer.data
-
-    # Include updated profile information if profile exists
-    if hasattr(user, 'profile'):
-        profile_serializer = UserProfileSerializer(user.profile)
-        response_data['profile'] = profile_serializer.data
-
-    return Response(response_data, status=status.HTTP_200_OK)
+    # Delegate to the primary user_profile function to avoid duplication
+    return user_profile(request)
 
 
 @api_view(['POST'])

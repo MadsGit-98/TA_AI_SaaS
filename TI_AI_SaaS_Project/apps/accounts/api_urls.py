@@ -11,6 +11,7 @@ urlpatterns = [
     path('auth/password/reset/', api.password_reset_request, name='password_reset_request'),
     path('auth/password/reset/confirm/<str:uid>/<str:token>/', api.password_reset_confirm, name='password_reset_confirm'),
     path('auth/users/me/', api.user_profile, name='user_profile'),
+    path('auth/users/me/update/', api.update_user_profile, name='update_user_profile'),  # For backward compatibility
     path('auth/social/<str:provider>/', api.social_login, name='social_login'),
     path('auth/social/complete/<str:provider>/', api.social_login_complete, name='social_login_complete'),
     path('auth/activate/<str:uid>/<str:token>/', api.activate_account, name='activate_account'),
