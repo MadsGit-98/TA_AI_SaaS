@@ -24,7 +24,9 @@ from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer,
                          UserUpdateSerializer, UserProfileUpdateSerializer)
 from rest_framework import serializers
-import uuid
+from social_django.utils import load_strategy, load_backend
+from social_core.backends.oauth import BaseOAuth2
+from social_core.exceptions import MissingBackend
 
 
 def mask_email(email):
@@ -103,9 +105,6 @@ class PasswordResetConfirmThrottle(SimpleRateThrottle):
         return f'password_reset_confirm_scope:{ip}'
 # This endpoint would handle the response from social providers
 # after the user has authenticated with the provider
-from social_django.utils import load_strategy, load_backend
-from social_core.backends.oauth import BaseOAuth2
-from social_core.exceptions import MissingBackend
 
 # Set up logging for authentication events
 logger = logging.getLogger('django_auth')
