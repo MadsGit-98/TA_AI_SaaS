@@ -113,9 +113,9 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',  # General anonymous request limit
         'user': '1000/day',  # General user request limit
-        'login_attempts': '5/15m',  # 5 attempts per 15 minutes for login
-        'password_reset': '3/15m',  # 3 password reset attempts per 15 minutes per IP+email
-        'password_reset_confirm': '5/15m',  # 5 password reset confirmation attempts per 15 minutes per IP
+        'login_attempts': '5/min',  # 5 attempts per minute for login
+        'password_reset': '3/min',  # 3 password reset attempts per minute per IP+email
+        'password_reset_confirm': '5/min',  # 5 password reset confirmation attempts per minute per IP
     }
 }
 
