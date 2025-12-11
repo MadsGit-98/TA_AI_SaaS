@@ -143,6 +143,7 @@ DJOSER = {
 # Authentication Backends for social auth
 AUTHENTICATION_BACKENDS = [
     'apps.accounts.authentication.EmailOrUsernameBackend',  # Custom backend for email/username login
+    'social_core.backends.google.GoogleOAuth2',  # Google OAuth2 backend
     'social_core.backends.linkedin.LinkedinOAuth2',
     'social_core.backends.microsoft.MicrosoftOAuth2',
     'django.contrib.auth.backends.ModelBackend',
@@ -157,6 +158,13 @@ SITE_ID = 1
 # Social Auth Settings (add your actual keys in production)
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = env('GOOGLE_OAUTH2_KEY', default='')
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env('GOOGLE_OAUTH2_SECRET', default='')
+
+# Additional Google OAuth2 settings
+SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+]
+SOCIAL_AUTH_GOOGLE_OAUTH2_USE_DEPRECATED_API = False
 
 SOCIAL_AUTH_LINKEDIN_OAUTH2_KEY = env('LINKEDIN_OAUTH2_KEY', default='')
 SOCIAL_AUTH_LINKEDIN_OAUTH2_SECRET = env('LINKEDIN_OAUTH2_SECRET', default='')
