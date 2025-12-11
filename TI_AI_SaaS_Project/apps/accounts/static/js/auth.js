@@ -112,7 +112,7 @@ async function handleLogin(e) {
 
     // Get form data
     const formData = {
-        email: document.getElementById('login-email').value,
+        username: document.getElementById('login-email').value,  // Backend expects 'username' field which handles both username and email
         password: document.getElementById('login-password').value
     };
 

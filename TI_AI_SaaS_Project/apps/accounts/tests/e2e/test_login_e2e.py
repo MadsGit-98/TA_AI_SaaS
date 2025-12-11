@@ -84,11 +84,11 @@ class LoginE2ETest(StaticLiveServerTestCase):
         submit_button = self.selenium.find_element(By.ID, "login-submit-btn")
         submit_button.click()
         
-        # Expect an error message to appear
+        # Expect an error message to appear and be visible
         WebDriverWait(self.selenium, 10).until(
-            EC.presence_of_element_located((By.ID, "login-error-message"))
+            EC.visibility_of_element_located((By.ID, "login-error-message"))
         )
-        
+
         error_message = self.selenium.find_element(By.ID, "login-error-message")
         self.assertTrue(error_message.is_displayed())
 
@@ -106,11 +106,11 @@ class LoginE2ETest(StaticLiveServerTestCase):
         submit_button = self.selenium.find_element(By.ID, "login-submit-btn")
         submit_button.click()
         
-        # Expect an error message to appear
+        # Expect an error message to appear and be visible
         WebDriverWait(self.selenium, 10).until(
-            EC.presence_of_element_located((By.ID, "login-error-message"))
+            EC.visibility_of_element_located((By.ID, "login-error-message"))
         )
-        
+
         error_message = self.selenium.find_element(By.ID, "login-error-message")
         self.assertTrue(error_message.is_displayed())
 
@@ -123,9 +123,10 @@ class LoginE2ETest(StaticLiveServerTestCase):
         reset_link.click()
         
         # Wait for the page to load
+        # The password reset URL pattern is /password/reset/ according to urls.py
         WebDriverWait(self.selenium, 10).until(
-            lambda driver: "/password-reset/" in driver.current_url
+            lambda driver: "/password/reset/" in driver.current_url
         )
-        
+
         # Verify we're on the password reset page
-        self.assertIn("password-reset", self.selenium.current_url)
+        self.assertIn("/password/reset/", self.selenium.current_url)
