@@ -179,8 +179,11 @@ SOCIAL_AUTH_PIPELINE = [
     'social_core.pipeline.social_auth.social_uid',
     'social_core.pipeline.social_auth.auth_allowed',
     'social_core.pipeline.social_auth.social_user',
+    'apps.accounts.pipeline.create_user_if_not_exists',  # Check for existing user before creation
+    'apps.accounts.pipeline.link_existing_user',  # Link to existing user if found
     'social_core.pipeline.user.get_username',
     'social_core.pipeline.user.create_user',
+    'apps.accounts.pipeline.create_user_profile',  # Create user profile after user creation
     'apps.accounts.pipeline.save_profile',  # Custom pipeline for extended user data
     'social_core.pipeline.social_auth.associate_user',
     'social_core.pipeline.social_auth.load_extra_data',

@@ -716,49 +716,98 @@ def get_client_ip(request):
     return ip
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET'])
 def social_login_complete(request, provider):
     """
     Complete the social login process
+
+    This endpoint should be called after the user authenticates with the social provider.
+    It handles the completion of the OAuth flow and returns JWT tokens for the API.
     """
     try:
         # Load the appropriate backend for the provider
         strategy = load_strategy(request)
         backend = load_backend(strategy, provider, redirect_uri=None)
 
-        # Process the authentication
-        if isinstance(backend, BaseOAuth2):
-            # For OAuth2 providers, typically we'd get the code and exchange for tokens
-            code = request.GET.get('code')
-            if code:
-                # Complete the authentication process - pass the Django HttpRequest instead of DRF request
-                user = backend.do_auth(request._request, code)
+        # Complete the authentication process
+        user = backend.complete(request._request)
 
-                if user and user.is_active:
-                    # Generate JWT tokens
-                    refresh = RefreshToken.for_user(user)
+        if user and user.is_active:
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
 
-                    # Serialize user data
-                    user_serializer = UserSerializer(user)
+            # Serialize user data
+            user_serializer = UserSerializer(user)
 
-                    response_data = {
-                        'user': user_serializer.data,
-                        'access': str(refresh.access_token),
-                        'refresh': str(refresh)
-                    }
+            response_data = {
+                'user': user_serializer.data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            }
 
-                    return Response(response_data, status=status.HTTP_200_OK)
-                else:
-                    return handle_auth_error('Authentication failed', status.HTTP_400_BAD_REQUEST)
-            else:
-                return handle_auth_error('Authorization code not provided', status.HTTP_400_BAD_REQUEST)
+            return Response(response_data, status=status.HTTP_200_OK)
         else:
-            return handle_auth_error('Unsupported authentication backend', status.HTTP_400_BAD_REQUEST)
+            return handle_auth_error('Authentication failed', status.HTTP_400_BAD_REQUEST)
+
     except MissingBackend:
         return handle_auth_error('Invalid provider', status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         # Log the exception server-side without exposing details
         logger.exception(f"Social login error for provider {provider}: {str(e)}")
+        # Return a generic error response
+        return handle_auth_error('Authentication error', status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def social_login_jwt(request):
+    """
+    Handle social login and return JWT tokens
+
+    This endpoint accepts an access token from the frontend and validates it
+    with the social provider to create or authenticate a user, then returns JWT tokens.
+    """
+    backend_name = request.data.get('provider')
+    access_token = request.data.get('access_token')
+
+    if not backend_name or not access_token:
+        return Response(
+            {'error': 'Provider and access_token are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Load the appropriate backend for the provider
+        strategy = load_strategy(request)
+        backend = load_backend(strategy, backend_name, redirect_uri=None)
+
+        # Verify the access token with the backend
+        # Set the access token in the strategy and call do_auth
+        strategy.session_set('access_token', access_token)
+        user = backend.do_auth(access_token=access_token)
+
+        if user and user.is_active:
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+
+            # Serialize user data
+            user_serializer = UserSerializer(user)
+
+            response_data = {
+                'user': user_serializer.data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        else:
+            return handle_auth_error('Authentication failed', status.HTTP_400_BAD_REQUEST)
+
+    except MissingBackend:
+        return handle_auth_error('Invalid provider', status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        # Log the exception server-side without exposing details
+        logger.exception(f"Social login error for provider {backend_name}: {str(e)}")
         # Return a generic error response
         return handle_auth_error('Authentication error', status.HTTP_400_BAD_REQUEST)
 

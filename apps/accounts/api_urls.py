@@ -13,6 +13,7 @@ urlpatterns = [
     path('auth/users/me/', api.user_profile, name='user_profile'),
     path('auth/users/me/update/', api.update_user_profile, name='update_user_profile'),  # For backward compatibility
     path('auth/social/<str:provider>/', api.social_login, name='social_login'),
+    path('auth/social/jwt/', api.social_login_jwt, name='social_login_jwt'),
     path('auth/social/complete/<str:provider>/', api.social_login_complete, name='social_login_complete'),
     path('auth/activate/<str:uid>/<str:token>/', api.activate_account, name='activate_account'),
 

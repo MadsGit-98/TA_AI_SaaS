@@ -23,6 +23,43 @@ class CustomUser(AbstractUser):
         verbose_name = 'Custom User'
         verbose_name_plural = 'Custom Users'
 
+    def has_changed(self):
+        """
+        Check if the user instance has any field changes
+        """
+        # Check if any of the key fields have been modified
+        return (
+            hasattr(self, '_field_updates') and
+            any([
+                getattr(self, '_field_updates', {}).get('email', False),
+                getattr(self, '_field_updates', {}).get('first_name', False),
+                getattr(self, '_field_updates', {}).get('last_name', False)
+            ])
+        )
+
+    def save(self, *args, **kwargs):
+        """
+        Override save method to track field changes
+        """
+        # Check if this is an update to existing record
+        if self.pk:
+            original = CustomUser.objects.get(pk=self.pk)
+            # Track changes to important fields
+            self._field_updates = {
+                'email': self.email != original.email,
+                'first_name': self.first_name != original.first_name,
+                'last_name': self.last_name != original.last_name
+            }
+        else:
+            # New user, all fields are changes
+            self._field_updates = {
+                'email': True,
+                'first_name': True,
+                'last_name': True
+            }
+
+        super().save(*args, **kwargs)
+
 
 class UserProfile(models.Model):
     """
