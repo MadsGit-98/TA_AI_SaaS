@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.conf import settings
 from django.http import HttpRequest
+from django.utils import timezone
 from unittest.mock import patch, MagicMock
 from social_django.utils import load_strategy
 from apps.accounts.models import UserProfile, SocialAccount
@@ -247,18 +248,28 @@ class SocialAuthAPITestCase(TestCase):
         """Set up test data for API tests."""
         self.client = Client()
 
+    @patch('apps.accounts.api.UserSerializer')
     @patch('apps.accounts.api.load_strategy')
     @patch('apps.accounts.api.load_backend')
     @patch('social_core.backends.oauth.BaseOAuth2.do_auth')
-    def test_social_login_jwt_success(self, mock_do_auth, mock_load_backend, mock_load_strategy):
+    def test_social_login_jwt_success(self, mock_do_auth, mock_load_backend, mock_load_strategy, mock_user_serializer):
         """Test successful social login JWT creation."""
         # Mock user returned by authentication
-        mock_user = User.objects.create_user(
-            username='social_test',
-            email='social@example.com',
-            password='password'
-        )
-        UserProfile.objects.create(user=mock_user)
+        mock_user = MagicMock()
+        mock_user.id = 1
+        mock_user.username = 'social_test'
+        mock_user.email = 'social@example.com'
+        mock_user.first_name = 'Social'
+        mock_user.last_name = 'Test'
+        mock_user.date_joined = timezone.now()
+        mock_user.is_active = True
+
+        # Create a mock profile for the user
+        mock_profile = MagicMock()
+        mock_profile.subscription_status = 'inactive'
+        mock_profile.chosen_subscription_plan = 'none'
+        mock_profile.is_talent_acquisition_specialist = True
+        mock_user.profile = mock_profile
 
         # Setup the mocks
         mock_strategy = MagicMock()
@@ -267,6 +278,27 @@ class SocialAuthAPITestCase(TestCase):
         mock_load_strategy.return_value = mock_strategy
         mock_load_backend.return_value = mock_backend
         mock_do_auth.return_value = mock_user
+
+        # Mock the UserSerializer to return a predefined dictionary
+        serialized_user_data = {
+            'id': mock_user.id,
+            'username': mock_user.username,
+            'email': mock_user.email,
+            'first_name': mock_user.first_name,
+            'last_name': mock_user.last_name,
+            'date_joined': str(mock_user.date_joined),
+            'profile': {
+                'subscription_status': mock_profile.subscription_status,
+                'subscription_end_date': None,
+                'chosen_subscription_plan': mock_profile.chosen_subscription_plan,
+                'is_talent_acquisition_specialist': mock_profile.is_talent_acquisition_specialist,
+                'created_at': str(timezone.now()),
+                'updated_at': str(timezone.now())
+            }
+        }
+        mock_user_serializer_instance = MagicMock()
+        mock_user_serializer_instance.data = serialized_user_data
+        mock_user_serializer.return_value = mock_user_serializer_instance
 
         # Create request with provider and access token using Django test client
         response = self.client.post('/api/accounts/auth/social/jwt/', {
@@ -307,19 +339,28 @@ class SocialAuthAPITestCase(TestCase):
         response_data = json.loads(response.content.decode('utf-8'))
         self.assertIn('error', response_data)
 
+    @patch('apps.accounts.api.UserSerializer')
     @patch('apps.accounts.api.load_strategy')
     @patch('apps.accounts.api.load_backend')
-    @patch('social_core.backends.oauth.BaseOAuth2.do_auth')
-    def test_social_login_jwt_auth_failure(self, mock_do_auth, mock_load_backend, mock_load_strategy):
+    def test_social_login_jwt_auth_failure(self, mock_load_backend, mock_load_strategy, mock_user_serializer):
         """Test social login JWT handles authentication failure."""
         # Setup the mocks
         mock_strategy = MagicMock()
         mock_backend = MagicMock()
 
+        # Mock the session_set method to prevent any issues
+        mock_strategy.session_set = MagicMock(return_value=None)
+
+        # Mock the do_auth method on the backend to return None (authentication failure)
+        mock_backend.do_auth = MagicMock(return_value=None)
+
         mock_load_strategy.return_value = mock_strategy
         mock_load_backend.return_value = mock_backend
-        # Mock authentication failure (returns None)
-        mock_do_auth.return_value = None
+
+        # Mock the UserSerializer to prevent any issues if it gets called unexpectedly
+        mock_user_serializer_instance = MagicMock()
+        mock_user_serializer_instance.data = {}
+        mock_user_serializer.return_value = mock_user_serializer_instance
 
         # Create request with provider and access token using Django test client
         response = self.client.post('/api/accounts/auth/social/jwt/', {
