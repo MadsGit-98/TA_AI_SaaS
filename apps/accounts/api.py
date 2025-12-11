@@ -254,7 +254,7 @@ def register(request):
         # Check if user with email already exists
         email = serializer.validated_data.get('email')
         if CustomUser.objects.filter(email=email).exists():
-            logger.warning(f"Registration attempt with existing email: {email}")
+            logger.warning(f"Registration attempt with existing email: {mask_email(email)}")
             return Response(
                 {'email': ['A user with this email already exists.']},
                 status=status.HTTP_400_BAD_REQUEST
@@ -265,7 +265,7 @@ def register(request):
             password = serializer.validated_data.get('password')
             validate_password(password)
         except ValidationError as e:
-            logger.warning(f"Password validation failed for email: {email}, errors: {e.messages}")
+            logger.warning(f"Password validation failed for email: {mask_email(email)}, errors: {e.messages}")
             return Response(
                 {'password': e.messages},
                 status=status.HTTP_400_BAD_REQUEST
@@ -273,7 +273,7 @@ def register(request):
 
         # Create the user
         user = serializer.save()
-        logger.info(f"New user registered: {user.email}")
+        logger.info(f"New user registered: {mask_email(user.email)}")
 
         # Create a verification token for email confirmation
         token = get_random_string(64)
@@ -298,7 +298,7 @@ def register(request):
             'refresh': str(refresh)
         }
 
-        logger.info(f"Registration successful for {user.email}")
+        logger.info(f"Registration successful for user id={user.id}")        
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     logger.warning(f"Registration failed with errors: {serializer.errors}")
@@ -528,7 +528,7 @@ def login(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
     else:
-        logger.warning(f"Failed login attempt for username/email: {username}")
+        logger.warning(f"Failed login attempt for username/email: {username[:3]}***")
         return Response(
             {'non_field_errors': ['Unable to log in with provided credentials.']},
             status=status.HTTP_400_BAD_REQUEST
@@ -612,7 +612,7 @@ def user_profile(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             except Exception as e:
-                logger.error(f"Unexpected error updating user for {user.email}: {str(e)}", exc_info=True)
+                logger.error(f"Unexpected error updating user for user_id={user.id}: {e!s}", exc_info=True)
                 return Response(
                     {'error': 'An unexpected error occurred while updating user data'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -636,7 +636,7 @@ def user_profile(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             except Exception as e:
-                logger.error(f"Unexpected error updating user profile for {user.email}: {str(e)}", exc_info=True)
+                logger.error(f"Unexpected error updating user profile for user_id={user.id}: {e!s}", exc_info=True)
                 return Response(
                     {'error': 'An unexpected error occurred while updating profile data'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR

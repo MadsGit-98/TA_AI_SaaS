@@ -251,8 +251,7 @@ class SocialAuthAPITestCase(TestCase):
     @patch('apps.accounts.api.UserSerializer')
     @patch('apps.accounts.api.load_strategy')
     @patch('apps.accounts.api.load_backend')
-    @patch('social_core.backends.oauth.BaseOAuth2.do_auth')
-    def test_social_login_jwt_success(self, mock_do_auth, mock_load_backend, mock_load_strategy, mock_user_serializer):
+    def test_social_login_jwt_success(self, mock_load_backend, mock_load_strategy, mock_user_serializer):
         """Test successful social login JWT creation."""
         # Mock user returned by authentication
         mock_user = MagicMock()
@@ -277,7 +276,7 @@ class SocialAuthAPITestCase(TestCase):
 
         mock_load_strategy.return_value = mock_strategy
         mock_load_backend.return_value = mock_backend
-        mock_do_auth.return_value = mock_user
+        mock_backend.do_auth.return_value = mock_user
 
         # Mock the UserSerializer to return a predefined dictionary
         serialized_user_data = {
@@ -314,7 +313,6 @@ class SocialAuthAPITestCase(TestCase):
         self.assertIn('user', response_data)
         # Check that user data is included
         self.assertEqual(response_data['user']['email'], 'social@example.com')
-
     def test_social_login_jwt_missing_provider(self):
         """Test social login JWT fails without provider."""
         response = self.client.post('/api/accounts/auth/social/jwt/', {
