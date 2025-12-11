@@ -161,8 +161,9 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env('GOOGLE_OAUTH2_SECRET', default='')
 
 # Additional Google OAuth2 settings
 SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = [
-    'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+    'email',
+    'profile',
 ]
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_DEPRECATED_API = False
 
