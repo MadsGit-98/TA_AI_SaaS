@@ -163,7 +163,7 @@ def send_password_reset_email(user, token):
     subject = 'Reset your X-Crewter password'
 
     # The reset link includes the token
-    reset_link = f"{settings.FRONTEND_URL}/reset-password/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"http://localhost:3000/reset-password/{token}/"
+    reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.id}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"http://localhost:3000/reset-password/{user.id}/{token}/"
 
     message = render_to_string('accounts/password_reset_email.html', {
         'user': user,
@@ -560,11 +560,10 @@ def get_redirect_url_after_login(user):
         active_statuses = ['active', 'trial']
         if hasattr(profile, 'subscription_status') and profile.subscription_status in active_statuses:
             has_subscription = True
-        # Alternatively, if there's a subscription_end_date field
-        if hasattr(profile, 'subscription_end_date') and profile.subscription_end_date:
-            # If subscription_end_date is in the future, user has an active subscription
-            if profile.subscription_end_date > timezone.now():
-                has_subscription = True
+            # Additionally verify subscription hasn't expired
+            if hasattr(profile, 'subscription_end_date') and profile.subscription_end_date:
+                if profile.subscription_end_date <= timezone.now():
+                    has_subscription = False
 
     # Return appropriate redirect URL based on subscription status
     if has_subscription:
@@ -755,6 +754,7 @@ def get_client_ip(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def social_login_complete(request, provider):
     """
     Complete the social login process
