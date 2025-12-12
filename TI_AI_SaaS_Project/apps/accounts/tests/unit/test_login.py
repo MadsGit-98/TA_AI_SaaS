@@ -154,6 +154,7 @@ class LoginTestCase(APITestCase):
         """Test successful user login with future subscription end date redirects to dashboard"""
         # Update the user's profile to have a subscription end date in the future
         profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_status = 'active'  # Set to active status to meet current logic requirements
         profile.subscription_end_date = timezone.now() + timedelta(days=30)
         profile.save()
 
