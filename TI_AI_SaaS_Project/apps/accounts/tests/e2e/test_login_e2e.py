@@ -5,7 +5,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from apps.accounts.models import CustomUser, UserProfile
-
+from django.utils import timezone
+from datetime import timedelta
 
 class LoginE2ETest(StaticLiveServerTestCase):
     @classmethod
@@ -42,33 +43,25 @@ class LoginE2ETest(StaticLiveServerTestCase):
         """Test the complete user login flow via web interface"""
         # Navigate to the login page
         self.selenium.get(f"{self.live_server_url}/login/")
-        
+
         # Find and fill the login form fields
         email_input = self.selenium.find_element(By.ID, "login-email")
         email_input.send_keys("test@example.com")
-        
+
         password_input = self.selenium.find_element(By.ID, "login-password")
         password_input.send_keys("SecurePass123!")
-        
+
         # Submit the form
         submit_button = self.selenium.find_element(By.ID, "login-submit-btn")
         submit_button.click()
-        
-        # Wait for a response or redirect (this depends on actual implementation)
-        # If using SPA approach, check for success indicators
-        # If using traditional redirect, the page might change
+
+        # Wait for redirect to landing page (since user doesn't have active subscription)
         WebDriverWait(self.selenium, 10).until(
-            lambda driver: "dashboard" in driver.current_url or 
-                          driver.execute_script("return localStorage.getItem('access_token');") is not None
+            lambda driver: "landing" in driver.current_url
         )
-        
-        # Verify that the user is logged in by checking for tokens in localStorage
-        # (assuming tokens are stored in localStorage after successful login)
-        access_token = self.selenium.execute_script("return localStorage.getItem('access_token');")
-        refresh_token = self.selenium.execute_script("return localStorage.getItem('refresh_token');")
-        
-        self.assertIsNotNone(access_token)
-        self.assertIsNotNone(refresh_token)
+
+        # Verify that the user has been redirected to the landing page
+        self.assertIn("landing", self.selenium.current_url)
 
     def test_login_with_invalid_credentials(self):
         """Test login with invalid credentials shows error"""
@@ -114,14 +107,44 @@ class LoginE2ETest(StaticLiveServerTestCase):
         error_message = self.selenium.find_element(By.ID, "login-error-message")
         self.assertTrue(error_message.is_displayed())
 
+    def test_login_with_active_subscription_redirects_to_dashboard(self):
+        """Test login with active subscription redirects to dashboard"""
+        # Update the user's profile to have an active subscription with an end date
+        profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_status = 'active'
+        profile.subscription_end_date = timezone.now() + timedelta(days=30)  # End date in the future
+        profile.save()
+
+        # Navigate to the login page
+        self.selenium.get(f"{self.live_server_url}/login/")
+
+        # Find and fill the login form fields
+        email_input = self.selenium.find_element(By.ID, "login-email")
+        email_input.send_keys("test@example.com")
+
+        password_input = self.selenium.find_element(By.ID, "login-password")
+        password_input.send_keys("SecurePass123!")
+
+        # Submit the form
+        submit_button = self.selenium.find_element(By.ID, "login-submit-btn")
+        submit_button.click()
+
+        # Wait for redirect to dashboard page (since user has active subscription)
+        WebDriverWait(self.selenium, 10).until(
+            lambda driver: "dashboard" in driver.current_url
+        )
+
+        # Verify that the user has been redirected to the dashboard page
+        self.assertIn("dashboard", self.selenium.current_url)
+
     def test_password_reset_link_redirects(self):
         """Test that password reset link redirects to password reset page"""
         self.selenium.get(f"{self.live_server_url}/login/")
-        
+
         # Find and click the "Forgot password?" link
         reset_link = self.selenium.find_element(By.LINK_TEXT, "Forgot your password?")
         reset_link.click()
-        
+
         # Wait for the page to load
         # The password reset URL pattern is /password/reset/ according to urls.py
         WebDriverWait(self.selenium, 10).until(

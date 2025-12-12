@@ -140,8 +140,32 @@ async function handleLogin(e) {
             setToken('access_token', data.access, rememberMe);
             setToken('refresh_token', data.refresh, rememberMe);
 
-            // Redirect to dashboard or previous page
-            window.location.href = '/dashboard/'; // or wherever the user should go
+            // Redirect based on the redirect URL from the API response
+            if (data.redirect_url) {
+                // Validate that the redirect URL is one of the allowed destinations
+                const allowedRedirects = ['/dashboard/', '/landing/', '/'];
+                if (allowedRedirects.includes(data.redirect_url)) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    // If the redirect URL is not in the whitelist, default to a safe page
+                    window.location.href = '/landing/';
+                }
+            } else {
+                // Determine redirect based on user subscription data to prevent security issues
+                const user = data.user;
+                const profile = user?.profile;
+
+                if (profile) {
+                    const activeStatuses = ['active', 'trial'];
+                    const hasActiveSubscription = activeStatuses.includes(profile.subscription_status) ||
+                                                 (profile.subscription_end_date && new Date(profile.subscription_end_date) > new Date());
+
+                    window.location.href = hasActiveSubscription ? '/dashboard/' : '/landing/';
+                } else {
+                    // If no profile data, default to landing page
+                    window.location.href = '/landing/';
+                }
+            }
         } else {
             // Show error message
             let errorMsg = 'Login failed';
