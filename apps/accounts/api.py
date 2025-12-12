@@ -514,10 +514,14 @@ def login(request):
             # Serialize user data
             user_serializer = UserSerializer(user)
 
+            # Determine redirect URL based on subscription status
+            redirect_url = get_redirect_url_after_login(user)
+
             response_data = {
                 'user': user_serializer.data,
                 'access': str(refresh.access_token),
-                'refresh': str(refresh)
+                'refresh': str(refresh),
+                'redirect_url': redirect_url
             }
 
             return Response(response_data, status=status.HTTP_200_OK)
@@ -533,6 +537,40 @@ def login(request):
             {'non_field_errors': ['Unable to log in with provided credentials.']},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+def get_redirect_url_after_login(user):
+    """
+    Determine the redirect URL after successful login based on user's subscription status.
+
+    Args:
+        user: The authenticated user object
+
+    Returns:
+        str: The URL to redirect the user to after login
+    """
+    # Check if user has an active subscription
+    # Assuming the subscription status is stored in the user's profile
+    has_subscription = False
+
+    if hasattr(user, 'profile'):
+        profile = user.profile
+        # Check if the user has an active subscription
+        # According to the UserProfile model, active subscription statuses are 'active', 'trial'
+        active_statuses = ['active', 'trial']
+        if hasattr(profile, 'subscription_status') and profile.subscription_status in active_statuses:
+            has_subscription = True
+        # Alternatively, if there's a subscription_end_date field
+        if hasattr(profile, 'subscription_end_date') and profile.subscription_end_date:
+            # If subscription_end_date is in the future, user has an active subscription
+            if profile.subscription_end_date > timezone.now():
+                has_subscription = True
+
+    # Return appropriate redirect URL based on subscription status
+    if has_subscription:
+        return '/dashboard/'  # URL for jobs list view (frontend)
+    else:
+        return '/landing/'  # URL for subscription detail view (frontend)
 
 
 @api_view(['POST'])

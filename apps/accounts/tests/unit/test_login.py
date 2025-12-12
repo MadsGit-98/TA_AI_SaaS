@@ -3,6 +3,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from apps.accounts.models import CustomUser, UserProfile
+from django.utils import timezone
+from datetime import timedelta
 
 
 class LoginTestCase(APITestCase):
@@ -32,7 +34,10 @@ class LoginTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
+        # Check that redirect is to landing page since user doesn't have active subscription
+        self.assertEqual(response.data['redirect_url'], '/landing/')
 
     def test_user_login_success_with_username(self):
         """Test successful user login with username and password"""
@@ -46,7 +51,10 @@ class LoginTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['username'], 'testuser')
+        # Check that redirect is to landing page since user doesn't have active subscription
+        self.assertEqual(response.data['redirect_url'], '/landing/')
 
     def test_user_login_invalid_credentials(self):
         """Test login with invalid credentials"""
@@ -96,3 +104,95 @@ class LoginTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('non_field_errors', response.data)
+
+    def test_user_login_with_active_subscription(self):
+        """Test successful user login with active subscription redirects to dashboard"""
+        # Update the user's profile to have an active subscription with an end date
+        profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_status = 'active'
+        profile.subscription_end_date = timezone.now() + timedelta(days=30)  # End date in the future
+        profile.save()
+
+        data = {
+            'username': 'test@example.com',
+            'password': 'SecurePass123!'
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
+        self.assertEqual(response.data['user']['email'], 'test@example.com')
+        # Check that redirect is to dashboard since user has active subscription
+        self.assertEqual(response.data['redirect_url'], '/dashboard/')
+
+    def test_user_login_with_trial_subscription(self):
+        """Test successful user login with trial subscription redirects to dashboard"""
+        # Update the user's profile to have a trial subscription
+        profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_status = 'trial'
+        profile.save()
+
+        data = {
+            'username': 'test@example.com',
+            'password': 'SecurePass123!'
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
+        self.assertEqual(response.data['user']['email'], 'test@example.com')
+        # Check that redirect is to dashboard since user has trial subscription
+        self.assertEqual(response.data['redirect_url'], '/dashboard/')
+
+    def test_user_login_with_subscription_end_date_in_future(self):
+        """Test successful user login with future subscription end date redirects to dashboard"""
+        # Update the user's profile to have a subscription end date in the future
+        profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_end_date = timezone.now() + timedelta(days=30)
+        profile.save()
+
+        data = {
+            'username': 'test@example.com',
+            'password': 'SecurePass123!'
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
+        self.assertEqual(response.data['user']['email'], 'test@example.com')
+        # Check that redirect is to dashboard since user has valid subscription end date
+        self.assertEqual(response.data['redirect_url'], '/dashboard/')
+
+    def test_user_login_with_expired_subscription_end_date(self):
+        """Test successful user login with expired subscription end date redirects to landing"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # Update the user's profile to have an expired subscription end date
+        profile = UserProfile.objects.get(user=self.user)
+        profile.subscription_end_date = timezone.now() - timedelta(days=30)
+        profile.save()
+
+        data = {
+            'username': 'test@example.com',
+            'password': 'SecurePass123!'
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertIn('redirect_url', response.data)
+        self.assertEqual(response.data['user']['email'], 'test@example.com')
+        # Check that redirect is to landing since user's subscription has expired
+        self.assertEqual(response.data['redirect_url'], '/landing/')
