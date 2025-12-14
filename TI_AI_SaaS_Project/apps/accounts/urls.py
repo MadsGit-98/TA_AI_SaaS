@@ -9,6 +9,7 @@ urlpatterns = [
     # Authentication URLs
     path('login/', views.login_view, name='login'),
     path('register/', views.register_view, name='register'),
+    path('password/reset/', views.password_reset_view, name='password_reset'),
 
     # Legal pages
     path('privacy/', views.privacy_policy_view, name='privacy_policy'),

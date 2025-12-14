@@ -32,12 +32,16 @@ def health_check(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('apps.accounts.urls')),  # Include accounts URLs for home page and auth
+    path('social-auth/', include('social_django.urls', namespace='social')),  # Include social auth URLs
     path('api/health/', health_check, name='health_check'),
     path('api/accounts/', include('apps.accounts.api_urls')),
-    path('api/jobs/', include('apps.jobs.urls')),
+    #path('api/jobs/', include('apps.jobs.urls')),
     path('api/applications/', include('apps.applications.urls')),
     path('api/analysis/', include('apps.analysis.urls')),
-    path('api/subscription/', include('apps.subscription.urls')),
+    #path('api/subscription/', include('apps.subscription.urls')),
+    # Frontend views for non-API access
+    path('dashboard/', include('apps.jobs.urls')),  # Jobs dashboard for subscribed users
+    path('landing/', include('apps.subscription.urls')),  # Subscription landing for non-subscribed users
 ]
 
 # Only add additional URL patterns after all API routes to avoid conflicts
@@ -55,7 +59,7 @@ def fallback_view(request, *args, **kwargs):
 
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)).*$', fallback_view, name='fallback'),
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 

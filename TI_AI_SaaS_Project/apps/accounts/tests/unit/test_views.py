@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.db import DatabaseError
 from django.db.utils import OperationalError
 from apps.accounts.models import HomePageContent, LegalPage, CardLogo
-from apps.accounts.views import home_view, login_view, register_view, privacy_policy_view, terms_conditions_view, refund_policy_view, contact_view
+from apps.accounts.views import home_view, login_view, register_view, privacy_policy_view, terms_conditions_view, refund_policy_view, contact_view, password_reset_view
 from django.http import HttpRequest
 
 
@@ -164,4 +164,18 @@ class TestLegalPageViews(TestCase):
         """Test the contact page view"""
         request = self.factory.get('/contact/')
         response = contact_view(request)
+        self.assertEqual(response.status_code, 200)
+
+
+class TestPasswordResetView(TestCase):
+    """Test cases for password reset view"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.factory = RequestFactory()
+
+    def test_password_reset_view_status_code(self):
+        """Test that the password reset view returns a 200 status code"""
+        request = self.factory.get('/password/reset/')
+        response = password_reset_view(request)
         self.assertEqual(response.status_code, 200)
