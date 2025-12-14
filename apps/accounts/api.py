@@ -142,6 +142,8 @@ logger = logging.getLogger('django_auth')
 def send_activation_email(user, token):
     """
     Send activation email to user with confirmation link
+    Returns:
+        bool: True if email was sent successfully, False otherwise
     """
     subject = 'Activate your X-Crewter account'
 
@@ -168,6 +170,7 @@ def send_activation_email(user, token):
         if settings.DEBUG:
             masked_email = mask_email(user.email)
             logger.debug(f"Activation email sent successfully to user {user.id} ({masked_email})")
+        return True
     except SMTPException as e:
         # Log the SMTP-related error with details
         masked_email = mask_email(user.email)
@@ -175,6 +178,7 @@ def send_activation_email(user, token):
         # For development, we'll log that an activation email failed without the token
         if settings.DEBUG:
             logger.debug(f"Activation email failed for user {user.id}")
+        return False
     except Exception as e:
         # Log other email-related errors
         masked_email = mask_email(user.email)
@@ -183,6 +187,7 @@ def send_activation_email(user, token):
         # The function can continue without sending email
         if settings.DEBUG:
             logger.debug(f"Activation email failed for user {user.id}")
+        return False
 
 
 def send_password_reset_email(user, token):
@@ -317,7 +322,7 @@ def register(request):
         )
 
         # Send confirmation email
-        send_activation_email(user, token)
+        email_sent = send_activation_email(user, token)
 
         # Create JWT tokens
         refresh = RefreshToken.for_user(user)
@@ -329,6 +334,10 @@ def register(request):
             'access': str(refresh.access_token),
             'refresh': str(refresh)
         }
+
+        # Add warning if activation email could not be sent
+        if not email_sent:
+            response_data['warning'] = 'Account created but activation email could not be sent. Please contact support.'
 
         logger.info(f"Registration successful for user id={user.id}")        
         return Response(response_data, status=status.HTTP_201_CREATED)

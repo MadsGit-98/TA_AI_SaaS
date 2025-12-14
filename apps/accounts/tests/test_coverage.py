@@ -8,6 +8,7 @@ import sys
 import django
 from django.conf import settings
 from django.test.utils import get_runner
+import coverage
 
 if __name__ == "__main__":
     os.environ['DJANGO_SETTINGS_MODULE'] = 'x_crewter.settings'
@@ -15,7 +16,6 @@ if __name__ == "__main__":
 
     # Import coverage here to allow for better control
     try:
-        import coverage
         cov = coverage.Coverage()
         cov.start()
 
@@ -47,9 +47,10 @@ if __name__ == "__main__":
         else:
             sys.exit(0)
     except ImportError:
-        print("Coverage module not installed. Please install it with: pip install coverage")
+        print("ERROR: Coverage module not installed. Please install it with: pip install coverage")
         # Run tests without coverage using the Django test runner
         from django.test.runner import DiscoverRunner
         test_runner = DiscoverRunner(verbosity=2, interactive=False, failfast=False)
         failures = test_runner.run_tests(["apps.accounts.tests"])
-        sys.exit(0 if failures == 0 else 1)
+        # Exit with failure since coverage requirement cannot be verified
+        sys.exit(1)
