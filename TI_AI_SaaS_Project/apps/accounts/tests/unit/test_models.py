@@ -316,3 +316,366 @@ class TestSiteSettingModel(TestCase):
                 setting_value="Different value",
                 description="Another description"
             )
+
+
+class CustomUserModelExtendedTestCase(TestCase):
+    """Extended test cases for CustomUser model"""
+
+    def test_user_creation_with_unique_email(self):
+        """Test that email must be unique"""
+        User.objects.create_user(
+            username='user1',
+            email='same@example.com',
+            password='TestPass123!'
+        )
+        
+        # Attempt to create another user with same email
+        with self.assertRaises(Exception):  # IntegrityError
+            User.objects.create_user(
+                username='user2',
+                email='same@example.com',
+                password='TestPass456!'
+            )
+
+    def test_user_str_representation(self):
+        """Test string representation of user"""
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+        
+        self.assertEqual(str(user), 'testuser')
+
+    def test_user_has_changed_method_on_creation(self):
+        """Test has_changed method on user creation"""
+        user = User.objects.create_user(
+            username='newuser',
+            email='new@example.com',
+            password='TestPass123!'
+        )
+        
+        # New user should have field updates
+        self.assertTrue(user.has_changed())
+
+    def test_user_has_changed_after_update(self):
+        """Test has_changed method after update"""
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+        
+        # Update email
+        user.email = 'updated@example.com'
+        user.save()
+        
+        # Should detect change
+        self.assertTrue(user.has_changed())
+
+    def test_user_has_not_changed_when_no_updates(self):
+        """Test has_changed returns false when no updates"""
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+        
+        # Save without changes
+        user.save()
+        
+        # Should not detect changes (all fields same)
+        # Note: has_changed checks _field_updates attribute which tracks actual changes
+        self.assertFalse(user.has_changed())
+
+
+class UserProfileModelExtendedTestCase(TestCase):
+    """Extended test cases for UserProfile model"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+
+    def test_profile_clean_validation_active_requires_end_date(self):
+        """Test that active subscription requires end date"""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        profile = UserProfile(
+            user=self.user,
+            subscription_status='active',
+            subscription_end_date=None  # Missing end date
+        )
+        
+        with self.assertRaises(DjangoValidationError):
+            profile.clean()
+
+    def test_profile_clean_validation_inactive_requires_no_plan(self):
+        """Test that inactive subscription should have no plan"""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        profile = UserProfile(
+            user=self.user,
+            subscription_status='inactive',
+            chosen_subscription_plan='basic'  # Should be 'none'
+        )
+        
+        with self.assertRaises(DjangoValidationError):
+            profile.clean()
+
+    def test_profile_save_runs_validation(self):
+        """Test that save method runs clean validation"""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        profile = UserProfile(
+            user=self.user,
+            subscription_status='active',
+            subscription_end_date=None
+        )
+        
+        with self.assertRaises(DjangoValidationError):
+            profile.save()
+
+    def test_profile_str_representation(self):
+        """Test string representation of profile"""
+        profile = UserProfile.objects.create(user=self.user)
+        
+        self.assertEqual(str(profile), "testuser's Profile")
+
+    def test_profile_default_values(self):
+        """Test default values for profile"""
+        profile = UserProfile.objects.create(user=self.user)
+        
+        self.assertEqual(profile.subscription_status, 'inactive')
+        self.assertEqual(profile.chosen_subscription_plan, 'none')
+        self.assertTrue(profile.is_talent_acquisition_specialist)
+        self.assertIsNone(profile.subscription_end_date)
+
+    def test_profile_cascade_delete(self):
+        """Test that profile is deleted when user is deleted"""
+        profile = UserProfile.objects.create(user=self.user)
+        profile_id = profile.id
+        
+        self.user.delete()
+        
+        # Profile should be deleted
+        self.assertFalse(UserProfile.objects.filter(id=profile_id).exists())
+
+
+class VerificationTokenModelExtendedTestCase(TestCase):
+    """Extended test cases for VerificationToken model"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+
+    def test_token_is_expired_future_date(self):
+        """Test is_expired returns False for future expiry"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='future_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24)
+        )
+        
+        self.assertFalse(token.is_expired())
+
+    def test_token_is_expired_past_date(self):
+        """Test is_expired returns True for past expiry"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='expired_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() - timedelta(hours=1)
+        )
+        
+        self.assertTrue(token.is_expired())
+
+    def test_token_is_valid_unused_and_not_expired(self):
+        """Test is_valid returns True for unused and not expired token"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='valid_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24),
+            is_used=False
+        )
+        
+        self.assertTrue(token.is_valid())
+
+    def test_token_is_invalid_when_used(self):
+        """Test is_valid returns False when token is used"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='used_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24),
+            is_used=True
+        )
+        
+        self.assertFalse(token.is_valid())
+
+    def test_token_is_invalid_when_expired(self):
+        """Test is_valid returns False when token is expired"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='expired_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() - timedelta(hours=1),
+            is_used=False
+        )
+        
+        self.assertFalse(token.is_valid())
+
+    def test_token_str_representation(self):
+        """Test string representation of token"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        token = VerificationToken.objects.create(
+            user=self.user,
+            token='test_token',
+            token_type='password_reset',
+            expires_at=timezone.now() + timedelta(hours=24)
+        )
+        
+        self.assertEqual(str(token), 'password_reset for testuser')
+
+    def test_token_unique_constraint(self):
+        """Test that token must be unique"""
+        from apps.accounts.models import VerificationToken
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        VerificationToken.objects.create(
+            user=self.user,
+            token='unique_token',
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24)
+        )
+        
+        # Attempt to create another token with same token value
+        with self.assertRaises(Exception):  # IntegrityError
+            VerificationToken.objects.create(
+                user=self.user,
+                token='unique_token',  # Same token
+                token_type='password_reset',
+                expires_at=timezone.now() + timedelta(hours=24)
+            )
+
+
+class SocialAccountModelTestCase(TestCase):
+    """Test cases for SocialAccount model"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='TestPass123!'
+        )
+
+    def test_social_account_creation(self):
+        """Test creating a social account"""
+        from apps.accounts.models import SocialAccount
+        
+        social_account = SocialAccount.objects.create(
+            user=self.user,
+            provider='google-oauth2',
+            provider_account_id='google123',
+            extra_data={'name': 'Test User'}
+        )
+        
+        self.assertEqual(social_account.user, self.user)
+        self.assertEqual(social_account.provider, 'google-oauth2')
+        self.assertEqual(social_account.provider_account_id, 'google123')
+
+    def test_social_account_str_representation(self):
+        """Test string representation of social account"""
+        from apps.accounts.models import SocialAccount
+        
+        social_account = SocialAccount.objects.create(
+            user=self.user,
+            provider='linkedin-oauth2',
+            provider_account_id='linkedin123'
+        )
+        
+        self.assertEqual(str(social_account), 'linkedin-oauth2 account for testuser')
+
+    def test_social_account_unique_together(self):
+        """Test unique_together constraint on provider and provider_account_id"""
+        from apps.accounts.models import SocialAccount
+        
+        SocialAccount.objects.create(
+            user=self.user,
+            provider='google-oauth2',
+            provider_account_id='google123'
+        )
+        
+        # Create another user
+        user2 = User.objects.create_user(
+            username='user2',
+            email='user2@example.com',
+            password='TestPass123!'
+        )
+        
+        # Attempt to create social account with same provider and provider_account_id
+        with self.assertRaises(Exception):  # IntegrityError
+            SocialAccount.objects.create(
+                user=user2,
+                provider='google-oauth2',
+                provider_account_id='google123'  # Same as above
+            )
+
+    def test_social_account_extra_data_default(self):
+        """Test that extra_data defaults to empty dict"""
+        from apps.accounts.models import SocialAccount
+        
+        social_account = SocialAccount.objects.create(
+            user=self.user,
+            provider='microsoft-graph',
+            provider_account_id='ms123'
+        )
+        
+        self.assertEqual(social_account.extra_data, {})
+
+    def test_social_account_cascade_delete(self):
+        """Test that social account is deleted when user is deleted"""
+        from apps.accounts.models import SocialAccount
+        
+        social_account = SocialAccount.objects.create(
+            user=self.user,
+            provider='google-oauth2',
+            provider_account_id='google123'
+        )
+        account_id = social_account.id
+        
+        self.user.delete()
+        
+        # Social account should be deleted
+        self.assertFalse(SocialAccount.objects.filter(id=account_id).exists())
