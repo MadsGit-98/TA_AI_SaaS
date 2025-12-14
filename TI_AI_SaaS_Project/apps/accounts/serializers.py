@@ -219,9 +219,19 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         except ValidationError:
             raise serializers.ValidationError("Enter a valid email address.")
 
+        # Safely get the request from context
+        request = self.context.get('request')
+        user_id = getattr(getattr(request, 'user', None), 'id', None)
+
         # Check if email is already taken by another user
-        user_id = self.context['request'].user.id
-        if CustomUser.objects.exclude(id=user_id).filter(email=value).exists():
+        # If we have a user ID (updating existing user), exclude that user from the check
+        # If we don't have a user ID, check for any user with that email
+        if user_id:
+            email_exists = CustomUser.objects.exclude(id=user_id).filter(email=value).exists()
+        else:
+            email_exists = CustomUser.objects.filter(email=value).exists()
+
+        if email_exists:
             raise serializers.ValidationError("A user with this email already exists.")
 
         return value
