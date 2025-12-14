@@ -509,6 +509,27 @@ def password_reset_confirm(request, uid, token):
             # Acquire a row lock on the verification token to prevent race conditions
             verification_token_locked = VerificationToken.objects.select_for_update().get(pk=verification_token.pk)
 
+            # Re-check all conditions after acquiring the lock to prevent race conditions
+            # where multiple requests pass initial checks but only one should proceed
+            if verification_token_locked.is_used:
+                return Response(
+                    {'error': 'Token has already been used.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if verification_token_locked.is_expired():
+                return Response(
+                    {'error': 'Reset link has expired.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if str(uid) != str(verification_token_locked.user.pk):
+                return Response(
+                    {'error': 'UID does not match token owner.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # All checks passed, proceed with password reset
             # Set new password
             user = verification_token_locked.user
             user.set_password(new_password)
