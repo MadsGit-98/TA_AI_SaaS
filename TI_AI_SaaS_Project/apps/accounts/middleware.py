@@ -34,8 +34,8 @@ class RBACMiddleware(MiddlewareMixin):
                 # which is indicated by the profile field 'is_talent_acquisition_specialist'
                 try:
                     profile = request.user.profile
-                except UserProfile.DoesNotExist:
-                    # This occurs when the profile relation exists but the related object doesn't
+                except (AttributeError, ObjectDoesNotExist):
+                    # This occurs when the profile relation doesn't exist
                     logger.debug(f"Profile for user {request.user.id if hasattr(request.user, 'id') else 'unknown'} does not exist")
                     return JsonResponse(
                         {'error': 'User profile not found'},

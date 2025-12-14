@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'django.contrib.sites',  # Required for social auth
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'djoser',
     'social_django',  # Social authentication
     'apps.accounts',
