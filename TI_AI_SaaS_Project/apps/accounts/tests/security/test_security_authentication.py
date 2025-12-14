@@ -43,7 +43,7 @@ class SecurityTestCase(TestCase):
         login_url = reverse('api:login')
 
         # Try to login with wrong password multiple times
-        for i in range(6):  # More than the rate limit
+        for i in range(5):  # 5 attempts before the final one that should be rate limited
             data = {
                 'username': 'test@example.com',  # Changed from 'email' to 'username' to match API changes
                 'password': 'WrongPassword123!'
@@ -224,7 +224,7 @@ class SecurityTestCase(TestCase):
         reset_confirm_url = reverse('api:password_reset_confirm',
                                    kwargs={'uid': str(user.id), 'token': verification_token.token})
 
-        for i in range(6):  # More than the rate limit (5/min)
+        for i in range(5):  # 5 attempts before the final one that should be rate limited
             reset_confirm_data = {
                 'uid': str(user.id),
                 'token': verification_token.token,
