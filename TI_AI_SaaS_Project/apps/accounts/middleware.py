@@ -33,29 +33,18 @@ class RBACMiddleware(MiddlewareMixin):
                 # For this application, we require the user to be a Talent Acquisition Specialist
                 # which is indicated by the profile field 'is_talent_acquisition_specialist'
                 try:
-                    if hasattr(request.user, 'profile'):
-                        if not request.user.profile.is_talent_acquisition_specialist:
-                            return JsonResponse(
-                                {'error': 'Insufficient permissions'},
-                                status=403
-                            )
-                    else:  # User doesn't have a profile, which is unexpected
-                        return JsonResponse(
-                            {'error': 'User profile not found'},
-                            status=403
-                        )
-                except AttributeError:
-                    # This occurs when request.user doesn't have a profile attribute
-                    logger.debug(f"User {request.user.id if hasattr(request.user, 'id') else 'unknown'} missing profile attribute")
-                    return JsonResponse(
-                        {'error': 'User profile not found'},
-                        status=403
-                    )
+                    profile = request.user.profile
                 except UserProfile.DoesNotExist:
                     # This occurs when the profile relation exists but the related object doesn't
                     logger.debug(f"Profile for user {request.user.id if hasattr(request.user, 'id') else 'unknown'} does not exist")
                     return JsonResponse(
                         {'error': 'User profile not found'},
+                        status=403
+                    )
+
+                if not profile.is_talent_acquisition_specialist:
+                    return JsonResponse(
+                        {'error': 'Insufficient permissions'},
                         status=403
                     )
         

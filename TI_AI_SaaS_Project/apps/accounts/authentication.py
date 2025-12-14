@@ -34,22 +34,39 @@ class EmailOrUsernameBackend(ModelBackend):
         if username is None or password is None:
             return None
             
+        # Import logging at the beginning of the method
+        import logging
+        logger = logging.getLogger(__name__)
+
         try:
-            # Query for a user where the username OR email matches the provided value
-            user = UserModel.objects.get(
-                Q(username=username) | Q(email=username)
-            )
-            
-            # Check if the password is correct
-            if user.check_password(password) and self.user_can_authenticate(user):
-                return user
-                
-        except UserModel.DoesNotExist:
-            # Run the default password hasher once to reduce timing difference
-            # between existing and non-existing users
-            UserModel().set_password(password)
-            return None
-            
+            # First, try to fetch by username exactly
+            try:
+                user = UserModel.objects.get(username=username)
+                # Check if the password is correct
+                if user.check_password(password) and self.user_can_authenticate(user):
+                    return user
+            except UserModel.DoesNotExist:
+                # Username not found, try to fetch by email
+                try:
+                    user = UserModel.objects.get(email=username)
+                    # Check if the password is correct
+                    if user.check_password(password) and self.user_can_authenticate(user):
+                        return user
+                except UserModel.DoesNotExist:
+                    # Neither username nor email matched
+                    pass
+                except UserModel.MultipleObjectsReturned:
+                    # Multiple users found with this email, log and continue with timing mitigation
+                    logger.error(f"Multiple users found with email: {username}")
+                    # Continue with timing mitigation below
+        except UserModel.MultipleObjectsReturned:
+            # This shouldn't happen with the new logic, but as a safeguard
+            logger.error(f"Multiple users found when searching by username: {username}")
+            # Continue with timing mitigation below
+
+        # Run the default password hasher once to reduce timing difference
+        # between existing and non-existing users
+        UserModel().set_password(password)
         return None
 
     def get_user(self, user_id):
