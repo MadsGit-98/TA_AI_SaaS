@@ -7,6 +7,36 @@ from django.db.models import Q
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from django.utils.translation import gettext_lazy as _
+import logging
+
+
+def mask_email_or_username(identifier):
+    """
+    Mask an email address or username to protect PII in logs.
+    For emails: show only the first character of the local part and the domain.
+    For usernames: show only the first and last characters.
+    Returns "unknown" when identifier is falsy.
+    """
+    if not identifier:
+        return "unknown"
+
+    # Check if it's an email by looking for '@'
+    if '@' in identifier:
+        email_parts = identifier.split('@')
+        local_part = email_parts[0]
+        domain = email_parts[1] if len(email_parts) > 1 else ''
+
+        if not local_part:
+            # If local part is empty (like @domain.com), return "***@domain.com"
+            return f"***@{domain}"
+
+        # Otherwise return first char + "***" + "@" + domain
+        return f"{local_part[0]}***@{domain}"
+    else:
+        # For username, show first and last characters
+        if len(identifier) <= 2:
+            return f"{identifier[0]}***" if identifier else "unknown"
+        return f"{identifier[0]}***{identifier[-1]}"
 
 
 class EmailOrUsernameBackend(ModelBackend):
@@ -60,11 +90,15 @@ class EmailOrUsernameBackend(ModelBackend):
                     pass
                 except UserModel.MultipleObjectsReturned:
                     # Multiple users found with this email, log and continue with timing mitigation
-                    logger.error(f"Multiple users found with email: {username}")
+                    # PII is masked to protect user privacy
+                    masked_identifier = mask_email_or_username(username)
+                    logger.error(f"Multiple users found with identifier: {masked_identifier}")
                     # Continue with timing mitigation below
         except UserModel.MultipleObjectsReturned:
             # This shouldn't happen with the new logic, but as a safeguard
-            logger.error(f"Multiple users found when searching by username: {username}")
+            # PII is masked to protect user privacy
+            masked_identifier = mask_email_or_username(username)
+            logger.error(f"Multiple users found when searching by identifier: {masked_identifier}")
             # Continue with timing mitigation below
 
         # Run the default password hasher once to reduce timing difference

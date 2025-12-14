@@ -172,31 +172,21 @@ async function handleLogin(e) {
             setToken('access_token', data.access, rememberMe);
             setToken('refresh_token', data.refresh, rememberMe);
 
-            // Redirect based on the redirect URL from the API response
-            if (data.redirect_url) {
-                // Validate that the redirect URL is one of the allowed destinations
+            // Use server-provided redirect URL for navigation
+            if (data.redirect_url && typeof data.redirect_url === 'string' && data.redirect_url.length > 0) {
+                // Validate that the redirect URL is one of the allowed destinations for security
                 const allowedRedirects = ['/dashboard/', '/landing/', '/'];
                 if (allowedRedirects.includes(data.redirect_url)) {
                     window.location.href = data.redirect_url;
                 } else {
                     // If the redirect URL is not in the whitelist, default to a safe page
+                    console.warn('Invalid redirect URL received from server:', data.redirect_url);
                     window.location.href = '/landing/';
                 }
             } else {
-                // Determine redirect based on user subscription data to prevent security issues
-                const user = data.user;
-                const profile = user?.profile;
-
-                if (profile) {
-                    const activeStatuses = ['active', 'trial'];
-                    const hasActiveSubscription = activeStatuses.includes(profile.subscription_status) ||
-                                                 (profile.subscription_end_date && new Date(profile.subscription_end_date) > new Date());
-
-                    window.location.href = hasActiveSubscription ? '/dashboard/' : '/landing/';
-                } else {
-                    // If no profile data, default to landing page
-                    window.location.href = '/landing/';
-                }
+                // If no redirect URL provided by server, default to landing page and log issue
+                console.warn('No redirect URL provided by server. Using default redirect.');
+                window.location.href = '/landing/';
             }
         } else {
             // Show error message

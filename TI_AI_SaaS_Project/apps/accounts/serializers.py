@@ -132,30 +132,6 @@ class UserRegistrationSerializer(UserCreateSerializer):
 
         return value
 
-    def create(self, validated_data):
-        """
-        Create the user and associated profile atomically
-        """
-        # Use the profile-related data that was extracted in the validate method
-        subscription_status = getattr(self, 'subscription_status', 'inactive')
-        chosen_subscription_plan = getattr(self, 'chosen_subscription_plan', 'none')
-        is_talent_acquisition_specialist = getattr(self, 'is_talent_acquisition_specialist', True)
-
-        # Create both user and profile within the same atomic transaction
-        with transaction.atomic():
-            # Create the user
-            user = super().create(validated_data)
-
-            # Create the associated profile
-            UserProfile.objects.create(
-                user=user,
-                subscription_status=subscription_status,
-                chosen_subscription_plan=chosen_subscription_plan,
-                is_talent_acquisition_specialist=is_talent_acquisition_specialist
-            )
-
-        return user
-
 
 class UserLoginSerializer(serializers.Serializer):
     """
