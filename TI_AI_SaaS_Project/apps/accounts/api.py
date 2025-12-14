@@ -103,6 +103,35 @@ class PasswordResetConfirmThrottle(SimpleRateThrottle):
             return f'password_reset_confirm_scope:unknown_ip:useragent:{user_agent_fragment}'
 
         return f'password_reset_confirm_scope:{ip}'
+
+
+class LoginAttemptThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for login attempts to prevent brute force attacks
+    Limits attempts based on IP address to prevent guessing passwords
+    """
+    scope = 'login_attempts'
+
+    def get_cache_key(self, request, view):
+        # Create a key based on the IP address to prevent brute force attempts
+        # If the IP is behind a proxy, try to get the real IP
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+
+        # Create a key that limits attempts by IP
+        if not ip:
+            # Use a fallback key when IP is missing to maintain throttling
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            # Use a short, safe portion of the user agent to avoid sensitive info
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'login_attempts_scope:unknown_ip:useragent:{user_agent_fragment}'
+
+        return f'login_attempts_scope:{ip}'
+
+
 # This endpoint would handle the response from social providers
 # after the user has authenticated with the provider
 
@@ -488,7 +517,7 @@ def password_reset_confirm(request, uid, token):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to log in
-@throttle_classes([AnonRateThrottle])  # Apply rate limiting
+@throttle_classes([AnonRateThrottle, LoginAttemptThrottle])  # Apply rate limiting
 def login(request):
     """
     Login endpoint for users
