@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
@@ -57,18 +58,13 @@ class PasswordResetThrottle(SimpleRateThrottle):
     scope = 'password_reset'
 
     def get_cache_key(self, request, view):
-        # Create a key that combines the user's IP and email to prevent abuse
-        # If the IP is behind a proxy, try to get the real IP
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
 
         email = request.data.get('email', '').lower()
 
         # Create a key that includes both IP and email
-        if not ip or not email:
+        if not client_ip or not email:
             # Use a fallback key when IP or email is missing to maintain throttling
             email_or_unknown = email if email else 'unknown'
             user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
@@ -76,7 +72,7 @@ class PasswordResetThrottle(SimpleRateThrottle):
             user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
             return f'password_reset_scope:unknown_ip:{email_or_unknown}:useragent:{user_agent_fragment}'
 
-        return f'password_reset_scope:{ip}:{email}'
+        return f'password_reset_scope:{client_ip}:{email}'
 
 
 class PasswordResetConfirmThrottle(SimpleRateThrottle):
@@ -87,23 +83,18 @@ class PasswordResetConfirmThrottle(SimpleRateThrottle):
     scope = 'password_reset_confirm'
 
     def get_cache_key(self, request, view):
-        # Create a key based on the IP address to prevent brute force attempts
-        # If the IP is behind a proxy, try to get the real IP
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
 
         # Create a key that limits attempts by IP
-        if not ip:
+        if not client_ip:
             # Use a fallback key when IP is missing to maintain throttling
             user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
             # Use a short, safe portion of the user agent to avoid sensitive info
             user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
             return f'password_reset_confirm_scope:unknown_ip:useragent:{user_agent_fragment}'
 
-        return f'password_reset_confirm_scope:{ip}'
+        return f'password_reset_confirm_scope:{client_ip}'
 
 
 class LoginAttemptThrottle(SimpleRateThrottle):
@@ -114,23 +105,18 @@ class LoginAttemptThrottle(SimpleRateThrottle):
     scope = 'login_attempts'
 
     def get_cache_key(self, request, view):
-        # Create a key based on the IP address to prevent brute force attempts
-        # If the IP is behind a proxy, try to get the real IP
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
 
         # Create a key that limits attempts by IP
-        if not ip:
+        if not client_ip:
             # Use a fallback key when IP is missing to maintain throttling
             user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
             # Use a short, safe portion of the user agent to avoid sensitive info
             user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
             return f'login_attempts_scope:unknown_ip:useragent:{user_agent_fragment}'
 
-        return f'login_attempts_scope:{ip}'
+        return f'login_attempts_scope:{client_ip}'
 
 
 # This endpoint would handle the response from social providers
@@ -651,11 +637,33 @@ def logout(request):
         if refresh_token:
             token = RefreshToken(refresh_token)
             token.blacklist()
+        else:
+            # If no refresh token provided, still logout the session
+            logger.info("Logout attempted without refresh token")
+    except AttributeError:
+        # This can happen if the blacklist app is not properly configured
+        logger.error("AttributeError during logout - blacklist method not available")
+        return Response(
+            {'error': 'Invalid refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except (TokenError, InvalidToken):
+        # Handle invalid or malformed refresh token
+        logger.warning("Invalid refresh token provided during logout")
+        return Response(
+            {'error': 'Invalid refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        # Log the specific error for debugging while returning a safe response
+        logger.error(f"Unexpected error during logout: {str(e)}")
+        return Response(
+            {'error': 'Logout failed'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-        auth_logout(request)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except Exception:
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    auth_logout(request)
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET'])

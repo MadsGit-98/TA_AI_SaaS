@@ -117,7 +117,8 @@ REST_FRAMEWORK = {
         'login_attempts': '5/min',  # 5 attempts per minute for login
         'password_reset': '3/min',  # 3 password reset attempts per minute per IP+email
         'password_reset_confirm': '5/min',  # 5 password reset confirmation attempts per minute per IP
-    }
+    },
+    'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
 
 # JWT Configuration
