@@ -52,6 +52,7 @@ async function handleRegister(e) {
         first_name: document.getElementById('first-name').value,
         last_name: document.getElementById('last-name').value,
         email: document.getElementById('email').value,
+        username: document.getElementById('email').value, // Use email as username
         password: document.getElementById('password').value,
         password_confirm: document.getElementById('confirm-password').value
     };
@@ -75,8 +76,11 @@ async function handleRegister(e) {
             // Show success message
             document.getElementById('registration-form-container').style.display = 'none';
             successMessage.classList.remove('hidden');
-            
-            // Optionally redirect after a delay or let user click a link to login
+
+            // Redirect to login page after a short delay to show success message
+            setTimeout(() => {
+                window.location.href = '/login/';
+            }, 1500); // Wait 1.5 seconds before redirecting
         } else {
             // Show error message
             let errorMsg = 'Registration failed';
