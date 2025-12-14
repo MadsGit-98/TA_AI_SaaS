@@ -199,6 +199,7 @@ def send_password_reset_email(user, token):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def homepage_content_api(request):
     """
     Retrieve configurable content for the home page
@@ -209,12 +210,13 @@ def homepage_content_api(request):
         return Response(serializer.data)
     except HomePageContent.DoesNotExist:
         return Response(
-            {'error': 'No homepage content available'}, 
+            {'error': 'No homepage content available'},
             status=status.HTTP_404_NOT_FOUND
         )
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def legal_pages_api(request, slug):
     """
     Retrieve content for a specific legal page (privacy policy, terms, etc.)
@@ -225,12 +227,13 @@ def legal_pages_api(request, slug):
         return Response(serializer.data)
     except LegalPage.DoesNotExist:
         return Response(
-            {'error': 'Legal page not found'}, 
+            {'error': 'Legal page not found'},
             status=status.HTTP_404_NOT_FOUND
         )
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def card_logos_api(request):
     """
     Retrieve information about accepted payment card logos for display
