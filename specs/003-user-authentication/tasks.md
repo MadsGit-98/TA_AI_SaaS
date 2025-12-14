@@ -3,7 +3,7 @@
 **Feature**: User Authentication & Account Management  
 **Branch**: `003-user-authentication`  
 **Created**: December 8, 2025  
-**Generated from**: [spec.md](spec.md), [plan.md](plan.md), [data-model.md](data-model.md), [contracts/auth-api.yaml](contracts/auth-api.yaml)
+**Generated from**: [spec.md](spec.md), [plan.md](plan.md), [data-model.md](data-model.md), [contracts/auth-api.md](contracts/auth-api.md)
 
 ## Implementation Strategy
 

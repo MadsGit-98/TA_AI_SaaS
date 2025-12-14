@@ -5,6 +5,7 @@ from rest_framework.test import APITestCase
 from apps.accounts.models import CustomUser, UserProfile
 from django.utils import timezone
 from datetime import timedelta
+from django.core.cache import cache
 
 
 class LoginTestCase(APITestCase):
@@ -21,6 +22,10 @@ class LoginTestCase(APITestCase):
             user=self.user,
             is_talent_acquisition_specialist=True
         )
+
+    def tearDown(self):
+        # Clear cache to reset rate limiting between tests
+        cache.clear()
 
     def test_user_login_success_with_email(self):
         """Test successful user login with email and password"""

@@ -21,6 +21,30 @@ function removeToken(tokenName) {
     sessionStorage.removeItem(tokenName);
 }
 
+// Function to get CSRF token from cookie or meta tag
+function getCsrfToken() {
+    // Try to get from meta tag first
+    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    // If not found in meta tag, try to get from cookie
+    if (!token) {
+        const name = 'csrftoken';
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                // Does this cookie string begin with the name we want?
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    token = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+    }
+    return token;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
@@ -66,7 +90,9 @@ async function handleRegister(e) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
             },
+            credentials: 'same-origin',
             body: JSON.stringify(formData)
         });
         
@@ -133,7 +159,9 @@ async function handleLogin(e) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
             },
+            credentials: 'same-origin',
             body: JSON.stringify(formData)
         });
 
@@ -214,7 +242,9 @@ async function handlePasswordReset(e) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
             },
+            credentials: 'same-origin',
             body: JSON.stringify(formData)
         });
         
