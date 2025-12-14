@@ -16,6 +16,7 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
@@ -912,23 +913,27 @@ def token_refresh(request):
     Refresh JWT token endpoint
     Expects a refresh token in the request data and returns a new access token
     """
-    refresh_token = request.data.get('refresh')
-
-    if not refresh_token:
+    # Check if there's a refresh token in the request data
+    if 'refresh' not in request.data:
         return Response(
             {'error': 'Refresh token is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     try:
-        # Create a RefreshToken instance from the provided token
-        refresh = RefreshToken(refresh_token)
+        # Use the TokenRefreshSerializer to properly handle token rotation and blacklisting
+        serializer = TokenRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        # Return a new access token
-        new_access_token = str(refresh.access_token)
+        # Return validated data which includes new access token and optionally new refresh token
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
-        return Response({'access': new_access_token}, status=status.HTTP_200_OK)
-
+    except serializers.ValidationError as e:
+        # Handle serializer validation errors appropriately
+        return Response(
+            {'error': 'Invalid or expired refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     except Exception as e:
         # Log the error server-side without exposing details to the client
         logger.warning(f"Token refresh failed: {str(e)}")

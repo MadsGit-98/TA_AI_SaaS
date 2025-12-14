@@ -248,10 +248,11 @@ class SocialAuthAPITestCase(TestCase):
         """Set up test data for API tests."""
         self.client = Client()
 
+    @patch('apps.accounts.api.RefreshToken')
     @patch('apps.accounts.api.UserSerializer')
     @patch('apps.accounts.api.load_strategy')
     @patch('apps.accounts.api.load_backend')
-    def test_social_login_jwt_success(self, mock_load_backend, mock_load_strategy, mock_user_serializer):
+    def test_social_login_jwt_success(self, mock_load_backend, mock_load_strategy, mock_user_serializer, mock_refresh_token):
         """Test successful social login JWT creation."""
         # Mock user returned by authentication
         mock_user = MagicMock()
@@ -298,6 +299,14 @@ class SocialAuthAPITestCase(TestCase):
         mock_user_serializer_instance = MagicMock()
         mock_user_serializer_instance.data = serialized_user_data
         mock_user_serializer.return_value = mock_user_serializer_instance
+
+        # Mock the RefreshToken to simulate proper behavior
+        mock_refresh_instance = MagicMock()
+        mock_access_token = MagicMock()
+        mock_access_token.__str__.return_value = 'mocked_access_token'
+        mock_refresh_instance.access_token = mock_access_token
+        mock_refresh_instance.__str__.return_value = 'mocked_refresh_token'
+        mock_refresh_token.for_user.return_value = mock_refresh_instance
 
         # Create request with provider and access token using Django test client
         response = self.client.post('/api/accounts/auth/social/jwt/', {
