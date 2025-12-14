@@ -153,11 +153,18 @@ class RegistrationE2ETest(StaticLiveServerTestCase):
         submit_button.click()
 
         # Should show an error message about duplicate email
+        # First, wait for the error message element to be present
         WebDriverWait(self.selenium, 10).until(
-            EC.visibility_of_element_located((By.ID, "error-message"))
+            EC.presence_of_element_located((By.ID, "error-message"))
         )
 
+        # Then wait specifically for the error message to become visible
         error_message = self.selenium.find_element(By.ID, "error-message")
+        WebDriverWait(self.selenium, 10).until(
+            lambda driver: error_message.is_displayed()
+        )
+
+        # Final verification
         self.assertTrue(error_message.is_displayed())
 
     def test_registration_redirect_to_login(self):
