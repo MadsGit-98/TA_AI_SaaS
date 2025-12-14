@@ -58,3 +58,59 @@ class TestHomePageSelenium(LiveServerTestCase):
         
         # Verify that this can be understood within 30 seconds (implicit in the test design)
         # The fact that we can assert these elements means the value prop is clear
+
+    def test_navigate_to_login_from_homepage(self):
+        """Test that user can navigate to the login page from the homepage"""
+        # Navigate to the home page
+        self.browser.get(self.live_server_url + '/')
+
+        # Wait for login button to be present and clickable
+        login_button = WebDriverWait(self.browser, 10).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Login"))
+        )
+
+        # Verify the login button is displayed
+        self.assertTrue(login_button.is_displayed())
+
+        # Click the login button
+        login_button.click()
+
+        # Wait for the page to navigate to the login page
+        WebDriverWait(self.browser, 10).until(
+            lambda driver: "/login" in driver.current_url
+        )
+
+        # Verify that we are on the login page
+        self.assertIn("/login", self.browser.current_url)
+
+        # Verify that login form elements are present on the page
+        login_form = self.browser.find_element(By.ID, "login-form")
+        self.assertTrue(login_form.is_displayed())
+
+    def test_navigate_to_register_from_homepage(self):
+        """Test that user can navigate to the register page from the homepage"""
+        # Navigate to the home page
+        self.browser.get(self.live_server_url + '/')
+
+        # Wait for register button to be present and clickable
+        register_button = WebDriverWait(self.browser, 10).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Register"))
+        )
+
+        # Verify the register button is displayed
+        self.assertTrue(register_button.is_displayed())
+
+        # Click the register button
+        register_button.click()
+
+        # Wait for the page to navigate to the register page
+        WebDriverWait(self.browser, 10).until(
+            lambda driver: "/register" in driver.current_url
+        )
+
+        # Verify that we are on the register page
+        self.assertIn("/register", self.browser.current_url)
+
+        # Verify that registration form elements are present on the page
+        registration_form = self.browser.find_element(By.ID, "register-form")
+        self.assertTrue(registration_form.is_displayed())
