@@ -6,6 +6,7 @@ from apps.accounts.models import CustomUser, UserProfile, VerificationToken
 from django.core.management import call_command
 from django.utils import timezone
 from datetime import timedelta
+from django.core.cache import cache
 import json
 
 
@@ -32,6 +33,10 @@ class SecurityTestCase(TestCase):
             user=self.non_tas_user,
             is_talent_acquisition_specialist=False  # This user is not a TAS
         )
+
+    def tearDown(self):
+        # Clear cache to reset rate limiting between tests
+        cache.clear()
 
     def test_rate_limiting_on_login_attempts(self):
         """Test that rate limiting works for failed login attempts"""

@@ -56,9 +56,9 @@ def save_profile(backend, user, response, *args, **kwargs):
             if email:
                 user.email = email
 
-        # Save the user if the profile was created or user data was updated
-        if created or user.has_changed():
-            user.save()
+        # Save the user if the profile was created
+        # (fields are only updated when created or previously empty, so always safe to save)
+        user.save()
 
         # Store the social provider's extra data
         social_account, created = SocialAccount.objects.get_or_create(

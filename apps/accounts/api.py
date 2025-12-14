@@ -663,14 +663,23 @@ def user_profile(request):
         # Use the existing update_user_profile functionality
         user = request.user
 
-        # Prepare data for user update
+        # Explicit change tracking: only save if fields have actually changed
+        user_changed = False
         user_update_data = {}
-        for field in ['first_name', 'last_name', 'email']:
-            if field in request.data:
-                user_update_data[field] = request.data[field]
 
-        # Use the serializer for validation and saving
-        if user_update_data:
+        # Check each field for changes before adding to update data
+        if 'first_name' in request.data and request.data['first_name'] != user.first_name:
+            user_update_data['first_name'] = request.data['first_name']
+            user_changed = True
+        if 'last_name' in request.data and request.data['last_name'] != user.last_name:
+            user_update_data['last_name'] = request.data['last_name']
+            user_changed = True
+        if 'email' in request.data and request.data['email'] != user.email:
+            user_update_data['email'] = request.data['email']
+            user_changed = True
+
+        # Only use the serializer for validation and saving if changes were detected
+        if user_changed:
             user_serializer = UserUpdateSerializer(instance=user, data=user_update_data, partial=True, context={'request': request})
             try:
                 user_serializer.is_valid(raise_exception=True)
@@ -688,28 +697,12 @@ def user_profile(request):
                 )
 
         # Update profile fields if they exist and if profile update data is provided
+        # NOTE: Subscription-related fields are restricted and should not be user-editable.
+        # Only allow user-editable profile fields here (like is_talent_acquisition_specialist if appropriate)
         profile_update_data = {}
-        for field in ['subscription_status', 'subscription_end_date', 'chosen_subscription_plan']:
-            if field in request.data:
-                profile_update_data[field] = request.data[field]
-
-        if profile_update_data and hasattr(user, 'profile'):
-            profile = user.profile
-            profile_serializer = UserProfileUpdateSerializer(instance=profile, data=profile_update_data, partial=True)
-            try:
-                profile_serializer.is_valid(raise_exception=True)
-                profile_serializer.save()
-            except serializers.ValidationError as e:
-                return Response(
-                    e.detail,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            except Exception as e:
-                logger.error(f"Unexpected error updating user profile for user_id={user.id}: {e!s}", exc_info=True)
-                return Response(
-                    {'error': 'An unexpected error occurred while updating profile data'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+        # Currently, we're not allowing any profile fields to be user-editable directly.
+        # Profile updates should happen through administrative actions or payment processing.
+        # Only update personal user fields (first_name, last_name, email) above.
 
         # Return updated user information with profile
         user_serializer = UserSerializer(user)
