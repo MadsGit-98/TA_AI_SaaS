@@ -14,7 +14,8 @@ class AuthenticationIntegrationTestCase(APITestCase):
             'last_name': 'Doe',
             'email': 'john.doe@example.com',
             'password': 'SecurePass123!',
-            'password_confirm': 'SecurePass123!'
+            'password_confirm': 'SecurePass123!',
+            'username': 'johndoe'  # Add the required username field
         }
         self.login_data = {
             'username': 'john.doe@example.com',  # Changed from 'email' to 'username' as the API now expects this
@@ -25,57 +26,70 @@ class AuthenticationIntegrationTestCase(APITestCase):
         """Test the complete registration to login flow"""
         # Step 1: Register user
         register_response = self.client.post(
-            reverse('api:register'), 
-            self.user_data, 
+            reverse('api:register'),
+            self.user_data,
             format='json'
         )
-        
+
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(CustomUser.objects.count(), 1)
 
         user = CustomUser.objects.get(email='john.doe@example.com')
         self.assertTrue(user.check_password('SecurePass123!'))
-        
+
+        # After registration, the user needs to be activated (as normally done via email link)
+        user.is_active = True
+        user.save()
+
         # Step 2: Login with registered user
         login_response = self.client.post(
-            reverse('api:login'), 
-            self.login_data, 
-            content_type='application/json'
+            reverse('api:login'),
+            self.login_data,
+            format='json'
         )
-        
+
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
         self.assertIn('access', login_response.json())
 
     def test_password_reset_flow(self):
         """Test the password reset flow"""
-        # Create user
-        user = CustomUser.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='OldPassword123!'
+        # First register a user to test password reset on
+        register_data = {
+            'first_name': 'Test',
+            'last_name': 'User',
+            'email': 'test@example.com',
+            'password': 'OldPassword123!',
+            'password_confirm': 'OldPassword123!',
+            'username': 'testuser'
+        }
+
+        register_response = self.client.post(
+            reverse('api:register'),
+            register_data,
+            format='json'
         )
-        UserProfile.objects.create(
-            user=user,
-            is_talent_acquisition_specialist=True
-        )
-        
+
+        self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
+
+        user = CustomUser.objects.get(email='test@example.com')
+
         # Request password reset
         reset_request_response = self.client.post(
             reverse('api:password_reset_request'),
             {'email': 'test@example.com'},
-            content_type='application/json'
+            format='json'
         )
-        
+
         self.assertEqual(reset_request_response.status_code, status.HTTP_200_OK)
-        
+
         # Get the verification token
         verification_token = VerificationToken.objects.filter(
             user=user,
             token_type='password_reset'
         ).first()
-        
+
         self.assertIsNotNone(verification_token)
-        
+
         # Confirm password reset with token
         reset_confirm_data = {
             'uid': str(user.id),
@@ -83,13 +97,13 @@ class AuthenticationIntegrationTestCase(APITestCase):
             'new_password': 'NewSecurePass123!',
             're_new_password': 'NewSecurePass123!'
         }
-        
+
         reset_confirm_response = self.client.post(
-            reverse('api:password_reset_confirm'),
+            reverse('api:password_reset_confirm', kwargs={'uid': str(user.id), 'token': verification_token.token}),
             reset_confirm_data,
-            content_type='application/json'
+            format='json'
         )
-        
+
         self.assertEqual(reset_confirm_response.status_code, status.HTTP_200_OK)
 
     def test_authentication_required_endpoints(self):
@@ -105,29 +119,34 @@ class AuthenticationIntegrationTestCase(APITestCase):
         """Test accessing user profile after authentication"""
         # Create and login user
         register_response = self.client.post(
-            reverse('api:register'), 
-            self.user_data, 
-            content_type='application/json'
+            reverse('api:register'),
+            self.user_data,
+            format='json'
         )
-        
+
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
-        
+
+        # After registration, the user needs to be activated (as normally done via email link)
+        user = CustomUser.objects.get(email='john.doe@example.com')
+        user.is_active = True
+        user.save()
+
         # Login to get tokens
         login_response = self.client.post(
-            reverse('api:login'), 
-            self.login_data, 
-            content_type='application/json'
+            reverse('api:login'),
+            self.login_data,
+            format='json'
         )
-        
+
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
         tokens = login_response.json()
-        
-        # Access profile with valid token
-        headers = {'HTTP_AUTHORIZATION': f'Bearer {tokens["access"]}'}
-        profile_response = self.client.get(
-            reverse('api:get_user_profile'),
-            **headers
-        )
-        
+
+        # Access profile with valid token using correct header format
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {tokens["access"]}')
+        profile_response = self.client.get(reverse('api:user_profile'))
+
         self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
         self.assertEqual(profile_response.json()['email'], 'john.doe@example.com')
+
+        # Clear credentials to avoid affecting other tests
+        self.client.credentials()
