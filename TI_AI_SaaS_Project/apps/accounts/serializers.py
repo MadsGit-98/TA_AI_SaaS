@@ -44,8 +44,6 @@ class UserRegistrationSerializer(UserCreateSerializer):
     class Meta(UserCreateSerializer.Meta):
         model = CustomUser
         fields = UserCreateSerializer.Meta.fields + (
-            'email',
-            'password',
             'password_confirm',
             'first_name',
             'last_name',
