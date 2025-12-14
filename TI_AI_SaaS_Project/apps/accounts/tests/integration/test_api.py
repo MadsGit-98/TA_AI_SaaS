@@ -112,8 +112,12 @@ class TestAPIContract(APITestCase):
 
         # Check that the response contains expected fields
         self.assertIn('user', response.data)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertIn('message', response.data)
+
+        # We should NOT receive access and refresh tokens during registration
+        # JWT tokens are only issued after email activation
+        self.assertNotIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
 
         # Check that user data is present
         user_data = response.data['user']
@@ -121,8 +125,12 @@ class TestAPIContract(APITestCase):
         self.assertEqual(user_data['first_name'], 'New')
         self.assertEqual(user_data['last_name'], 'User')
 
-        # Verify user was actually created in the database
-        self.assertTrue(CustomUser.objects.filter(email='newuser@example.com').exists())
+        # Verify user was created in the database with is_active=False
+        user = CustomUser.objects.get(email='newuser@example.com')
+        self.assertFalse(user.is_active)
+
+        # Verify that the user has a profile
+        self.assertTrue(hasattr(user, 'profile'))
 
     def test_login_api_contract(self):
         """Contract test for login API"""

@@ -324,22 +324,18 @@ def register(request):
         # Send confirmation email
         email_sent = send_activation_email(user, token)
 
-        # Create JWT tokens
-        refresh = RefreshToken.for_user(user)
-
-        # Prepare response data
+        # Prepare response data - only return user information, no JWT tokens
         user_serializer = UserSerializer(user)
         response_data = {
             'user': user_serializer.data,
-            'access': str(refresh.access_token),
-            'refresh': str(refresh)
+            'message': 'Account created successfully. Please check your email to activate your account.'
         }
 
         # Add warning if activation email could not be sent
         if not email_sent:
             response_data['warning'] = 'Account created but activation email could not be sent. Please contact support.'
 
-        logger.info(f"Registration successful for user id={user.id}")        
+        logger.info(f"Registration successful for user id={user.id}")
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     logger.warning(f"Registration failed with errors: {serializer.errors}")
@@ -350,7 +346,7 @@ def register(request):
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 def activate_account(request, uid, token):
     """
-    Activate account using the confirmation token
+    Activate account using the confirmation token and issue JWT tokens
     """
     try:
         # Find the verification token by token and token_type first
@@ -385,10 +381,19 @@ def activate_account(request, uid, token):
             user.is_active = True
             user.save()
 
-        return Response(
-            {'message': 'Account activated successfully.'},
-            status=status.HTTP_200_OK
-        )
+        # After successful activation, generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+
+        # Prepare response data with tokens
+        user_serializer = UserSerializer(user)
+        response_data = {
+            'message': 'Account activated successfully.',
+            'user': user_serializer.data,
+            'access': str(refresh.access_token),
+            'refresh': str(refresh)
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
     except VerificationToken.DoesNotExist:
         return Response(
             {'error': 'Invalid activation token.'},
