@@ -11,6 +11,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+from django.http import HttpResponse
 import logging
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
@@ -29,6 +30,7 @@ from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.backends.oauth import BaseOAuth2
 from social_core.exceptions import MissingBackend
+from django.shortcuts import render
 
 
 def mask_email(email):
@@ -134,8 +136,9 @@ def send_activation_email(user, token):
     """
     subject = 'Activate your X-Crewter account'
 
-    # The activation link includes the token
-    activation_link = f"{settings.FRONTEND_URL}/activate/{user.id}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"http://localhost:3000/activate/{user.id}/{token}/"
+    # The activation link includes the token - using the current request's host to build the URL
+    # This ensures the activation link points to the current Django application
+    activation_link = f"{settings.BACKEND_URL}/api/accounts/auth/activate/{user.id}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/activate/{user.id}/{token}/"
 
     message = render_to_string('accounts/activation_email.html', {
         'user': user,
@@ -329,7 +332,7 @@ def register(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 def activate_account(request, uid, token):
     """
@@ -368,24 +371,35 @@ def activate_account(request, uid, token):
             user.is_active = True
             user.save()
 
-        # After successful activation, generate JWT tokens
-        refresh = RefreshToken.for_user(user)
+        if request.method == 'POST':
+            # For API calls (POST), return the JSON response with redirect URL
+            refresh = RefreshToken.for_user(user)
 
-        # Prepare response data with tokens
-        user_serializer = UserSerializer(user)
-        response_data = {
-            'message': 'Account activated successfully.',
-            'user': user_serializer.data,
-            'access': str(refresh.access_token),
-            'refresh': str(refresh)
-        }
+            # Prepare response data with tokens and redirect URL
+            user_serializer = UserSerializer(user)
+            response_data = {
+                'message': 'Account activated successfully.',
+                'user': user_serializer.data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'redirect_url': '/accounts/login/'  # Similar to login API redirect mechanism
+            }
 
-        return Response(response_data, status=status.HTTP_200_OK)
+            return Response(response_data, status=status.HTTP_200_OK)
+        else:
+            # For browser requests (GET), render the success template
+            context = {}
+            return render(request, 'accounts/activation_success.html', context)
     except VerificationToken.DoesNotExist:
-        return Response(
-            {'error': 'Invalid activation token.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        if request.method == 'POST':
+            return Response(
+                {'error': 'Invalid activation token.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        else:
+            # For browser requests (GET), render the error template
+            context = {'error_message': 'Invalid activation token.'}
+            return render(request, 'accounts/activation_error.html', context)
 
 
 @api_view(['POST'])

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Activation - X-Crewter</title>
+    
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Base background
+                        'primary-text': '#000000',        // Main text
+                        'secondary-text': '#A0A0A0',      // Supporting text
+                        'accent-cta': '#080707',          // Primary CTA/link color
+                        'code-block-bg': '#E0E0E0',       // Card backgrounds
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full space-y-8 p-8">
+        <div class="text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-primary-text">
+                Activation Failed
+            </h2>
+            <p class="mt-2 text-secondary-text">
+                {{ error_message }}
+            </p>
+            <div class="mt-6">
+                <a href="/" class="text-accent-cta hover:text-accent-cta font-medium">
+                    Go to Home Page
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
