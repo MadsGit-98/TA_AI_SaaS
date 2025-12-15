@@ -68,22 +68,21 @@ class EmailOrUsernameBackend(ModelBackend):
             return None
 
         # Import logging at the beginning of the method
-        import logging
         logger = logging.getLogger(__name__)
 
         try:
             # First, try to fetch by username exactly
             try:
                 user = UserModel.objects.get(username=username)
-                # Check if the password is correct
-                if user.check_password(password) and self.user_can_authenticate(user):
+                # Check if the password is correct (removed user_can_authenticate check to allow inactive users to authenticate)
+                if user.check_password(password):
                     return user
             except UserModel.DoesNotExist:
                 # Username not found, try to fetch by email
                 try:
                     user = UserModel.objects.get(email=username)
-                    # Check if the password is correct
-                    if user.check_password(password) and self.user_can_authenticate(user):
+                    # Check if the password is correct (removed user_can_authenticate check to allow inactive users to authenticate)
+                    if user.check_password(password):
                         return user
                 except UserModel.DoesNotExist:
                     # Neither username nor email matched

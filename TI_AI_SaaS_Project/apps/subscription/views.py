@@ -10,4 +10,4 @@ def subscription_detail_view(request):
     Future implementation will return subscription information
     """
     # Render the landing page template for non-subscribed users
-    return render(request, 'subscription/landing_page.html')
+    return render(request, 'landing_page.html')
