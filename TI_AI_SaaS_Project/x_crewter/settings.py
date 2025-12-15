@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta    # JWT Configuration
 import environ
 
 # Initialize environment variables
@@ -121,9 +122,6 @@ REST_FRAMEWORK = {
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
-
-# JWT Configuration
-from datetime import timedelta
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Matches session timeout requirement
@@ -311,6 +309,11 @@ CSP_CONNECT_SRC = ("'self'",)
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_BASE_URI = ("'self'",)
 CSP_FORM_ACTION = ("'self'",)
+
+# For Develeopment Testing Purposes, To be removed at production
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = '127.0.0.1'
+EMAIL_PORT = 1025 # MailHog's port
 
 
 # Logging configuration
