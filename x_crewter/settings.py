@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'apps.applications',
     'apps.analysis',
     'apps.subscription',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
