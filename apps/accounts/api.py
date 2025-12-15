@@ -582,7 +582,7 @@ def login(request):
         else:
             logger.warning(f"Login attempt for inactive account: {user.id}")
             return Response(
-                {'non_field_errors': ['Account is not activated.']},
+                {'non_field_errors': ['Account is not activated. Please check your email to activate your account.']},
                 status=status.HTTP_400_BAD_REQUEST
             )
     else:
