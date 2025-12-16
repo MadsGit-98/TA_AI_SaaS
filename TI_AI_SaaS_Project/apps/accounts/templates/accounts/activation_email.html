@@ -6,7 +6,8 @@
 </head>
 <body>
     <h2>Welcome to X-Crewter, {{ user.first_name|default:user.username }}!</h2>
-    <p>Thank you for registering. Please click the link below to activate your account:</p>
+    <p>Thank you for registering. Please click the button below to activate your account:</p>
+
     <p>
         <a href="{{ activation_link }}" style="background-color: #080707; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
             Activate Your Account
@@ -14,7 +15,8 @@
     </p>
     <p>If the button doesn't work, copy and paste this link into your browser:</p>
     <p>{{ activation_link }}</p>
-    <p>This link will expire in 24 hours.</p>
+
+    <p>This activation link will expire in 24 hours.</p>
     <p>If you didn't create an account with X-Crewter, please ignore this email.</p>
     <hr>
     <p>X-Crewter Team<br>{{ site_name }}</p>

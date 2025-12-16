@@ -15,7 +15,8 @@ urlpatterns = [
     path('auth/social/jwt/', api.social_login_jwt, name='social_login_jwt'),
     path('auth/social/<str:provider>/', api.social_login, name='social_login'),
     path('auth/social/complete/<str:provider>/', api.social_login_complete, name='social_login_complete'),
-    path('auth/activate/<str:uid>/<str:token>/', api.activate_account, name='activate_account'),
+    path('auth/activate/<str:uid>/<str:token>/', api.show_activation_form, name='show_activation_form'),
+    path('auth/activate/post/<str:uid>/<str:token>/', api.activate_account, name='activate_account'),
 
     # Existing API endpoints
     path('homepage-content/', api.homepage_content_api, name='homepage_content_api'),
