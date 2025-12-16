@@ -332,7 +332,42 @@ def register(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
+def show_activation_form(request, uid, token):
+    """
+    Show the activation page to the user which will auto-submit to activate the account
+    """
+    # Check if the token exists and is valid without marking it as used
+    try:
+        verification_token = VerificationToken.objects.get(
+            token=token,
+            token_type='email_confirmation',
+            is_used=False
+        )
+
+        # Verify that the provided uid matches the token's user
+        if str(uid) != str(verification_token.user.pk):
+            context = {'error_message': 'Invalid activation link.'}
+            return render(request, 'accounts/activation_error.html', context)
+
+        # Check if token is expired
+        if verification_token.is_expired():
+            context = {'error_message': 'Activation link has expired.'}
+            return render(request, 'accounts/activation_error.html', context)
+
+        # If the token is valid, render the activation page which auto-submits the form
+        context = {
+            'uid': uid,
+            'token': token
+        }
+        return render(request, 'accounts/activation_success.html', context)
+    except VerificationToken.DoesNotExist:
+        context = {'error_message': 'Invalid activation token.'}
+        return render(request, 'accounts/activation_error.html', context)
+
+
+@api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 def activate_account(request, uid, token):
     """
@@ -371,35 +406,13 @@ def activate_account(request, uid, token):
             user.is_active = True
             user.save()
 
-        if request.method == 'POST':
-            # For API calls (POST), return the JSON response with redirect URL
-            refresh = RefreshToken.for_user(user)
-
-            # Prepare response data with tokens and redirect URL
-            user_serializer = UserSerializer(user)
-            response_data = {
-                'message': 'Account activated successfully.',
-                'user': user_serializer.data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-                'redirect_url': '/accounts/login/'  # Similar to login API redirect mechanism
-            }
-
-            return Response(response_data, status=status.HTTP_200_OK)
-        else:
-            # For browser requests (GET), render the success template
-            context = {}
-            return render(request, 'accounts/activation_success.html', context)
+        # Always render the completed page for browser flow
+        context = {}
+        return render(request, 'accounts/activation_completed.html', context)
     except VerificationToken.DoesNotExist:
-        if request.method == 'POST':
-            return Response(
-                {'error': 'Invalid activation token.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        else:
-            # For browser requests (GET), render the error template
-            context = {'error_message': 'Invalid activation token.'}
-            return render(request, 'accounts/activation_error.html', context)
+        # Always render the error page for browser flow
+        context = {'error_message': 'Invalid activation token.'}
+        return render(request, 'accounts/activation_error.html', context)
 
 
 @api_view(['POST'])

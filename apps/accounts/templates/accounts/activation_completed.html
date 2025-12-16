@@ -1,11 +1,10 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Activation - X-Crewter</title>
-
+    
     <!-- Initialize Tailwind CSS with custom configuration -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -24,28 +23,32 @@
             }
         }
     </script>
+    
+    <meta http-equiv="refresh" content="3; url=/login/">
 </head>
 <body class="bg-primary-bg text-primary-text min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full space-y-8 p-8">
         <div class="text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                <svg class="h-6 w-6 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
             <h2 class="mt-6 text-center text-3xl font-extrabold text-primary-text">
-                Activating Your Account...
+                Activation Successful!
             </h2>
-            <p class="mt-4 text-secondary-text">
-                Please wait while we activate your account.
+            <p class="mt-2 text-secondary-text">
+                Your account has been activated successfully.
             </p>
-
-            <!-- Hidden form that will auto-submit to activate the account -->
-            <form id="activationForm" method="post" action="{% url 'api:activate_account' uid=uid token=token %}">
-                {% csrf_token %}
-            </form>
-
-            <div class="mt-8">
-                <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent-cta"></div>
+            <p class="mt-4 text-secondary-text">
+                You will be redirected to the login page in a few seconds.
+            </p>
+            <div class="mt-6">
+                <a href="/login/" class="text-accent-cta hover:text-accent-cta font-medium">
+                    Click here if you are not redirected automatically
+                </a>
             </div>
         </div>
     </div>
-
-    <script src="{% static 'js/activation.js' %}"></script>
 </body>
 </html>
