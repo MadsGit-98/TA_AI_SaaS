@@ -1,7 +1,11 @@
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
-from apps.accounts.models import CustomUser, HomePageContent, LegalPage, CardLogo
+from apps.accounts.models import CustomUser, HomePageContent, LegalPage, CardLogo, VerificationToken
+from django.utils.http import urlsafe_base64_encode
+from django.utils import timezone
+from datetime import timedelta
+import uuid
 
 
 class TestAPIContract(APITestCase):
@@ -232,3 +236,95 @@ class TestAPIContract(APITestCase):
         self.assertIn('detail', response.data)
         # Check if the response message is what we expect
         self.assertEqual(response.data['detail'], 'Password reset e-mail has been sent.')
+
+    def test_activation_throttle_prevents_enumeration(self):
+        """Test that activation endpoint has proper throttling to prevent token enumeration"""
+        # Create a user and verification token for testing
+        user = CustomUser.objects.create_user(
+            username='testactivation',
+            email='activation@example.com',
+            password='testpass123',
+            is_active=False  # User needs activation
+        )
+
+        verification_token = VerificationToken.objects.create(
+            user=user,
+            token=str(uuid.uuid4()),
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24)  # 24 hours validity
+        )
+
+        # Generate uid for the user
+        uid = urlsafe_base64_encode(str(user.pk).encode())
+
+        # Attempt to access the activation form multiple times with invalid token
+        # This should trigger the throttle after several requests
+        url = reverse('api:activate_account', kwargs={
+            'uid': uid,
+            'token': 'invalid-token-for-testing'
+        })
+
+        # Make multiple requests to test throttling and collect responses
+        responses = []
+        num_requests = 10  # Exceed the typical throttle limit
+
+        for i in range(num_requests):
+            response = self.client.get(url)
+            responses.append(response)
+
+        # The first few requests should be allowed (status != 429)
+        allowed_responses = [resp for resp in responses if resp.status_code != 429]
+
+        # At least some requests should be allowed initially
+        self.assertGreater(len(allowed_responses), 0, "Some initial requests should be allowed")
+
+        # At least one request should be throttled (status == 429)
+        throttled_responses = [resp for resp in responses if resp.status_code == 429]
+        self.assertGreater(len(throttled_responses), 0, "At least one request should be throttled")
+
+        # Optionally check for Retry-After header on throttled responses
+    def test_activation_throttle_prevents_enumeration_activate_account(self):
+        """Test that activation endpoint has proper throttling to prevent token enumeration"""
+        # Create a user and verification token for testing
+        user = CustomUser.objects.create_user(
+            username='testactivation2',
+            email='activation2@example.com',
+            password='testpass123',
+            is_active=False  # User needs activation
+        )
+
+        verification_token = VerificationToken.objects.create(
+            user=user,
+            token=str(uuid.uuid4()),
+            token_type='email_confirmation',
+            expires_at=timezone.now() + timedelta(hours=24)  # 24 hours validity
+        )
+
+        # Generate uid for the user
+        uid = urlsafe_base64_encode(str(user.pk).encode())
+
+        # Attempt to access the activation endpoint multiple times with invalid token
+        # This should trigger the throttle after several requests
+        url = reverse('api:activate_account', kwargs={
+            'uid': uid,
+            'token': 'invalid-token-for-testing'
+        })
+
+        # Make multiple requests to test throttling and collect responses
+        responses = []
+        num_requests = 10  # Exceed the typical throttle limit
+
+        for i in range(num_requests):
+            response = self.client.get(url)
+            responses.append(response)
+
+        # Check if we have any throttled responses (status == 429)
+        throttled_responses = [resp for resp in responses if resp.status_code == 429]
+
+        # At least some requests should be throttled (status == 429)
+        # Even if no requests were allowed before throttling, we should still have throttle behavior
+        self.assertGreater(len(throttled_responses), 0, "At least one request should be throttled")
+
+        # Check for Retry-After header on throttled responses
+        for resp in throttled_responses:
+            self.assertIn('Retry-After', resp, "Throttled responses should include Retry-After header")

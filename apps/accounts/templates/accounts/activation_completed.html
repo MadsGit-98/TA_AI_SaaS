@@ -24,7 +24,7 @@
         }
     </script>
     
-    <meta http-equiv="refresh" content="3; url=/login/">
+    <meta http-equiv="refresh" content="3; url={% url 'accounts:login' %}">
 </head>
 <body class="bg-primary-bg text-primary-text min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full space-y-8 p-8">
@@ -44,7 +44,7 @@
                 You will be redirected to the login page in a few seconds.
             </p>
             <div class="mt-6">
-                <a href="/login/" class="text-accent-cta hover:text-accent-cta font-medium">
+                <a href="{% url 'accounts:login' %}" class="text-accent-cta hover:underline font-medium">
                     Click here if you are not redirected automatically
                 </a>
             </div>
