@@ -154,3 +154,32 @@ def password_reset_view(request):
     Password reset request view
     """
     return render(request, 'accounts/password_reset.html', {})
+
+
+def activation_completed_view(request):
+    """
+    View for activation completed page
+    """
+    return render(request, 'accounts/activation_completed.html', {})
+
+
+def activation_error_view(request):
+    """
+    View for activation error page
+    """
+    error_message = request.GET.get('error', 'Invalid activation token.')
+    error_code = request.GET.get('error', 'invalid_token')
+   
+    # Whitelist of allowed error messages
+    error_messages = {
+        'invalid_token': 'Invalid activation token.',
+        'expired': 'Activation link has expired.',
+        'already_activated': 'This account has already been activated.',
+        'not_found': 'User account not found.',
+    }
+    
+    error_message = error_messages.get(error_code, 'Invalid activation token.')
+    context = {
+        'error_message': error_message
+    }
+    return render(request, 'accounts/activation_error.html', context)

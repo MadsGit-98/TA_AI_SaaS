@@ -17,5 +17,9 @@ urlpatterns = [
     path('refund/', views.refund_policy_view, name='refund_policy'),
     path('contact/', views.contact_view, name='contact'),
 
+    # Activation pages
+    path('activation-success/', views.activation_completed_view, name='activation_completed'),
+    path('activation-error/', views.activation_error_view, name='activation_error'),
+
     # Additional authentication URLs will be defined in future features
 ]

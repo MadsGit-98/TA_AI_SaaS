@@ -20,13 +20,14 @@ from django.views.generic import TemplateView
 from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.static import serve
+from django.shortcuts import redirect
 import os
 
 
 def health_check(request):
     """API health check endpoint"""
     return JsonResponse({'status': 'healthy', 'timestamp': 'datetime'})  # Timestamp will be implemented in future
+
 
 
 urlpatterns = [
@@ -44,14 +45,8 @@ urlpatterns = [
     path('landing/', include('apps.subscription.urls')),  # Subscription landing for non-subscribed users
 ]
 
-# Only add additional URL patterns after all API routes to avoid conflicts
-# If there's a need for frontend routing fallback, it should be done properly
-
-
 # Add fallback pattern for frontend routing (only after all specific routes)
 # This ensures the home page remains the landing page for unmatched routes
-from django.shortcuts import redirect
-
 def fallback_view(request, *args, **kwargs):
     """Redirect unknown routes to home page to avoid static file serving errors"""
     # Use absolute URL path instead of name to avoid namespace issues
@@ -59,7 +54,8 @@ def fallback_view(request, *args, **kwargs):
 
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)).*$', fallback_view, name='fallback'),
+    # Updated to explicitly exclude activation paths
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|activation-).*$', fallback_view, name='fallback'),
 ]
 
 

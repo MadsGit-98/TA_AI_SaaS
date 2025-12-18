@@ -120,6 +120,30 @@ class LoginAttemptThrottle(SimpleRateThrottle):
 
         return f'login_attempts_scope:{client_ip}'
 
+class ActivationAttemptThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for activation attempts to prevent token enumeration
+    Limits attempts based on IP address to prevent guessing valid tokens or UIDs
+    """
+    scope = 'activation_attempts'
+
+    def get_cache_key(self, request, view):
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
+
+        # Extract uid and token from the URL path
+        uid = request.resolver_match.kwargs.get('uid', '')
+        token = request.resolver_match.kwargs.get('token', '')
+
+        # Create a key that combines IP with UID to prevent targeted enumeration
+        if not client_ip:
+            # Use a fallback key when IP is missing to maintain throttling
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            # Use a short, safe portion of the user agent to avoid sensitive info
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'activation_attempts_scope:unknown_ip:{uid}:useragent:{user_agent_fragment}'
+
+        return f'activation_attempts_scope:{client_ip}:{uid}'
 
 # This endpoint would handle the response from social providers
 # after the user has authenticated with the provider
@@ -334,6 +358,7 @@ def register(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
+@throttle_classes([AnonRateThrottle, ActivationAttemptThrottle])
 def show_activation_form(request, uid, token):
     """
     Show the activation page to the user which will auto-submit to activate the account
@@ -367,11 +392,17 @@ def show_activation_form(request, uid, token):
         return render(request, 'accounts/activation_error.html', context)
 
 
+# Define constant redirect URLs for activation results
+# These URLs should point to frontend pages that handle activation success/error states
+ACTIVATION_SUCCESS_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-success/" if hasattr(settings, 'FRONTEND_URL') else "/activation-success/"
+ACTIVATION_ERROR_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-error/" if hasattr(settings, 'FRONTEND_URL') else "/activation-error/"
+
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
+@throttle_classes([AnonRateThrottle, ActivationAttemptThrottle])
 def activate_account(request, uid, token):
     """
-    Activate account using the confirmation token and issue JWT tokens
+    Activate account using the confirmation token and return redirect URL
     """
     try:
         # Find the verification token by token and token_type first
@@ -384,14 +415,20 @@ def activate_account(request, uid, token):
         # Verify that the provided uid matches the token's user
         if str(uid) != str(verification_token.user.pk):
             return Response(
-                {'error': 'UID does not match token owner.'},
+                {
+                    'error': 'UID does not match token owner.',
+                    'redirect_url': ACTIVATION_ERROR_REDIRECT
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Check if token is expired
         if verification_token.is_expired():
             return Response(
-                {'error': 'Activation link has expired.'},
+                {
+                    'error': 'Activation link has expired.',
+                    'redirect_url': ACTIVATION_ERROR_REDIRECT
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -406,13 +443,23 @@ def activate_account(request, uid, token):
             user.is_active = True
             user.save()
 
-        # Always render the completed page for browser flow
-        context = {}
-        return render(request, 'accounts/activation_completed.html', context)
+        # Return success response with redirect URL
+        return Response(
+            {
+                'success': True,
+                'message': 'Account activated successfully.',
+                'redirect_url': ACTIVATION_SUCCESS_REDIRECT
+            },
+            status=status.HTTP_200_OK
+        )
     except VerificationToken.DoesNotExist:
-        # Always render the error page for browser flow
-        context = {'error_message': 'Invalid activation token.'}
-        return render(request, 'accounts/activation_error.html', context)
+        return Response(
+            {
+                'error': 'Invalid activation token.',
+                'redirect_url': ACTIVATION_ERROR_REDIRECT
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @api_view(['POST'])
