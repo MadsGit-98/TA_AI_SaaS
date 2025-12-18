@@ -220,7 +220,7 @@ async function handlePasswordReset(e) {
     
     // Get form data
     const formData = {
-        email: document.getElementById('password-reset-email').value
+        email: document.getElementById('reset-email').value
     };
     
     // Show loading state
