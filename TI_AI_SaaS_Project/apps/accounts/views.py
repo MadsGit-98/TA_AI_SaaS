@@ -50,7 +50,7 @@ def privacy_policy_view(request):
     try:
         privacy_page = LegalPage.objects.get(page_type='privacy', is_active=True)
     except LegalPage.DoesNotExist:
-        # Create a default privacy policy if none exists
+        # Create a default privacy if none exists
         privacy_page = None
 
     context = {
@@ -169,7 +169,7 @@ def activation_error_view(request):
     """
     error_message = request.GET.get('error', 'Invalid activation token.')
     error_code = request.GET.get('error', 'invalid_token')
-   
+
     # Whitelist of allowed error messages
     error_messages = {
         'invalid_token': 'Invalid activation token.',
@@ -177,9 +177,35 @@ def activation_error_view(request):
         'already_activated': 'This account has already been activated.',
         'not_found': 'User account not found.',
     }
-    
+
     error_message = error_messages.get(error_code, 'Invalid activation token.')
     context = {
         'error_message': error_message
     }
     return render(request, 'accounts/activation_error.html', context)
+    
+
+def activation_step_view(request, uid, token): 
+    context = {
+        'uid': uid,
+        'token': token
+    }
+    return render(request, 'accounts/activation_success.html', context)    
+
+
+def password_reset_failure_view(request):
+    """
+    View for password reset failure page
+    """
+    return render(request, 'accounts/password_reset_failure.html', {})
+
+
+def password_reset_form_view(request, uid, token):
+    """
+    View for password reset form page
+    """
+    context = {
+        'uid': uid,
+        'token': token
+    }
+    return render(request, 'accounts/password_reset_form.html', context)
