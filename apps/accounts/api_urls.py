@@ -1,6 +1,5 @@
 from django.urls import path, include
 from . import api
-from . import views
 
 app_name = 'api'
 urlpatterns = [
@@ -11,6 +10,8 @@ urlpatterns = [
     path('auth/token/refresh/', api.token_refresh, name='token_refresh'),
     path('auth/password/reset/', api.password_reset_request, name='password_reset_request'),
     path('auth/password/reset/confirm/<str:uid>/<str:token>/', api.password_reset_confirm, name='password_reset_confirm'),
+    path('auth/password/reset/validate/<str:uid>/<str:token>/', api.validate_password_reset_token, name='validate_password_reset_token'),
+    path('auth/password/reset/update/<str:uid>/<str:token>/', api.update_password_with_token, name='update_password_with_token'),
     path('auth/users/me/', api.user_profile, name='user_profile'),
     path('auth/users/me/update/', api.update_user_profile, name='update_user_profile'),  # For backward compatibility
     path('auth/social/jwt/', api.social_login_jwt, name='social_login_jwt'),

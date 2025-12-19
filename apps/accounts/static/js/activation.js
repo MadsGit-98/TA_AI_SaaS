@@ -13,9 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const csrfToken = csrfTokenElement.value;
         const activationUrl = activationForm.action;
 
-        console.log('Starting activation process...');
-        console.log('Activation URL:', activationUrl);
-
         // Make a direct fetch request to the activation API
         fetch(activationUrl, {
             method: 'POST',
@@ -26,8 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
             },
         })
         .then(response => {
-            console.log('Response status:', response.status);
-            console.log('Response headers:', [...response.headers.entries()]);
             
             if (!response.ok) {
                 console.error('HTTP error occurred:', response.status);
@@ -51,11 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .then(data => {
-            console.log('Full response data:', data);
-            console.log('Redirect URL in response:', data.redirect_url);
-            
             if (data.redirect_url) {
-                console.log('Redirecting to:', data.redirect_url);
                 // Use replace to ensure clean redirect
                 window.location.replace(data.redirect_url);
             } else {

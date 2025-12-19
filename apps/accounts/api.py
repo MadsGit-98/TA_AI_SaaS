@@ -5,32 +5,32 @@ from django.core.mail import send_mail
 from smtplib import SMTPException
 from django.conf import settings
 from django.db import transaction
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
-from django.contrib.auth.tokens import default_token_generator
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-from django.http import HttpResponse
 import logging
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
-from rest_framework import status, permissions
+from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import CustomUser, HomePageContent, LegalPage, CardLogo, UserProfile, VerificationToken, SocialAccount
+from .models import CustomUser, HomePageContent, LegalPage, CardLogo, VerificationToken
 from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer,
-                         UserUpdateSerializer, UserProfileUpdateSerializer)
+                         UserUpdateSerializer)
 from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
-from social_core.backends.oauth import BaseOAuth2
 from social_core.exceptions import MissingBackend
-from django.shortcuts import render
+from django.shortcuts import redirect
+
+# Define constant redirect URLs for activation results
+# These URLs should point to frontend pages that handle activation success/error states
+ACTIVATION_SUCCESS_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-success/" if hasattr(settings, 'FRONTEND_URL') else "/activation-success/"
+ACTIVATION_ERROR_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-error/" if hasattr(settings, 'FRONTEND_URL') else "/activation-error/"
 
 
 def mask_email(email):
@@ -210,8 +210,8 @@ def send_password_reset_email(user, token):
     """
     subject = 'Reset your X-Crewter password'
 
-    # The reset link includes the token
-    reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.id}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"http://localhost:3000/reset-password/{user.id}/{token}/"
+    # The reset link includes the token - now pointing to our new validation API
+    reset_link = f"{settings.BACKEND_URL}/api/accounts/auth/password/reset/validate/{user.id}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/password/reset/validate/{user.id}/{token}/"
 
     message = render_to_string('accounts/password_reset_email.html', {
         'user': user,
@@ -244,6 +244,146 @@ def send_password_reset_email(user, token):
         # The function can continue without sending email
         if settings.DEBUG:
             logger.debug(f"Password reset email failed for user {user.id}")
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetConfirmThrottle])
+def validate_password_reset_token(request, uid, token):
+    """
+    Validate a password reset token and return redirect URL based on validity
+    """
+    try:
+        # Find the verification token by token and token_type first
+        verification_token = VerificationToken.objects.get(
+            token=token,
+            token_type='password_reset',
+            is_used=False
+        )
+
+        # Verify that the provided uid matches the token's user
+        if str(uid) != str(verification_token.user.pk):
+            return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
+
+        # Check if token is expired
+        if verification_token.is_expired():
+            return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
+
+        # Token is valid, return URL to password reset form
+        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password-reset/form/{uid}/{token}/?valid=True" if hasattr(settings, 'FRONTEND_URL') else f"/password-reset/form/{uid}/{token}/?valid=True")
+
+    except VerificationToken.DoesNotExist:
+        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
+
+
+@api_view(['PATCH'])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetConfirmThrottle])
+def update_password_with_token(request, uid, token):
+    """
+    Update user's password using the password reset token
+    """
+    new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
+    form_token = request.data.get('token')
+
+    if not all([new_password, confirm_password]):
+        return Response(
+            {'error': 'New password and confirmation are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if new_password != confirm_password:
+        return Response(
+            {'error': 'Passwords do not match'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Additional validation: ensure token in request body matches token in URL
+    if form_token != token:
+        return Response(
+            {'error': 'Token mismatch. The request contains inconsistent tokens.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Find the verification token by token and token_type first
+        verification_token = VerificationToken.objects.get(
+            token=token,
+            token_type='password_reset',
+            is_used=False
+        )
+
+        # Verify that the provided uid matches the token's user
+        if str(uid) != str(verification_token.user.pk):
+            return Response(
+                {'error': 'UID does not match token owner.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if token is expired
+        if verification_token.is_expired():
+            return Response(
+                {'error': 'Reset link has expired.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate new password
+        try:
+            validate_password(new_password, user=verification_token.user)
+        except ValidationError as e:
+            return Response(
+                {'new_password': e.messages},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update the password and mark token as used within an atomic transaction with row locking
+        with transaction.atomic():
+            # Acquire a row lock on the verification token to prevent race conditions
+            verification_token_locked = VerificationToken.objects.select_for_update().get(pk=verification_token.pk)
+
+            # Re-check all conditions after acquiring the lock to prevent race conditions
+            # where multiple requests pass initial checks but only one should proceed
+            if verification_token_locked.is_used:
+                return Response(
+                    {'error': 'Token has already been used.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if verification_token_locked.is_expired():
+                return Response(
+                    {'error': 'Reset link has expired.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if str(uid) != str(verification_token_locked.user.pk):
+                return Response(
+                    {'error': 'UID does not match token owner.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # All checks passed, proceed with password reset
+            # Set new password
+            user = verification_token_locked.user
+            user.set_password(new_password)
+            user.save()
+
+            # Mark token as used
+            verification_token_locked.is_used = True
+            verification_token_locked.save()
+
+        return Response(
+            {
+                'detail': 'Password has been updated successfully.',
+                'redirect_url': f"{getattr(settings, 'FRONTEND_URL', '')}/login/" if hasattr(settings, 'FRONTEND_URL') else "/login/"
+            },
+            status=status.HTTP_200_OK
+        )
+    except VerificationToken.DoesNotExist:
+        return Response(
+            {'error': 'Invalid token.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @api_view(['GET'])
@@ -373,29 +513,17 @@ def show_activation_form(request, uid, token):
 
         # Verify that the provided uid matches the token's user
         if str(uid) != str(verification_token.user.pk):
-            context = {'error_message': 'Invalid activation link.'}
-            return render(request, 'accounts/activation_error.html', context)
+            return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Invalid activation link.")
 
         # Check if token is expired
         if verification_token.is_expired():
-            context = {'error_message': 'Activation link has expired.'}
-            return render(request, 'accounts/activation_error.html', context)
+            return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Activation link has expired.")
 
         # If the token is valid, render the activation page which auto-submits the form
-        context = {
-            'uid': uid,
-            'token': token
-        }
-        return render(request, 'accounts/activation_success.html', context)
+        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/activation-step/{uid}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"/activation-step/{uid}/{token}/")
     except VerificationToken.DoesNotExist:
-        context = {'error_message': 'Invalid activation token.'}
-        return render(request, 'accounts/activation_error.html', context)
+        return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Invalid activation token.")
 
-
-# Define constant redirect URLs for activation results
-# These URLs should point to frontend pages that handle activation success/error states
-ACTIVATION_SUCCESS_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-success/" if hasattr(settings, 'FRONTEND_URL') else "/activation-success/"
-ACTIVATION_ERROR_REDIRECT = f"{getattr(settings, 'FRONTEND_URL', '')}/activation-error/" if hasattr(settings, 'FRONTEND_URL') else "/activation-error/"
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
