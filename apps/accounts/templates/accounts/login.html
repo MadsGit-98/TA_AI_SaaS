@@ -3,6 +3,15 @@
 {% load static %}
 {% block title %}Login - X-Crewter{% endblock %}
 
+{% block extra_head %}
+<style>
+    /* Hide the login link in the header on the login page */
+    header a[href="{% url 'accounts:login' %}"] {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen flex items-center justify-center bg-primary-bg py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
