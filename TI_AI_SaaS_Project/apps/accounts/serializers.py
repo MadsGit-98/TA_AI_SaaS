@@ -3,7 +3,6 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from .models import CustomUser, UserProfile, VerificationToken, SocialAccount, HomePageContent, LegalPage, CardLogo
 from djoser.serializers import UserCreateSerializer
-from django.utils import timezone
 import re
 
 

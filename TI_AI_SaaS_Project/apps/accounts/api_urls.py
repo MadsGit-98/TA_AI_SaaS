@@ -9,7 +9,6 @@ urlpatterns = [
     path('auth/logout/', api.logout, name='logout'),
     path('auth/token/refresh/', api.token_refresh, name='token_refresh'),
     path('auth/password/reset/', api.password_reset_request, name='password_reset_request'),
-    path('auth/password/reset/confirm/<str:uid>/<str:token>/', api.password_reset_confirm, name='password_reset_confirm'),
     path('auth/password/reset/validate/<str:uid>/<str:token>/', api.validate_password_reset_token, name='validate_password_reset_token'),
     path('auth/password/reset/update/<str:uid>/<str:token>/', api.update_password_with_token, name='update_password_with_token'),
     path('auth/users/me/', api.user_profile, name='user_profile'),

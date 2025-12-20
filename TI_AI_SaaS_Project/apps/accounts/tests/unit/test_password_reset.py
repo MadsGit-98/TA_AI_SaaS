@@ -61,19 +61,20 @@ class PasswordResetTestCase(APITestCase):
         )
 
         # The endpoint now expects uid and token in the URL path
-        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': token})
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': token})
 
         # Post the payload with just the new passwords
         data = {
             'new_password': 'NewSecurePass123!',
-            're_new_password': 'NewSecurePass123!'
+            'confirm_password': 'NewSecurePass123!',
+            'token': token  # Include token in request body as well
         }
 
-        response = self.client.post(reset_confirm_url, data, format='json')
+        response = self.client.patch(reset_confirm_url, data, format='json')
 
         # Should return 200 OK for successful password reset
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['detail'], 'Password has been reset successfully.')
+        self.assertEqual(response.data['detail'], 'Password has been updated successfully.')
 
         # Refresh user from DB to check that password was actually changed
         self.user.refresh_from_db()
@@ -88,29 +89,31 @@ class PasswordResetTestCase(APITestCase):
             token_type='password_reset',
             expires_at=timezone.now() + timedelta(hours=24)
         )
-        
-        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': token})
-        
+
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': token})
+
         data = {
             'new_password': 'NewSecurePass123!',
-            're_new_password': 'DifferentPass456!'
+            'confirm_password': 'DifferentPass456!',
+            'token': token  # Include token in request body as well
         }
-        
-        response = self.client.post(reset_confirm_url, data, format='json')        
+
+        response = self.client.patch(reset_confirm_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_password_reset_confirm_invalid_token(self):
         """Test password reset confirmation with invalid token"""
         # This test is for an invalid token, so we don't need to create a VerificationToken
         # The endpoint expects uid and token in the URL path
-        reset_confirm_url = reverse('api:password_reset_confirm', kwargs={'uid': str(self.user.id), 'token': 'invalidtoken'})
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': 'invalidtoken'})
 
         # Post the payload with just the new passwords
         data = {
             'new_password': 'NewSecurePass123!',
-            're_new_password': 'NewSecurePass123!'
+            'confirm_password': 'NewSecurePass123!',
+            'token': 'invalidtoken'  # Include token in request body as well
         }
 
-        response = self.client.post(reset_confirm_url, data, format='json')
+        response = self.client.patch(reset_confirm_url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
