@@ -221,15 +221,15 @@ class SecurityTestCase(TestCase):
         self.assertIsNotNone(verification_token)
 
         # Try to confirm password reset with wrong data multiple times
-        reset_confirm_url = reverse('api:password_reset_confirm',
+        reset_confirm_url = reverse('api:update_password_with_token',
                                    kwargs={'uid': str(user.id), 'token': verification_token.token})
 
         for i in range(5):  # 5 attempts before the final one that should be rate limited
             reset_confirm_data = {
                 'uid': str(user.id),
-                'token': verification_token.token,
                 'new_password': 'NewSecurePass123!',
-                're_new_password': 'DifferentPass123!'  # Passwords don't match to cause error
+                'confirm_password': 'DifferentPass123!',  # Passwords don't match to cause error
+                'token': verification_token.token  # Include token in request body as well
             }
             response = self.client.post(reset_confirm_url, reset_confirm_data, format='json')
 

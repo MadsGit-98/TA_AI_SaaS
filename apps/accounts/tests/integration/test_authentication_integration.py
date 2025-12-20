@@ -90,16 +90,16 @@ class AuthenticationIntegrationTestCase(APITestCase):
 
         self.assertIsNotNone(verification_token)
 
-        # Confirm password reset with token
+        # Update password with token
         reset_confirm_data = {
             'uid': str(user.id),
-            'token': verification_token.token,
             'new_password': 'NewSecurePass123!',
-            're_new_password': 'NewSecurePass123!'
+            'confirm_password': 'NewSecurePass123!',
+            'token': verification_token.token  # Include token in request body as well
         }
 
-        reset_confirm_response = self.client.post(
-            reverse('api:password_reset_confirm', kwargs={'uid': str(user.id), 'token': verification_token.token}),
+        reset_confirm_response = self.client.patch(
+            reverse('api:update_password_with_token', kwargs={'uid': str(user.id), 'token': verification_token.token}),
             reset_confirm_data,
             format='json'
         )
