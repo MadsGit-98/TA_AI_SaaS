@@ -1,0 +1,87 @@
+openapi: 3.0.0
+info:
+  title: X-Crewter Authentication API
+  version: 1.0.0
+  description: API for handling JWT authentication with cookie-based storage
+
+paths:
+  /api/accounts/auth/login/:
+    post:
+      summary: User login with email/username and password
+      description: Authenticates user and sets Http-Only cookies for access and refresh tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: Username or email address
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Successful authentication with tokens set in cookies
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                description: Http-Only, Secure, SameSite=Lax cookies for access and refresh tokens
+        '400':
+          description: Invalid credentials or inactive account
+        '401':
+          description: Unauthorized access
+      security: []
+
+  /api/accounts/auth/token/refresh/:
+    post:
+      summary: Refresh access token
+      description: Refreshes the access token using the refresh token stored in cookies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                # Empty body, tokens come from cookies
+      responses:
+        '200':
+          description: New access token issued and set in cookies
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                description: New Http-Only, Secure, SameSite=Lax access token cookie
+        '400':
+          description: Invalid or expired refresh token
+        '401':
+          description: Unauthorized access
+      security: []
+
+  /api/accounts/auth/logout/:
+    post:
+      summary: User logout
+      description: Logs out the user and clears authentication cookies
+      responses:
+        '204':
+          description: Successfully logged out, authentication cookies cleared
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                description: Authentication cookies cleared
+        '401':
+          description: Unauthorized access
+      security:
+        - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: JWT token for authentication (will be retrieved from Http-Only cookie)
