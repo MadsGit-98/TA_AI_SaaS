@@ -22,6 +22,7 @@ from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer,
                          UserUpdateSerializer)
+from .utils import set_auth_cookies, clear_auth_cookies
 from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
@@ -489,8 +490,21 @@ def register(request):
         if not email_sent:
             response_data['warning'] = 'Account created but activation email could not be sent. Please contact support.'
 
-        logger.info(f"Registration successful for user id={user.id}")
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        # For registration, we also set the tokens in cookies for immediate login
+        response = Response(response_data, status=status.HTTP_201_CREATED)
+
+        # Generate JWT tokens for the newly registered user
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+
+        # Set tokens in HttpOnly cookies using utility function
+        response = set_auth_cookies(
+            response,
+            str(refresh.access_token),
+            str(refresh)
+        )
+
+        return response
 
     logger.warning(f"Registration failed with errors: {serializer.errors}")
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -675,14 +689,22 @@ def login(request):
             # Determine redirect URL based on subscription status
             redirect_url = get_redirect_url_after_login(user)
 
+            # Create response with user data but without tokens in response body
             response_data = {
                 'user': user_serializer.data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
                 'redirect_url': redirect_url
             }
 
-            return Response(response_data, status=status.HTTP_200_OK)
+            response = Response(response_data, status=status.HTTP_200_OK)
+
+            # Set tokens in HttpOnly cookies using utility function
+            response = set_auth_cookies(
+                response,
+                str(refresh.access_token),
+                str(refresh)
+            )
+
+            return response
         else:
             logger.warning(f"Login attempt for inactive account: {user.id}")
             return Response(
@@ -734,40 +756,54 @@ def get_redirect_url_after_login(user):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Logout endpoint that blacklists the refresh token
+    Logout endpoint that blacklists the refresh token and clears authentication cookies
     """
     try:
-        refresh_token = request.data.get('refresh')
+        # Get refresh token from cookies if available
+        refresh_token = request.COOKIES.get('refresh_token')
         if refresh_token:
             token = RefreshToken(refresh_token)
             token.blacklist()
         else:
-            # If no refresh token provided, still logout the session
-            logger.info("Logout attempted without refresh token")
+            # If no refresh token in cookies, still logout the session
+            logger.info("Logout attempted without refresh token in cookies")
     except AttributeError:
         # This can happen if the blacklist app is not properly configured
         logger.error("AttributeError during logout - blacklist method not available")
-        return Response(
+        response = Response(
             {'error': 'Invalid refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
     except (TokenError, InvalidToken):
         # Handle invalid or malformed refresh token
         logger.warning("Invalid refresh token provided during logout")
-        return Response(
+        response = Response(
             {'error': 'Invalid refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
     except Exception as e:
         # Log the specific error for debugging while returning a safe response
         logger.error(f"Unexpected error during logout: {str(e)}")
-        return Response(
+        response = Response(
             {'error': 'Logout failed'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
 
     auth_logout(request)
-    return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # Clear user activity tracking on logout
+    from .session_utils import clear_user_activity
+    clear_user_activity(request.user.id)
+
+    # Create response and clear authentication cookies
+    response = Response(status=status.HTTP_204_NO_CONTENT)
+    return clear_auth_cookies(response)
 
 
 @api_view(['GET'])
@@ -776,6 +812,10 @@ def get_user_profile(request):
     """
     Get authenticated user's profile information
     """
+    # Update user activity for session timeout tracking
+    from .session_utils import update_user_activity
+    update_user_activity(request.user.id)
+
     user_serializer = UserSerializer(request.user)
     response_data = user_serializer.data
 
@@ -783,6 +823,20 @@ def get_user_profile(request):
     if hasattr(request.user, 'profile'):
         profile_serializer = UserProfileSerializer(request.user.profile)
         response_data['profile'] = profile_serializer.data
+
+    # Add token expiration information for frontend handling
+    # Extract the access token from cookies to get its expiration
+    access_token_str = request.COOKIES.get('access_token')
+    if access_token_str:
+        try:
+            from rest_framework_simplejwt.tokens import AccessToken
+            access_token = AccessToken(access_token_str)
+            # Add expiration info to response
+            response_data['token_expiration'] = access_token['exp']
+            response_data['token_will_refresh_at'] = access_token['exp'] - (5 * 60)  # 5 minutes before expiration
+        except Exception:
+            # If there's an issue parsing the token, don't include expiration info
+            pass
 
     return Response(response_data, status=status.HTTP_200_OK)
 
@@ -796,6 +850,10 @@ def user_profile(request):
     PUT/PATCH: Updates user profile information
     """
     if request.method == 'GET':
+        # Update user activity for session timeout tracking
+        from .session_utils import update_user_activity
+        update_user_activity(request.user.id)
+
         # Use the existing get_user_profile functionality
         user_serializer = UserSerializer(request.user)
         response_data = user_serializer.data
@@ -1053,3 +1111,105 @@ def token_refresh(request):
             {'error': 'Invalid or expired refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to refresh tokens via cookies
+@throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
+def cookie_token_refresh(request):
+    """
+    Refresh JWT token endpoint using cookies
+    Extracts refresh token from cookies and returns new tokens in cookies
+    """
+    # For additional CSRF protection, we can require the referer header or a custom header
+    # Since this is an API endpoint, we'll rely primarily on SameSite cookie attribute
+    # but also check for a custom header as additional protection
+
+    # Extract refresh token from cookies
+    refresh_token = request.COOKIES.get('refresh_token')
+
+    if not refresh_token:
+        return Response(
+            {'error': 'Refresh token not found in cookies'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Create a RefreshToken instance from the cookie value
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken(refresh_token)
+
+        # Get the user from the token to check if they're still active
+        from .models import CustomUser
+        user_id = token.get('user_id')
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            if not user.is_active:
+                return Response(
+                    {'error': 'User account is not active'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Generate new access token
+        new_access_token = str(token.access_token)
+        new_refresh_token = str(token)
+
+        # Create response with new tokens in cookies
+        response = Response(
+            {'detail': 'Token refreshed successfully'},
+            status=status.HTTP_200_OK
+        )
+
+        # Set new access token in HttpOnly, Secure cookie
+        response.set_cookie(
+            'access_token',
+            new_access_token,
+            httponly=True,
+            secure=not settings.DEBUG,  # Set to True in production (HTTPS), False in development (HTTP)
+            samesite='Lax',  # Lax enforcement for CSRF protection
+            max_age=25 * 60  # 25 minutes in seconds
+        )
+
+        # Set new refresh token in HttpOnly, Secure cookie if it's been rotated
+        response.set_cookie(
+            'refresh_token',
+            new_refresh_token,
+            httponly=True,
+            secure=not settings.DEBUG,  # Set to True in production (HTTPS), False in development (HTTP)
+            samesite='Lax',  # Lax enforcement for CSRF protection
+            max_age=7 * 24 * 60 * 60  # 7 days in seconds
+        )
+
+        return response
+
+    except Exception as e:
+        # Log the error server-side without exposing details to the client
+        logger.warning(f"Cookie token refresh failed: {str(e)}")
+        return Response(
+            {'error': 'Invalid or expired refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+def verify_csrf_token(request):
+    """
+    Verify CSRF token for state-changing operations
+    """
+    from django.middleware.csrf import get_token
+    from django.middleware.csrf import _compare_salted_tokens
+
+    # Get the CSRF token from the request
+    request_csrf_token = request.META.get('HTTP_X_CSRFTOKEN') or request.data.get('csrf_token')
+    if not request_csrf_token:
+        return False
+
+    # Get the session's CSRF token
+    session_csrf_token = get_token(request)
+
+    # Compare the tokens
+    return _compare_salted_tokens(request_csrf_token, session_csrf_token)

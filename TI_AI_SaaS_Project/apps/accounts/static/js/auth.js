@@ -1,24 +1,25 @@
-// auth.js - Authentication functionality for X-Crewter
+// auth.js - Authentication functionality for X-Crewter (Cookie-based JWT)
 
-// Unified function to get token from either localStorage or sessionStorage
+// Token functions are no longer needed since tokens are stored in HttpOnly cookies
+// The browser handles token storage and inclusion automatically
 function getToken(tokenName) {
-    // Try localStorage first, then sessionStorage
-    return localStorage.getItem(tokenName) || sessionStorage.getItem(tokenName);
+    // Tokens are now stored in HttpOnly cookies, not in localStorage/sessionStorage
+    // This function is kept for compatibility but returns null
+    return null;
 }
 
-// Unified function to set token
+// Token functions are no longer needed since tokens are stored in HttpOnly cookies
 function setToken(tokenName, tokenValue, isPersistent) {
-    if (isPersistent) {
-        localStorage.setItem(tokenName, tokenValue);
-    } else {
-        sessionStorage.setItem(tokenName, tokenValue);
-    }
+    // Tokens are now stored in HttpOnly cookies via server response
+    // This function is kept for compatibility but does nothing
+    console.warn("Tokens are now stored in HttpOnly cookies. Use server endpoints to manage tokens.");
 }
 
-// Unified function to remove token
+// Token functions are no longer needed since tokens are stored in HttpOnly cookies
 function removeToken(tokenName) {
-    localStorage.removeItem(tokenName);
-    sessionStorage.removeItem(tokenName);
+    // Tokens are now stored in HttpOnly cookies, clearing is handled by logout
+    // This function is kept for compatibility but does nothing
+    console.warn("Tokens are stored in HttpOnly cookies. Use logout endpoint to clear tokens.");
 }
 
 // Function to get CSRF token from cookie or meta tag
@@ -92,7 +93,7 @@ async function handleRegister(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
         
@@ -161,16 +162,15 @@ async function handleLogin(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            // Store tokens based on remember me setting
-            setToken('access_token', data.access, rememberMe);
-            setToken('refresh_token', data.refresh, rememberMe);
+            // Tokens are now stored in HttpOnly cookies, no need to store them in JS
+            // The server sets the tokens in cookies automatically
 
             // Use server-provided redirect URL for navigation
             if (data.redirect_url && typeof data.redirect_url === 'string' && data.redirect_url.length > 0) {
@@ -234,7 +234,7 @@ async function handlePasswordReset(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
         
@@ -265,3 +265,78 @@ async function handlePasswordReset(e) {
         submitBtn.textContent = 'Send Reset Link';
     }
 }
+
+// Check if tokens are about to expire and refresh them automatically
+async function checkAndRefreshToken() {
+    try {
+        // Make a request to the user profile endpoint which will update activity
+        // and potentially trigger server-side refresh if needed
+        const response = await fetch('/api/accounts/auth/users/me/', {
+            method: 'GET',
+            credentials: 'include', // Important: include cookies in requests
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            }
+        });
+
+        if (response.status === 401) {
+            // Token expired, redirect to login
+            window.location.href = '/login/';
+            return false;
+        }
+
+        return response.ok;
+    } catch (error) {
+        console.error('Error checking token status:', error);
+        // On error, redirect to login
+        window.location.href = '/login/';
+        return false;
+    }
+}
+
+// Set up automatic token refresh before expiration
+function setupTokenRefresh() {
+    // Refresh token automatically before it expires (checking every 20 minutes)
+    // This ensures the user remains active and tokens are refreshed before expiration
+    setInterval(() => {
+        checkAndRefreshToken();
+    }, 20 * 60 * 1000); // Check every 20 minutes
+}
+
+// Initialize auth functionality when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', handleRegister);
+    }
+
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+
+    // Password reset request form
+    const passwordResetForm = document.getElementById('password-reset-form');
+    if (passwordResetForm) {
+        passwordResetForm.addEventListener('submit', handlePasswordReset);
+    }
+
+    // Set up token refresh if user appears to be authenticated
+    // Check for the presence of authentication cookies
+    if (document.cookie.includes('access_token')) {
+        setupTokenRefresh();
+    }
+
+    // Add response interceptor to handle 401s globally for API calls
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        return originalFetch.apply(this, args).then(response => {
+            if (response.status === 401) {
+                // If unauthorized, redirect to login
+                window.location.href = '/login/';
+            }
+            return response;
+        });
+    };
+});
