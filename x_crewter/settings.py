@@ -72,6 +72,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.accounts.middleware.SessionTimeoutMiddleware',  # Session timeout middleware
     'social_django.middleware.SocialAuthExceptionMiddleware',  # Social auth middleware
     'apps.accounts.middleware.RBACMiddleware',  # Role-Based Access Control middleware
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -104,7 +105,7 @@ CORS_ALLOW_HEADERS = [
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'apps.accounts.authentication.ActiveUserJWTAuthentication',
+        'apps.accounts.authentication.CookieBasedJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -124,12 +125,20 @@ REST_FRAMEWORK = {
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
 
+# JWT Configuration for secure token handling
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Matches session timeout requirement
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=25),  # Refresh 5 minutes before standard expiration
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
+}
+
+# Custom settings for token refresh configuration
+TOKEN_REFRESH_CONFIG = {
+    'REFRESH_THRESHOLD_SECONDS': 5 * 60,  # 5 minutes before expiration
+    'TOKEN_MONITORING_ENABLED': True,
+    'MONITORING_INTERVAL_SECONDS': 60,  # Check every minute
 }
 
 # Djoser Configuration
