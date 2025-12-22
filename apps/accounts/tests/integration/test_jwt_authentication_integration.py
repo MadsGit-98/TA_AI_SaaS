@@ -33,10 +33,10 @@ class TestJWTAuthenticationIntegration(TestCase):
         # Login
         response = self.client.post(
             reverse('api:login'),
-            data={
+            data=json.dumps({
                 'username': self.user_data['username'],
                 'password': self.user_data['password']
-            },
+            }),
             content_type='application/json'
         )
         
@@ -59,10 +59,10 @@ class TestJWTAuthenticationIntegration(TestCase):
         # Login first to get tokens
         login_response = self.client.post(
             reverse('api:login'),
-            data={
+            data=json.dumps({
                 'username': self.user_data['username'],
                 'password': self.user_data['password']
-            },
+            }),
             content_type='application/json'
         )
         
@@ -83,10 +83,10 @@ class TestJWTAuthenticationIntegration(TestCase):
         # Login first
         login_response = self.client.post(
             reverse('api:login'),
-            data={
+            data=json.dumps({
                 'username': self.user_data['username'],
                 'password': self.user_data['password']
-            },
+            }),
             content_type='application/json'
         )
         
@@ -102,19 +102,25 @@ class TestJWTAuthenticationIntegration(TestCase):
         access_cookie = self.client.cookies.get('access_token')
         refresh_cookie = self.client.cookies.get('refresh_token')
         
-        # After logout, the cookies should be set to expire or be empty
-        self.assertIsNotNone(access_cookie)
-        self.assertIsNotNone(refresh_cookie)
-
+        # After logout, the cookies should be empty or expired
+        # Check if cookies have empty values or max_age indicates expiry
+        self.assertTrue(
+            access_cookie.value == '' or access_cookie['max-age'] == 0,
+            "Access token cookie should be cleared or expired"
+        )
+        self.assertTrue(
+            refresh_cookie.value == '' or refresh_cookie['max-age'] == 0,
+            "Refresh token cookie should be cleared or expired"
+        )
     def test_protected_endpoint_access_with_valid_token(self):
         """Test accessing protected endpoints with valid cookie tokens"""
         # Login to get tokens
         login_response = self.client.post(
             reverse('api:login'),
-            data={
+            data=json.dumps({
                 'username': self.user_data['username'],
                 'password': self.user_data['password']
-            },
+            }),
             content_type='application/json'
         )
         
@@ -148,10 +154,10 @@ class TestJWTAuthenticationIntegration(TestCase):
         # Try to login with inactive user
         login_response = self.client.post(
             reverse('api:login'),
-            data={
+            data=json.dumps({
                 'username': 'inactive',
                 'password': 'testpass123'
-            },
+            }),
             content_type='application/json'
         )
         
