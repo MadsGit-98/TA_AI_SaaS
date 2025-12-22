@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 import logging
 import redis
 import json
-from django.core.cache import cache
+import uuid
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -35,24 +35,29 @@ def monitor_and_refresh_tokens():
         threshold_time = timezone.now() + timedelta(minutes=5)
         
         # In our implementation, we'll use Redis to track when tokens need refresh
-        # Get all keys that match our token tracking pattern
-        token_keys = redis_client.keys("token_expires:*")
+        # Use SCAN instead of KEYS to avoid blocking Redis (non-blocking, O(1) per call)
+        token_keys = list(redis_client.scan_iter(match="token_expires:*"))
         
         tokens_to_refresh = []
         
         for key in token_keys:
             try:
+                # Decode the key from bytes to string if necessary
+                if isinstance(key, bytes):
+                    key_str = key.decode('utf-8')
+                else:
+                    key_str = str(key)
+
                 # Get the expiration timestamp for this token
                 expire_timestamp = float(redis_client.get(key))
                 token_expire_time = datetime.fromtimestamp(expire_timestamp, tz=timezone.utc)
-                
+
                 # Check if this token expires within the next 5 minutes
                 if token_expire_time < threshold_time:
                     # Extract user ID from the key (token_expires:<user_id>)
-                    key_str = key.decode('utf-8')
                     user_id = key_str.split(':')[1]
                     tokens_to_refresh.append(int(user_id))
-                    
+
                     logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh")
             except (ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Error processing token key {key}: {str(e)}")
@@ -106,14 +111,31 @@ def refresh_user_token(user_id):
             new_expire_time.timestamp()
         )
         
+        # Store the new tokens in a secure, short-lived storage with a reference ID
+        token_reference_id = str(uuid.uuid4())
+        token_data = {
+            'access_token': str(refresh.access_token),
+            'refresh_token': str(refresh),
+            'user_id': user_id,
+            'expires_at': new_expire_time.isoformat()
+        }
+
+        # Store in Redis with a short expiration time (e.g., 5 minutes)
+        redis_client.setex(
+            f"temp_tokens:{token_reference_id}",
+            timedelta(minutes=5),  # Short-lived storage
+            json.dumps(token_data, default=str)
+        )
+
         logger.info(f"Successfully refreshed token for user {user_id}")
-        
+
         # In a real implementation, you might notify the client about the refresh
         # This could be via WebSocket, server-sent events, or another mechanism
+        # Return only a reference ID instead of the actual tokens
         return {
             'user_id': user_id,
-            'new_access_token': str(refresh.access_token),
-            'new_refresh_token': str(refresh),
+            'token_reference_id': token_reference_id,
+            'token_refreshed': True,
             'expires_at': new_expire_time.isoformat()
         }
         
@@ -153,4 +175,40 @@ def schedule_token_refresh_check():
         
     except Exception as e:
         logger.error(f"Error scheduling token refresh checks: {str(e)}")
+        raise
+
+
+@shared_task
+def get_tokens_by_reference(token_reference_id):
+    """
+    Retrieve tokens using the reference ID from secure storage.
+    This provides a secure way to access the tokens that were generated in the background.
+    """
+    logger.info(f"Retrieving tokens for reference ID: {token_reference_id}")
+
+    try:
+        # Retrieve the token data from Redis
+        token_data_json = redis_client.get(f"temp_tokens:{token_reference_id}")
+
+        if not token_data_json:
+            logger.warning(f"No token data found for reference ID: {token_reference_id}")
+            return {'error': 'Token reference not found or expired'}
+
+        # Parse the token data
+        token_data = json.loads(token_data_json)
+
+        # Remove the token data from Redis after retrieval (one-time use)
+        redis_client.delete(f"temp_tokens:{token_reference_id}")
+
+        logger.info(f"Successfully retrieved tokens for reference ID: {token_reference_id}")
+
+        return {
+            'user_id': token_data['user_id'],
+            'access_token': token_data['access_token'],
+            'refresh_token': token_data['refresh_token'],
+            'expires_at': token_data['expires_at']
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving tokens for reference ID {token_reference_id}: {str(e)}")
         raise

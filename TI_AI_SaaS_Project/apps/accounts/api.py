@@ -12,7 +12,7 @@ import logging
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
@@ -27,6 +27,8 @@ from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
+from django.middleware.csrf import get_token
+from .session_utils import clear_user_activity, update_user_activity
 
 # Define constant redirect URLs for activation results
 # These URLs should point to frontend pages that handle activation success/error states
@@ -494,7 +496,6 @@ def register(request):
         response = Response(response_data, status=status.HTTP_201_CREATED)
 
         # Generate JWT tokens for the newly registered user
-        from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
 
         # Set tokens in HttpOnly cookies using utility function
@@ -795,11 +796,13 @@ def logout(request):
         # Still clear cookies even if token blacklisting fails
         return clear_auth_cookies(response)
 
+    # Capture the user ID before logout since request.user becomes AnonymousUser after logout
+    user_id = getattr(request.user, 'id', None)
     auth_logout(request)
 
-    # Clear user activity tracking on logout
-    from .session_utils import clear_user_activity
-    clear_user_activity(request.user.id)
+    # Clear user activity tracking on logout if user_id is available
+    if user_id is not None:
+        clear_user_activity(user_id)
 
     # Create response and clear authentication cookies
     response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -813,8 +816,7 @@ def get_user_profile(request):
     Get authenticated user's profile information
     """
     # Update user activity for session timeout tracking
-    from .session_utils import update_user_activity
-    update_user_activity(request.user.id)
+    update_user_activity(request.user.id)  # Result is intentionally ignored as it's non-critical
 
     user_serializer = UserSerializer(request.user)
     response_data = user_serializer.data
@@ -829,7 +831,6 @@ def get_user_profile(request):
     access_token_str = request.COOKIES.get('access_token')
     if access_token_str:
         try:
-            from rest_framework_simplejwt.tokens import AccessToken
             access_token = AccessToken(access_token_str)
             # Add expiration info to response
             response_data['token_expiration'] = access_token['exp']
@@ -851,8 +852,7 @@ def user_profile(request):
     """
     if request.method == 'GET':
         # Update user activity for session timeout tracking
-        from .session_utils import update_user_activity
-        update_user_activity(request.user.id)
+        update_user_activity(request.user.id)  # Result is intentionally ignored as it's non-critical
 
         # Use the existing get_user_profile functionality
         user_serializer = UserSerializer(request.user)
@@ -1136,11 +1136,9 @@ def cookie_token_refresh(request):
 
     try:
         # Create a RefreshToken instance from the cookie value
-        from rest_framework_simplejwt.tokens import RefreshToken
         token = RefreshToken(refresh_token)
 
         # Get the user from the token to check if they're still active
-        from .models import CustomUser
         user_id = token.get('user_id')
         try:
             user = CustomUser.objects.get(id=user_id)
@@ -1155,9 +1153,17 @@ def cookie_token_refresh(request):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Generate new access token
-        new_access_token = str(token.access_token)
-        new_refresh_token = str(token)
+        # Blacklist the old refresh token if the blacklist app is enabled
+        try:
+            token.blacklist()
+        except AttributeError:
+            # This can happen if the blacklist app is not properly configured
+            logger.warning("AttributeError during token refresh - blacklist method not available")
+
+        # Generate new refresh token for the user
+        new_refresh = RefreshToken.for_user(user)
+        new_access_token = str(new_refresh.access_token)
+        new_refresh_token = str(new_refresh)
 
         # Create response with new tokens in cookies
         response = Response(
@@ -1165,25 +1171,8 @@ def cookie_token_refresh(request):
             status=status.HTTP_200_OK
         )
 
-        # Set new access token in HttpOnly, Secure cookie
-        response.set_cookie(
-            'access_token',
-            new_access_token,
-            httponly=True,
-            secure=not settings.DEBUG,  # Set to True in production (HTTPS), False in development (HTTP)
-            samesite='Lax',  # Lax enforcement for CSRF protection
-            max_age=25 * 60  # 25 minutes in seconds
-        )
-
-        # Set new refresh token in HttpOnly, Secure cookie if it's been rotated
-        response.set_cookie(
-            'refresh_token',
-            new_refresh_token,
-            httponly=True,
-            secure=not settings.DEBUG,  # Set to True in production (HTTPS), False in development (HTTP)
-            samesite='Lax',  # Lax enforcement for CSRF protection
-            max_age=7 * 24 * 60 * 60  # 7 days in seconds
-        )
+        # Set authentication cookies using utility function
+        set_auth_cookies(response, new_access_token, new_refresh_token)
 
         return response
 
@@ -1196,20 +1185,3 @@ def cookie_token_refresh(request):
         )
 
 
-def verify_csrf_token(request):
-    """
-    Verify CSRF token for state-changing operations
-    """
-    from django.middleware.csrf import get_token
-    from django.middleware.csrf import _compare_salted_tokens
-
-    # Get the CSRF token from the request
-    request_csrf_token = request.META.get('HTTP_X_CSRFTOKEN') or request.data.get('csrf_token')
-    if not request_csrf_token:
-        return False
-
-    # Get the session's CSRF token
-    session_csrf_token = get_token(request)
-
-    # Compare the tokens
-    return _compare_salted_tokens(request_csrf_token, session_csrf_token)

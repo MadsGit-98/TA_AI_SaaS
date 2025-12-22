@@ -1,11 +1,8 @@
 from django.http import JsonResponse
-from django.contrib.auth.models import Group
 from django.utils.deprecation import MiddlewareMixin
-from apps.accounts.models import UserProfile
 from django.core.exceptions import ObjectDoesNotExist
+from .session_utils import is_user_session_expired, update_user_activity
 import logging
-from django.conf import settings
-from django.urls import resolve
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +25,45 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
         if (request.user.is_authenticated and
             any(request.path.startswith(path) for path in activity_tracking_paths)):
 
-            from .session_utils import is_user_session_expired, update_user_activity
-
             # Check if the user's session has expired due to inactivity
-            if is_user_session_expired(request.user.id):
-                # Clear authentication cookies and return unauthorized response
+            try:
+                if is_user_session_expired(request.user.id):
+                    # Clear authentication cookies and return unauthorized response
+                    response = JsonResponse(
+                        {'error': 'Session expired due to inactivity'},
+                        status=401
+                    )
+                    # Delete cookies with the same attributes used when they were set
+                    # Using the same samesite, path, and domain attributes as when set
+                    response.delete_cookie('access_token',
+                                          path='/',
+                                          domain=None,
+                                          samesite='Lax')
+                    response.delete_cookie('refresh_token',
+                                          path='/',
+                                          domain=None,
+                                          samesite='Lax')
+                    return response
+            except Exception as e:
+                # Log the error server-side without exposing sensitive details
+                logger.error(f"Session timeout check failed for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}")
+                # Return a server error response
                 response = JsonResponse(
-                    {'error': 'Session expired due to inactivity'},
-                    status=401
+                    {'error': 'Session verification failed'},
+                    status=500
                 )
-                response.delete_cookie('access_token')
-                response.delete_cookie('refresh_token')
                 return response
             else:
                 # Update the user's activity timestamp
-                update_user_activity(request.user.id)
+                try:
+                    success = update_user_activity(request.user.id)
+                    if not success:
+                        logger.warning(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
+                except Exception as e:
+                    # Log the error but don't crash the middleware - let the request proceed
+                    logger.error(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
+                    # Optionally, in a production environment, you might want to send this to a monitoring service
+                    # For example: sentry_sdk.capture_exception(e) if using Sentry
 
         return None  # Continue with the request
 

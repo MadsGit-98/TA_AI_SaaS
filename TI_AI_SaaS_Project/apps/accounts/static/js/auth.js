@@ -280,8 +280,8 @@ async function checkAndRefreshToken() {
             }
         });
 
-        if (response.status === 401) {
-            // Token expired, redirect to login
+        if (response.status === 401 || response.status === 403) {
+            // Token expired or forbidden, redirect to login
             window.location.href = '/login/';
             return false;
         }
@@ -289,8 +289,18 @@ async function checkAndRefreshToken() {
         return response.ok;
     } catch (error) {
         console.error('Error checking token status:', error);
-        // On error, redirect to login
-        window.location.href = '/login/';
+
+        // Note: In a fetch() catch block, 'error' is usually a network error without status
+        // We can't determine the status from the error object itself
+        // The catch block is for network errors, timeouts, etc.
+
+        // For network/timeouts/server errors, handle gracefully
+        // Show a transient UI message or log the error
+        console.warn('Network error occurred, not redirecting:', error.message || error);
+
+        // Optionally, you could show a user-friendly message
+        // showNotification('A network error occurred. Please try again later.', 'error');
+
         return false;
     }
 }
@@ -323,19 +333,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Set up token refresh if user appears to be authenticated
-    // Check for the presence of authentication cookies
-    if (document.cookie.includes('access_token')) {
-        setupTokenRefresh();
-    }
+    // Initialize token refresh regardless of HttpOnly cookies
+    // The /users/me/ endpoint will determine actual auth status
+    setupTokenRefresh();
 
     // Add response interceptor to handle 401s globally for API calls
     const originalFetch = window.fetch;
+    let isRedirecting = false; // Module-scoped flag to guard against duplicate redirects
+
     window.fetch = function(...args) {
         return originalFetch.apply(this, args).then(response => {
-            if (response.status === 401) {
-                // If unauthorized, redirect to login
-                window.location.href = '/login/';
+            // Only handle 401s for same-origin or app API requests
+            const url = args[0] instanceof Request ? args[0].url : args[0];
+            const isAppRequest = url.startsWith(window.location.origin) || url.startsWith('/api/');
+
+            if (response.status === 401 && isAppRequest && !isRedirecting && window.location.pathname !== '/login/') {
+                // Set the flag to prevent duplicate redirects
+                isRedirecting = true;
+
+                // Perform a single redirect via location.replace
+                setTimeout(() => {
+                    window.location.replace('/login/');
+                }, 0);
+
+                // Return a rejected Promise so callers do not continue processing the 401 response
+                return Promise.reject(new Error('Unauthorized - redirecting to login'));
             }
+
             return response;
         });
     };

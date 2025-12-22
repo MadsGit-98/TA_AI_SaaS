@@ -103,9 +103,18 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # REST Framework Configuration
+# Check if we should enable dual authentication support
+ENABLE_DUAL_AUTH = env('ENABLE_DUAL_AUTH', default=True)  # Set to False to use only cookie-based auth
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        # Support both header-based and cookie-based authentication for migration path
         'apps.accounts.authentication.CookieBasedJWTAuthentication',
+    ) + (
+        # Conditionally add header-based authentication for backward compatibility
+        ('rest_framework_simplejwt.authentication.JWTAuthentication',)
+        if ENABLE_DUAL_AUTH
+        else ()
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -303,6 +312,8 @@ SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE', default=False)  # Set to Tr
 CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE', default=False)  # Set to True in production
 CSRF_COOKIE_HTTPONLY = True  # Prevent CSRF token access from JavaScript
 SESSION_COOKIE_HTTPONLY = True  # Prevent session cookie access from JavaScript
+SESSION_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
+CSRF_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
 X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='DENY')
 
 # Additional SSL/Security Configuration

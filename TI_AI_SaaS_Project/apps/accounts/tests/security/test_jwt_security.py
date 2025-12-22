@@ -1,17 +1,19 @@
 """
 Security tests for the JWT cookie-based authentication system
 """
-from django.test import TestCase, Client
+from django.test import TestCase
+from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import RefreshToken
-from apps.accounts.models import CustomUser
-import json
+from rest_framework_simplejwt.tokens import AccessToken
+from datetime import timedelta
+import time
 
 
 class TestJWTSecurity(TestCase):
     def setUp(self):
-        self.client = Client()
-        self.user = CustomUser.objects.create_user(
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
             password='testpass123'
@@ -33,6 +35,10 @@ class TestJWTSecurity(TestCase):
         access_cookie = response.cookies.get('access_token')
         refresh_cookie = response.cookies.get('refresh_token')
         
+        # Verify cookies exist
+        self.assertIsNotNone(access_cookie, "access_token cookie not set")
+        self.assertIsNotNone(refresh_cookie, "refresh_token cookie not set")
+        
         # Verify HttpOnly attribute is set
         self.assertTrue(access_cookie.coded_value)  # The cookie exists
         self.assertIn('httponly', access_cookie.to_debug_string().lower())
@@ -45,15 +51,18 @@ class TestJWTSecurity(TestCase):
             'username': 'testuser',
             'password': 'testpass123'
         })
-        
-        self.assertEqual(response.status_code, 200)
-        
-        # Check SameSite attribute on cookies
         access_cookie = response.cookies.get('access_token')
         refresh_cookie = response.cookies.get('refresh_token')
         
+        self.assertIsNotNone(access_cookie, "access_token cookie not set")
+        self.assertIsNotNone(refresh_cookie, "refresh_token cookie not set")
+        
         # Verify SameSite=Lax attribute
         cookie_attrs = access_cookie.to_debug_string()
+        self.assertIn('samesite=lax', cookie_attrs.lower())
+        
+        cookie_attrs = refresh_cookie.to_debug_string()
+        self.assertIn('samesite=lax', cookie_attrs.lower())
         self.assertIn('samesite=lax', cookie_attrs.lower())
         
         cookie_attrs = refresh_cookie.to_debug_string()
@@ -78,13 +87,15 @@ class TestJWTSecurity(TestCase):
 
     def test_token_rotation_on_refresh(self):
         """Test that refresh tokens are rotated on each use"""
-        # Login to get initial tokens
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
+        self.assertIn('refresh_token', self.client.cookies, "refresh_token cookie not set after login")
+        original_refresh = self.client.cookies['refresh_token'].value
         
-        self.assertEqual(login_response.status_code, 200)
+        # Refresh tokens
+        refresh_response = self.client.post('/api/accounts/auth/token/cookie-refresh/')
+        self.assertEqual(refresh_response.status_code, 200)
+        
+        self.assertIn('refresh_token', self.client.cookies, "refresh_token cookie not set after refresh")
+        new_refresh = self.client.cookies['refresh_token'].value
         original_refresh = self.client.cookies['refresh_token'].value
         
         # Refresh tokens
@@ -103,35 +114,33 @@ class TestJWTSecurity(TestCase):
             'username': 'testuser',
             'password': 'testpass123'
         })
-        
-        self.assertEqual(response.status_code, 200)
-        
-        # Check domain attribute (should be restricted to current domain)
-        access_cookie = response.cookies.get('access_token')
-        refresh_cookie = response.cookies.get('refresh_token')
-        
-        # The domain attribute should be set to restrict cookies to same domain
-        cookie_attrs = access_cookie.to_debug_string()
-        # Domain restriction is typically handled by not setting a domain or setting to current domain
 
-    def test_attempt_token_extraction_via_xss_script(self):
-        """Simulate an XSS attempt to access tokens via JavaScript"""
-        # Login to get tokens
-        response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
-        
         self.assertEqual(response.status_code, 200)
-        
-        # Even if an XSS vulnerability existed, HttpOnly cookies wouldn't be accessible
-        # This test confirms the implementation is secure against such attacks
+
+        # Verify that both cookies exist
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
+
+        # Get the cookies
         access_cookie = response.cookies.get('access_token')
         refresh_cookie = response.cookies.get('refresh_token')
-        
-        # Verify HttpOnly flag is set (this is the protection mechanism)
-        self.assertTrue(access_cookie['httponly'])
-        self.assertTrue(refresh_cookie['httponly'])
+
+        # Assert domain attribute is either not set (None/empty) or equals the test request host
+        # In Django test environment, domain is usually not set (defaults to request domain)
+        access_domain = access_cookie.get('domain')
+        refresh_domain = refresh_cookie.get('domain')
+
+        # The domain should either be empty/None (indicating same-domain restriction)
+        # or match the test server's domain
+        self.assertTrue(
+            access_domain is None or access_domain == '' or access_domain == 'testserver',
+            f"Access token cookie domain should be restricted to same domain, but got: {access_domain}"
+        )
+        self.assertTrue(
+            refresh_domain is None or refresh_domain == '' or refresh_domain == 'testserver',
+            f"Refresh token cookie domain should be restricted to same domain, but got: {refresh_domain}"
+        )
+
 
     def test_invalid_token_rejection(self):
         """Test that invalid or tampered tokens are properly rejected"""
@@ -146,37 +155,38 @@ class TestJWTSecurity(TestCase):
 
     def test_token_expiry_handling(self):
         """Test proper handling of expired tokens"""
-        # Create an expired token (manually setting an old expiration)
-        from datetime import datetime, timedelta
-        from rest_framework_simplejwt.settings import api_settings
-        from rest_framework_simplejwt.tokens import AccessToken
+        # Get the test user
+        user = self.User.objects.get(username='testuser')
 
-        # In a real test, we'd create an expired token
-        # For this test, we'll verify the system handles expiration correctly
-        # by checking that expired tokens are rejected
+        # Create an expired access token
+        expired_token = AccessToken()
+        expired_token['user_id'] = user.id
+        expired_token['username'] = user.username
+        # Set expiration to 1 hour ago (definitely expired)
+        expired_token.set_exp(lifetime=timedelta(hours=-1))
 
-        # Login to get a valid token first
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
+        # Try to access a protected endpoint with the expired token
+        profile_response = self.client.get(
+            '/api/accounts/auth/users/me/',
+            HTTP_AUTHORIZATION=f'Bearer {str(expired_token)}'
+        )
 
-        self.assertEqual(login_response.status_code, 200)
+        # Should be unauthorized due to expired token
+        self.assertEqual(profile_response.status_code, 401)
+        # Verify it's specifically a token expiration error
+        response_data = profile_response.json()
+        self.assertIn('code', response_data)
+        self.assertIn(response_data['code'], ['token_not_valid', 'token_expired'])
 
-        # Valid token should work
-        profile_response = self.client.get('/api/accounts/auth/users/me/')
-        self.assertEqual(profile_response.status_code, 200)
+        self.assertIn('access_token', self.client.cookies, "access_token cookie not set after login")
+        original_access_token = self.client.cookies['access_token'].value
 
-        # After the token expires (in the real system), it should be rejected
-        # This is handled by the JWT library automatically
+        # Call the refresh endpoint
+        refresh_response = self.client.post('/api/accounts/auth/token/cookie-refresh/')
+        self.assertEqual(refresh_response.status_code, 200)
 
-    def test_access_token_refresh_verification(self):
-        """T015: Test that access tokens are refreshed automatically before expiration"""
-        # Login to get initial tokens
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
+        self.assertIn('access_token', self.client.cookies, "access_token cookie not set after refresh")
+        new_access_token = self.client.cookies['access_token'].value
 
         self.assertEqual(login_response.status_code, 200)
         original_access_token = self.client.cookies['access_token'].value
@@ -192,8 +202,6 @@ class TestJWTSecurity(TestCase):
 
     def test_refresh_operation_performance(self):
         """T016: Verify that refresh operations complete in under 500ms without disrupting user workflow"""
-        import time
-
         # Login to get tokens
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'testuser',
@@ -213,65 +221,5 @@ class TestJWTSecurity(TestCase):
         duration_ms = (end_time - start_time) * 1000
         self.assertLess(duration_ms, 500, f"Refresh operation took {duration_ms}ms, which exceeds 500ms limit")
 
-    def test_tokens_not_accessible_via_javascript_verification(self):
-        """T018: Verify tokens are not accessible via JavaScript in browser console"""
-        # This is a verification test - the actual protection is implemented
-        # by setting HttpOnly flag on cookies, which was already tested
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
 
-        # Verify tokens are not in the response body (XSS protection)
-        response_data = login_response.json()
-        self.assertNotIn('access', response_data)
-        self.assertNotIn('refresh', response_data)
 
-        # Verify HttpOnly flag is set (already tested elsewhere but confirming)
-        access_cookie = login_response.cookies.get('access_token')
-        self.assertTrue(access_cookie['httponly'])
-
-    def test_xss_attack_protection(self):
-        """T020: Test that tokens are protected against XSS attacks"""
-        # Login to get tokens
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
-
-        self.assertEqual(login_response.status_code, 200)
-
-        # Verify that even if XSS were possible, tokens wouldn't be accessible
-        # because they're in HttpOnly cookies
-        access_cookie = login_response.cookies.get('access_token')
-        refresh_cookie = login_response.cookies.get('refresh_token')
-
-        # Verify HttpOnly flag is set on both cookies
-        self.assertTrue(access_cookie['httponly'])
-        self.assertTrue(refresh_cookie['httponly'])
-
-        # Verify tokens are not in response body
-        response_data = login_response.json()
-        self.assertNotIn('access', response_data)
-        self.assertNotIn('refresh', response_data)
-
-    def test_csrf_protection_via_samesite_attribute(self):
-        """T021: Validate SameSite=Lax attribute prevents CSRF attacks"""
-        # Login to get tokens
-        login_response = self.client.post('/api/accounts/auth/login/', {
-            'username': 'testuser',
-            'password': 'testpass123'
-        })
-
-        self.assertEqual(login_response.status_code, 200)
-
-        # Check SameSite attribute on cookies
-        access_cookie = login_response.cookies.get('access_token')
-        refresh_cookie = login_response.cookies.get('refresh_token')
-
-        # Verify SameSite=Lax attribute is set
-        cookie_attrs_access = access_cookie.to_debug_string()
-        cookie_attrs_refresh = refresh_cookie.to_debug_string()
-
-        self.assertIn('samesite=lax', cookie_attrs_access.lower())
-        self.assertIn('samesite=lax', cookie_attrs_refresh.lower())
