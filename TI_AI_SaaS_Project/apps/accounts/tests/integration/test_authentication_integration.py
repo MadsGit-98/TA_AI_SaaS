@@ -1,11 +1,8 @@
-from django.test import TestCase, Client
+from django.test.testcases import logger
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from apps.accounts.models import CustomUser, UserProfile, VerificationToken
-from datetime import timedelta
-from django.utils import timezone
-
+from apps.accounts.models import CustomUser, VerificationToken
 
 class AuthenticationIntegrationTestCase(APITestCase):
     def setUp(self):
@@ -49,7 +46,9 @@ class AuthenticationIntegrationTestCase(APITestCase):
         )
 
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', login_response.json())
+        # Check that tokens are set in cookies, not in response data
+        self.assertIn('access_token', login_response.cookies)
+        self.assertIn('refresh_token', login_response.cookies)
 
     def test_password_reset_flow(self):
         """Test the password reset flow"""
@@ -131,7 +130,7 @@ class AuthenticationIntegrationTestCase(APITestCase):
         user.is_active = True
         user.save()
 
-        # Login to get tokens
+        # Login to get tokens (which are set in cookies)
         login_response = self.client.post(
             reverse('api:login'),
             self.login_data,
@@ -139,14 +138,19 @@ class AuthenticationIntegrationTestCase(APITestCase):
         )
 
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
-        tokens = login_response.json()
 
-        # Access profile with valid token using correct header format
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {tokens["access"]}')
+        # Extract tokens from cookies (not from response body)
+        access_token = login_response.cookies.get('access_token')
+        refresh_token = login_response.cookies.get('refresh_token')
+
+        # Verify that tokens were set in cookies
+        self.assertIsNotNone(access_token)
+        self.assertIsNotNone(refresh_token)
+
+        # Access profile with valid token from cookies
+        # The API should check for tokens in cookies when making requests
+        # The Django test client automatically handles cookies within the same session
         profile_response = self.client.get(reverse('api:user_profile'))
 
         self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
         self.assertEqual(profile_response.json()['email'], 'john.doe@example.com')
-
-        # Clear credentials to avoid affecting other tests
-        self.client.credentials()

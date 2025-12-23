@@ -3,9 +3,9 @@ Integration tests for the JWT cookie-based authentication system
 """
 from django.test import TestCase, Client
 from django.urls import reverse
-from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework_simplejwt.tokens import RefreshToken
-from apps.accounts.models import CustomUser, UserProfile
+from apps.accounts.models import CustomUser
 import json
 
 
@@ -27,6 +27,10 @@ class TestJWTAuthenticationIntegration(TestCase):
         # Activate the user for testing
         self.user.is_active = True
         self.user.save()
+
+    def tearDown(self):
+        # Clear the cache to reset rate limiting between tests
+        cache.clear()
 
     def test_complete_login_flow_with_cookie_storage(self):
         """Test the complete login flow with tokens stored in cookies"""
