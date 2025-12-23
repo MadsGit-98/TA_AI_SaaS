@@ -37,8 +37,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to landing page since user doesn't have active subscription
@@ -54,8 +55,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['username'], 'testuser')
         # Check that redirect is to landing page since user doesn't have active subscription
@@ -126,8 +128,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has active subscription
@@ -148,8 +151,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has trial subscription
@@ -171,8 +175,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has valid subscription end date
@@ -196,8 +201,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to landing since user's subscription has expired

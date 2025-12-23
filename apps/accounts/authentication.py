@@ -3,7 +3,6 @@ Custom authentication backends for the X-Crewter application
 """
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
-from django.db.models import Q
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 from django.utils.translation import gettext_lazy as _
@@ -135,15 +134,19 @@ class CookieBasedJWTAuthentication(JWTAuthentication):
         raw_token = self.get_raw_token_from_cookies(request)
 
         if raw_token is not None:
-            # Validate the token and get user
-            validated_token = self.get_validated_token(raw_token)
-            user = self.get_user(validated_token)
+            try:
+                # Validate the token and get user
+                validated_token = self.get_validated_token(raw_token)
+                user = self.get_user(validated_token)
 
-            # Check if the user is active
-            if not user.is_active:
-                raise AuthenticationFailed(_('User account is not active.'))
+                # Check if the user is active
+                if not user.is_active:
+                    raise AuthenticationFailed(_('User account is not active.'))
 
-            return user, validated_token
+                return user, validated_token
+            except InvalidToken:
+                # If the token is invalid, return None to indicate authentication failure
+                return None
 
         # If no token in cookies, fall back to the parent's header-based authentication
         user_auth_tuple = super().authenticate(request)

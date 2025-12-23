@@ -2,15 +2,11 @@
 Unit tests for the JWT cookie-based authentication system
 """
 from django.test import TestCase, RequestFactory
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.exceptions import TokenError
-from unittest.mock import patch
-from apps.accounts.models import CustomUser, UserProfile
+from apps.accounts.models import CustomUser
 from apps.accounts.authentication import CookieBasedJWTAuthentication
-import json
+from django.core.cache import cache
 
 
 class TestCookieBasedJWTAuthentication(TestCase):
@@ -82,6 +78,10 @@ class TestJWTTokenRefresh(TestCase):
             password='testpass123'
         )
 
+    def tearDown(self):
+        # Clear the cache to reset rate limiting between tests
+        cache.clear()
+
     def test_login_sets_tokens_in_cookies(self):
         """Test that login endpoint sets JWT tokens in HttpOnly cookies"""
         response = self.client.post('/api/accounts/auth/login/', {
@@ -152,6 +152,10 @@ class TestInactiveUserAuthentication(TestCase):
         self.user.is_active = False
         self.user.save()
 
+    def tearDown(self):
+        # Clear the cache to reset rate limiting between tests
+        cache.clear()
+
     def test_inactive_user_cannot_login(self):
         """Test that inactive users cannot log in"""
         response = self.client.post('/api/accounts/auth/login/', {
@@ -186,6 +190,10 @@ class TestTokenSecurityAttributes(TestCase):
             email='test@example.com',
             password='testpass123'
         )
+
+    def tearDown(self):
+        # Clear the cache to reset rate limiting between tests
+        cache.clear()
 
     def test_tokens_set_with_correct_security_attributes(self):
         """Test that tokens are set with proper security attributes"""

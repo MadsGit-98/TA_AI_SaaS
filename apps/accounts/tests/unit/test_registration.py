@@ -2,12 +2,17 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
+from django.core.cache import cache
 from ...models import CustomUser, UserProfile
 
 
 class RegistrationTestCase(APITestCase):
     def setUp(self):
         self.url = reverse('api:register')
+
+    def tearDown(self):
+        # Clear cache to reset rate limiting between tests
+        cache.clear()
 
     def test_user_registration_success(self):
         """Test successful user registration"""
@@ -73,6 +78,10 @@ class RegistrationTestCase(APITestCase):
             'password_confirm': 'SecurePass123!'
         }
         self.client.post(self.url, data1, format='json')
+
+        # Clear any authentication cookies from the first registration
+        # to ensure the second registration request is treated as unauthenticated
+        self.client.cookies = {}  # Clear all cookies
 
         # Second registration with same email
         data2 = {
