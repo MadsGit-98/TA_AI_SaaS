@@ -27,7 +27,6 @@ from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
-from django.middleware.csrf import get_token
 from .session_utils import clear_user_activity, update_user_activity
 
 # Define constant redirect URLs for activation results

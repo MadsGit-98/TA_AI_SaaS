@@ -1,14 +1,6 @@
 """
 Unit tests for the cookie_token_refresh endpoint
 """
-import os
-import django
-from django.conf import settings
-
-# Set Django settings before importing Django components
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'x_crewter.settings')
-django.setup()
-
 from django.test import TestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.accounts.api import cookie_token_refresh

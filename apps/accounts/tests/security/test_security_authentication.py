@@ -3,12 +3,9 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from apps.accounts.models import CustomUser, UserProfile, VerificationToken
-from django.core.management import call_command
 from django.utils import timezone
 from datetime import timedelta
 from django.core.cache import cache
-import json
-
 
 class SecurityTestCase(TestCase):
     def setUp(self):
@@ -113,7 +110,8 @@ class SecurityTestCase(TestCase):
         response = client.post(login_url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        token = response.json()['access']
+        #token = response.json()['access']
+        token = response.cookies['access_token'].value
         client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
 
         # Try to access profile (for now, assume users can only access their own)
@@ -204,6 +202,10 @@ class SecurityTestCase(TestCase):
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
 
         user = CustomUser.objects.get(email='resetconfirm@example.com')
+
+        # Activate the user account after registration
+        user.is_active = True
+        user.save()
 
         # Request password reset to generate a token
         reset_request_response = self.client.post(
