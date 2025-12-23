@@ -13,7 +13,6 @@ urlpatterns = [
     path('auth/password/reset/validate/<str:uid>/<str:token>/', api.validate_password_reset_token, name='validate_password_reset_token'),
     path('auth/password/reset/update/<str:uid>/<str:token>/', api.update_password_with_token, name='update_password_with_token'),
     path('auth/users/me/', api.user_profile, name='user_profile'),
-    path('auth/users/me/update/', api.update_user_profile, name='update_user_profile'),  # For backward compatibility
     path('auth/social/jwt/', api.social_login_jwt, name='social_login_jwt'),
     path('auth/social/<str:provider>/', api.social_login, name='social_login'),
     path('auth/social/complete/<str:provider>/', api.social_login_complete, name='social_login_complete'),
