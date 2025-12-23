@@ -491,20 +491,9 @@ def register(request):
         if not email_sent:
             response_data['warning'] = 'Account created but activation email could not be sent. Please contact support.'
 
-        # For registration, we also set the tokens in cookies for immediate login
-        response = Response(response_data, status=status.HTTP_201_CREATED)
-
-        # Generate JWT tokens for the newly registered user
-        refresh = RefreshToken.for_user(user)
-
-        # Set tokens in HttpOnly cookies using utility function
-        response = set_auth_cookies(
-            response,
-            str(refresh.access_token),
-            str(refresh)
-        )
-
-        return response
+        # Return response without setting authentication cookies
+        # User must be activated before accessing protected endpoints
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     logger.warning(f"Registration failed with errors: {serializer.errors}")
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -865,7 +854,6 @@ def user_profile(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     elif request.method in ['PUT', 'PATCH']:
-        # Use the existing update_user_profile functionality
         user = request.user
 
         # Explicit change tracking: only save if fields have actually changed
@@ -919,17 +907,6 @@ def user_profile(request):
             response_data['profile'] = profile_serializer.data
 
         return Response(response_data, status=status.HTTP_200_OK)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
-def update_user_profile(request):
-    """
-    Update authenticated user's profile information
-    NOTE: This endpoint is deprecated. Use user_profile (GET/PUT/PATCH) instead.
-    """
-    # Delegate to the primary user_profile function to avoid duplication
-    return user_profile(request)
 
 
 @api_view(['POST'])
