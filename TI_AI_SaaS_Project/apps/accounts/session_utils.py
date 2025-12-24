@@ -112,15 +112,17 @@ def is_user_session_expired(user_id):
     Check if a user's session has expired due to inactivity (60 minutes)
     """
     last_activity = get_last_user_activity(user_id)
-    
+
     if last_activity is None:
-        # No activity record, consider session expired
-        return True
-    
+        # No activity record found - this could be because Redis is unavailable
+        # In this case, don't mark the session as expired to allow normal operation
+        # when Redis is down (graceful degradation)
+        return False
+
     # Calculate time since last activity
     current_time = timezone.now().timestamp()
     time_since_activity = current_time - last_activity
-    
+
     # Check if more than 60 minutes have passed
     return time_since_activity > (60 * 60)  # 60 minutes in seconds
 

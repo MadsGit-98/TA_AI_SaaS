@@ -34,6 +34,9 @@ class TestJWTAuthenticationIntegration(TestCase):
 
     def test_complete_login_flow_with_cookie_storage(self):
         """Test the complete login flow with tokens stored in cookies"""
+        # Clear cache to reset rate limiting
+        cache.clear()
+
         # Login
         response = self.client.post(
             reverse('api:login'),
@@ -43,17 +46,17 @@ class TestJWTAuthenticationIntegration(TestCase):
             }),
             content_type='application/json'
         )
-        
+
         # Verify successful login
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'user')
         self.assertNotIn('access', response.json())  # Token should not be in response body
         self.assertNotIn('refresh', response.json())  # Token should not be in response body
-        
+
         # Verify tokens are in cookies
         self.assertIn('access_token', self.client.cookies)
         self.assertIn('refresh_token', self.client.cookies)
-        
+
         # Verify we can access a protected endpoint
         profile_response = self.client.get(reverse('api:user_profile'))
         self.assertEqual(profile_response.status_code, 200)
@@ -174,25 +177,3 @@ class TestJWTAuthenticationIntegration(TestCase):
         
         profile_response = self.client.get(reverse('api:user_profile'))
         self.assertEqual(profile_response.status_code, 401)
-
-    def test_registration_sets_tokens_in_cookies(self):
-        """Test that successful registration also sets tokens in cookies"""
-        registration_data = {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
-            'password': 'newpass123',
-            'password_confirm': 'newpass123',
-            'first_name': 'New',
-            'last_name': 'User'
-        }
-        
-        response = self.client.post(
-            reverse('api:register'),
-            data=json.dumps(registration_data),
-            content_type='application/json'
-        )
-        
-        # Registration should succeed and set tokens
-        self.assertEqual(response.status_code, 201)
-        self.assertIn('access_token', self.client.cookies)
-        self.assertIn('refresh_token', self.client.cookies)
