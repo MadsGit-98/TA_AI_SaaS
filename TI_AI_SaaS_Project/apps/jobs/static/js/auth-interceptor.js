@@ -265,6 +265,28 @@ async function refreshTokenFromServer() {
     return refreshPromise;
 }
 
+// Function to set up the authentication interceptor
+function setupAuthInterceptor() {
+    // Add axios interceptor for handling 401 and 403 responses
+    window.axios.interceptors.response.use(
+        response => {
+            // If response is successful, return it as is
+            return response;
+        },
+        error => {
+            // Handle 401 and 403 errors by redirecting to login
+            if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+                // Clear any local data if needed
+                // Logout and redirect to login page
+                logoutAndRedirect();
+            }
+
+            // Return the error to the calling function
+            return Promise.reject(error);
+        }
+    );
+}
+
 // Initialize auth functionality when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Set up activity listeners
@@ -275,24 +297,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Check if axios is available before setting up interceptors
     if (typeof window.axios !== 'undefined' && window.axios) {
-        // Add axios interceptor for handling 401 and 403 responses
-        window.axios.interceptors.response.use(
-            response => {
-                // If response is successful, return it as is
-                return response;
-            },
-            error => {
-                // Handle 401 and 403 errors by redirecting to login
-                if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-                    // Clear any local data if needed
-                    // Logout and redirect to login page
-                    logoutAndRedirect();
-                }
-
-                // Return the error to the calling function
-                return Promise.reject(error);
-            }
-        );
+        // Set up the authentication interceptor
+        setupAuthInterceptor();
     } else {
         // Log a clear error if axios is not available
         console.error('Axios not found. Authentication interceptor will not be set up. Please ensure axios is loaded before auth-interceptor.js.');
@@ -300,24 +306,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Try to initialize after a delay in case axios is still loading
         setTimeout(() => {
             if (typeof window.axios !== 'undefined' && window.axios) {
-                // Add axios interceptor for handling 401 and 403 responses
-                window.axios.interceptors.response.use(
-                    response => {
-                        // If response is successful, return it as is
-                        return response;
-                    },
-                    error => {
-                        // Handle 401 and 403 errors by redirecting to login
-                        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-                            // Clear any local data if needed
-                            // Logout and redirect to login page
-                            logoutAndRedirect();
-                        }
-
-                        // Return the error to the calling function
-                        return Promise.reject(error);
-                    }
-                );
+                // Set up the authentication interceptor
+                setupAuthInterceptor();
             } else {
                 console.error('Axios still not found after retry. Authentication interceptor could not be set up.');
             }

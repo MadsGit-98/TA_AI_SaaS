@@ -36,7 +36,7 @@ def clear_auth_cookies(response):
     Clear authentication cookies by setting them to empty values with past expiration
     Uses the same attributes as when the cookies were set to ensure proper deletion
     """
-    response.delete_cookie('access_token', path='/', domain=None, samesite='Lax')
-    response.delete_cookie('refresh_token', path='/', domain=None, samesite='Lax')
+    response.delete_cookie('access_token', path='/', domain=None, samesite='Lax', secure=not settings.DEBUG)
+    response.delete_cookie('refresh_token', path='/', domain=None, samesite='Lax', secure=not settings.DEBUG)
 
     return response
