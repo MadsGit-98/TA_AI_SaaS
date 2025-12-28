@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Create a dummy Redis client class for fallback
 class DummyRedisClient:
     """A dummy Redis client that provides no-op implementations for Redis operations"""
-    def setex(self, key, time, value):
+    def setex(self, key, time: Union[int, timedelta], value):
         # No-op
         pass
 
@@ -37,7 +37,7 @@ def get_redis_client():
 
     for attempt in range(max_retries):
         try:
-            return redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0/'))
+            return redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
         except Exception as e:
             logger.error(f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {str(e)}")
             if attempt < max_retries - 1:  # Don't sleep on the last attempt
@@ -67,10 +67,10 @@ def update_user_activity(user_id: Union[int, str]) -> bool:
     current_time = timezone.now().timestamp()
 
     try:
-        # Store the current activity time and set expiration to 60 minutes
+        # Store the current activity time and set expiration to 26 minutes
         redis_client.setex(
             key,
-            timedelta(minutes=61),  # Slightly longer than timeout to allow for checks
+            timedelta(minutes=26),  # Slightly longer than timeout to allow for checks
             str(current_time)
         )
         return True
@@ -109,7 +109,7 @@ def get_last_user_activity(user_id: Union[int, str]) -> Optional[float]:
 
 def is_user_session_expired(user_id):
     """
-    Check if a user's session has expired due to inactivity (60 minutes)
+    Check if a user's session has expired due to inactivity (26 minutes)
     """
     last_activity = get_last_user_activity(user_id)
 
@@ -123,22 +123,22 @@ def is_user_session_expired(user_id):
     current_time = timezone.now().timestamp()
     time_since_activity = current_time - last_activity
 
-    # Check if more than 60 minutes have passed
-    return time_since_activity > (60 * 60)  # 60 minutes in seconds
+    # Check if more than 26 minutes have passed
+    return time_since_activity > (26 * 60)  # 26 minutes in seconds
 
 
-def clear_user_activity(user_id: str) -> bool:
+def clear_user_activity(user_id: Union[str, int]) -> bool:
     """
     Clear the activity record for a user (e.g., on logout)
 
     Args:
-        user_id: The ID of the user whose activity record should be cleared
+        user_id: The ID of the user whose activity record should be cleared (int or str)
 
     Returns:
         bool: True if the operation succeeded, False otherwise
     """
     try:
-        key = f"user_activity:{user_id}"
+        key = f"user_activity:{str(user_id)}"
         result = redis_client.delete(key)
         # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
         return result > 0

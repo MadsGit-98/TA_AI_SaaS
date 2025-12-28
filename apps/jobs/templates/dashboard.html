@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -48,6 +49,10 @@
             background-color: #005a87;
         }
     </style>
+    <!-- Axios library for HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
+    <!-- Authentication interceptor with user activity tracking -->
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>
 </head>
 <body>
     <header>
@@ -55,13 +60,13 @@
             <h2>Job Dashboard</h2>
         </div>
     </header>
-    
+
     <div class="container">
         <div class="dashboard-content">
             <h1>Welcome to Your Job Dashboard</h1>
             <p>This is the placeholder page for the job dashboard. Subscribed users are redirected here after logging in.</p>
             <p>Here you will be able to manage and view all your job listings and applications.</p>
-            
+
             <div class="nav-links">
                 <a href="/jobs/">View Jobs</a>
                 <a href="/applications/">View Applications</a>

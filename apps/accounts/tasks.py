@@ -1,13 +1,15 @@
 # Celery tasks for the accounts app
 # This file is required by the project constitution for consistency
 
-from celery import shared_task
+from x_crewter.celery import app
 from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta, datetime
-from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
-from rest_framework_simplejwt.exceptions import TokenError, TokenBackendError
+import pytz
+from rest_framework_simplejwt.tokens import RefreshToken 
 from django.contrib.auth import get_user_model
+from .session_utils import get_last_user_activity
+from .consumers import TokenNotificationConsumer
 import logging
 import redis
 import json
@@ -20,26 +22,27 @@ User = get_user_model()
 redis_client = redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
 
 
-@shared_task
+@app.task
 def monitor_and_refresh_tokens():
     """
     Celery task to monitor user tokens and refresh them before expiration.
     This task identifies tokens that are about to expire and initiates refresh process.
-    In our implementation, this would identify users with tokens expiring soon and 
+    In our implementation, this would identify users with tokens expiring soon and
     trigger the client-side to call the cookie refresh endpoint.
     """
+
     logger.info("Starting token monitoring task")
-    
+
     try:
         # Get the time threshold (5 minutes before expiration)
         threshold_time = timezone.now() + timedelta(minutes=5)
-        
+
         # In our implementation, we'll use Redis to track when tokens need refresh
         # Use SCAN instead of KEYS to avoid blocking Redis (non-blocking, O(1) per call)
         token_keys = list(redis_client.scan_iter(match="token_expires:*"))
-        
+
         tokens_to_refresh = []
-        
+
         for key in token_keys:
             try:
                 # Decode the key from bytes to string if necessary
@@ -50,42 +53,61 @@ def monitor_and_refresh_tokens():
 
                 # Get the expiration timestamp for this token
                 expire_timestamp = float(redis_client.get(key))
-                token_expire_time = datetime.fromtimestamp(expire_timestamp, tz=timezone.utc)
+                token_expire_time = datetime.fromtimestamp(expire_timestamp, tz=pytz.UTC)
 
                 # Check if this token expires within the next 5 minutes
                 if token_expire_time < threshold_time:
                     # Extract user ID from the key (token_expires:<user_id>)
                     user_id = key_str.split(':')[1]
-                    tokens_to_refresh.append(int(user_id))
 
-                    logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh")
+                    # Check if the user was recently active (within 26 minutes)
+                    last_activity = get_last_user_activity(user_id)
+                    if last_activity:
+                        current_time = timezone.now().timestamp()
+                        time_since_activity = current_time - last_activity
+
+                        # Only refresh if user was active within the last 26 minutes
+                        if time_since_activity <= (26 * 60):  # 26 minutes in seconds
+                            tokens_to_refresh.append(int(user_id))
+                            logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh (user was recently active)")
+                        else:
+                            logger.info(f"Token for user {user_id} expires at {token_expire_time}, but user was not active recently - skipping refresh")
+                    else:
+                        # If no activity record, still consider for refresh (might be first time tracking)
+                        tokens_to_refresh.append(int(user_id))
+                        logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh (no activity record)")
+
             except (ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Error processing token key {key}: {str(e)}")
                 continue
-        
+
         # Process tokens that need refresh
         for user_id in tokens_to_refresh:
             try:
-                # In a real implementation, you might send a notification to the client
-                # to refresh their token, or handle server-side refresh for API-only clients
+                # Send notification to the client via WebSocket
+                # This will trigger the client-side to call the cookie refresh endpoint
                 logger.info(f"Initiating refresh process for user {user_id}")
-                
-                # For our implementation, we'll just log this as an action
-                # The actual refresh happens via the cookie_token_refresh endpoint
-                # when the client detects the token is about to expire
-                refresh_user_token.delay(user_id)
-                
+
+                # Use WebSocket to notify the client about token refresh
+                try:
+                    # Call the consumer's notify_user method to send a notification
+                    TokenNotificationConsumer.notify_user(user_id)
+                except Exception as ws_error:
+                    logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
+                    # Fallback: still call the refresh_user_token task to pre-generate tokens
+                    refresh_user_token.delay(user_id)
+
             except Exception as e:
                 logger.error(f"Error initiating refresh for user {user_id}: {str(e)}")
-                
+
         logger.info(f"Token monitoring task completed. {len(tokens_to_refresh)} tokens marked for refresh")
-        
+
     except Exception as e:
         logger.error(f"Critical error in token monitoring task: {str(e)}")
         raise
 
 
-@shared_task
+@app.task
 def refresh_user_token(user_id):
     """
     Refresh the token for a specific user
@@ -111,8 +133,7 @@ def refresh_user_token(user_id):
             new_expire_time.timestamp()
         )
         
-        # Store the new tokens in a secure, short-lived storage with a reference ID
-        token_reference_id = str(uuid.uuid4())
+        # Store the new tokens in a secure, short-lived storage using user ID as key
         token_data = {
             'access_token': str(refresh.access_token),
             'refresh_token': str(refresh),
@@ -120,9 +141,9 @@ def refresh_user_token(user_id):
             'expires_at': new_expire_time.isoformat()
         }
 
-        # Store in Redis with a short expiration time (e.g., 5 minutes)
+        # Store in Redis with a short expiration time (e.g., 5 minutes), using user ID as key
         redis_client.setex(
-            f"temp_tokens:{token_reference_id}",
+            f"temp_tokens:{user_id}",
             timedelta(minutes=5),  # Short-lived storage
             json.dumps(token_data, default=str)
         )
@@ -131,10 +152,9 @@ def refresh_user_token(user_id):
 
         # In a real implementation, you might notify the client about the refresh
         # This could be via WebSocket, server-sent events, or another mechanism
-        # Return only a reference ID instead of the actual tokens
+        # The tokens are stored in Redis using the user ID as key
         return {
             'user_id': user_id,
-            'token_reference_id': token_reference_id,
             'token_refreshed': True,
             'expires_at': new_expire_time.isoformat()
         }
@@ -147,60 +167,29 @@ def refresh_user_token(user_id):
         raise
 
 
-@shared_task
-def schedule_token_refresh_check():
+@app.task
+def get_tokens_by_reference(user_id):
     """
-    Schedule token refresh checks to run periodically.
-    This task can be called to ensure monitoring continues at regular intervals.
-    """
-    logger.info("Scheduling token refresh checks")
-    
-    try:
-        # In a real implementation, this would set up periodic tasks using Celery Beat
-        # For now, we'll just log that the scheduling occurred and return
-        # The actual scheduling would be configured in the Celery configuration
-        
-        # Set up a key to track that monitoring is active
-        monitoring_key = "token_monitoring_active"
-        redis_client.setex(monitoring_key, timedelta(hours=1), "true")
-        
-        logger.info("Token refresh monitoring scheduled successfully")
-        
-        # Return information about the scheduled monitoring
-        return {
-            'status': 'scheduled',
-            'next_check': (timezone.now() + timedelta(minutes=5)).isoformat(),
-            'monitoring_active': True
-        }
-        
-    except Exception as e:
-        logger.error(f"Error scheduling token refresh checks: {str(e)}")
-        raise
-
-
-@shared_task
-def get_tokens_by_reference(token_reference_id):
-    """
-    Retrieve tokens using the reference ID from secure storage.
+    Retrieve tokens using the user ID from secure storage.
     This provides a secure way to access the tokens that were generated in the background.
     """
-    logger.info(f"Retrieving tokens for reference ID: {token_reference_id}")
+    logger.info(f"Retrieving tokens for user ID: {user_id}")
 
     try:
-        # Retrieve the token data from Redis
-        token_data_json = redis_client.get(f"temp_tokens:{token_reference_id}")
+        # Retrieve the token data from Redis using user ID as key
+        token_data_json = redis_client.get(f"temp_tokens:{user_id}")
 
         if not token_data_json:
-            logger.warning(f"No token data found for reference ID: {token_reference_id}")
-            return {'error': 'Token reference not found or expired'}
+            logger.warning(f"No token data found for user ID: {user_id}")
+            return {'error': 'Token data not found or expired'}
 
         # Parse the token data
         token_data = json.loads(token_data_json)
 
         # Remove the token data from Redis after retrieval (one-time use)
-        redis_client.delete(f"temp_tokens:{token_reference_id}")
+        redis_client.delete(f"temp_tokens:{user_id}")
 
-        logger.info(f"Successfully retrieved tokens for reference ID: {token_reference_id}")
+        logger.info(f"Successfully retrieved tokens for user ID: {user_id}")
 
         return {
             'user_id': token_data['user_id'],
@@ -210,5 +199,5 @@ def get_tokens_by_reference(token_reference_id):
         }
 
     except Exception as e:
-        logger.error(f"Error retrieving tokens for reference ID {token_reference_id}: {str(e)}")
+        logger.error(f"Error retrieving tokens for user ID {user_id}: {str(e)}")
         raise

@@ -44,6 +44,24 @@ class LoginTestCase(APITestCase):
         # Check that redirect is to landing page since user doesn't have active subscription
         self.assertEqual(response.data['redirect_url'], '/landing/')
 
+        # Verify security attributes of authentication cookies
+        access_cookie = response.cookies['access_token']
+        refresh_cookie = response.cookies['refresh_token']
+
+        # Check HttpOnly attribute
+        self.assertTrue(access_cookie['httponly'])
+        self.assertTrue(refresh_cookie['httponly'])
+
+        # Check Secure attribute (will be True in production, False in development)
+        from django.conf import settings
+        expected_secure = not settings.DEBUG
+        self.assertEqual(access_cookie['secure'], expected_secure)
+        self.assertEqual(refresh_cookie['secure'], expected_secure)
+
+        # Check SameSite attribute
+        self.assertEqual(access_cookie['samesite'], 'Lax')
+        self.assertEqual(refresh_cookie['samesite'], 'Lax')
+
     def test_user_login_success_with_username(self):
         """Test successful user login with username and password"""
         data = {
