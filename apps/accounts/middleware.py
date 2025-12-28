@@ -57,23 +57,17 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
                 try:
                     success = update_user_activity(request.user.id)
                     if not success:
-                        # If activity update fails critically, return an error response
+                        # Log the failure but don't block the request
                         # This prevents users from being unexpectedly logged out due to perceived inactivity
-                        logger.error(f"Critical failure to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
-                        response = JsonResponse(
-                            {'error': 'Activity tracking failed - please try again'},
-                            status=500
-                        )
-                        return response
+                        logger.warning(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
+                        # Optionally increment a monitoring metric here
+                        # For example: metrics.increment('user_activity_update_failure')
                 except Exception as e:
-                    # If there's an exception during activity update, return an error response
+                    # Log the error but don't block the request
                     # This prevents users from being unexpectedly logged out due to perceived inactivity
-                    logger.error(f"Critical failure to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
-                    response = JsonResponse(
-                        {'error': 'Activity tracking failed - please try again'},
-                        status=500
-                    )
-                    return response
+                    logger.error(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
+                    # Optionally increment a monitoring metric here
+                    # For example: metrics.increment('user_activity_update_exception')
 
         return None  # Continue with the request
 
