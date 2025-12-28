@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class SessionTimeoutMiddleware(MiddlewareMixin):
     """
-    Middleware to handle session timeout after 60 minutes of inactivity
+    Middleware to handle access token expiry after 26 minutes of inactivity
     """
     def process_request(self, request):
         # Define paths that should trigger activity tracking
@@ -17,7 +17,6 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
             '/api/accounts/auth/users/me/',  # User profile endpoint
             '/api/analysis/',  # Analysis endpoints
             '/api/jobs/',  # Job-related endpoints
-            '/api/applications/',  # Application endpoints
             '/dashboard/',  # Dashboard pages
         ]
 
@@ -25,7 +24,7 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
         if (request.user.is_authenticated and
             any(request.path.startswith(path) for path in activity_tracking_paths)):
 
-            # Check if the user's session has expired due to inactivity
+            # Check if the user's access token has expired due to inactivity (26 minutes)
             try:
                 if is_user_session_expired(request.user.id):
                     # Clear authentication cookies and return unauthorized response
@@ -58,12 +57,23 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
                 try:
                     success = update_user_activity(request.user.id)
                     if not success:
-                        logger.warning(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
+                        # If activity update fails critically, return an error response
+                        # This prevents users from being unexpectedly logged out due to perceived inactivity
+                        logger.error(f"Critical failure to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
+                        response = JsonResponse(
+                            {'error': 'Activity tracking failed - please try again'},
+                            status=500
+                        )
+                        return response
                 except Exception as e:
-                    # Log the error but don't crash the middleware - let the request proceed
-                    logger.error(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
-                    # Optionally, in a production environment, you might want to send this to a monitoring service
-                    # For example: sentry_sdk.capture_exception(e) if using Sentry
+                    # If there's an exception during activity update, return an error response
+                    # This prevents users from being unexpectedly logged out due to perceived inactivity
+                    logger.error(f"Critical failure to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
+                    response = JsonResponse(
+                        {'error': 'Activity tracking failed - please try again'},
+                        status=500
+                    )
+                    return response
 
         return None  # Continue with the request
 

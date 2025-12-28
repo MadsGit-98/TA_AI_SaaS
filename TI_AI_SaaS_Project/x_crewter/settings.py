@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta    # JWT Configuration
+from celery.schedules import crontab
 import environ
 
 # Initialize environment variables
@@ -56,6 +57,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'djoser',
     'social_django',  # Social authentication
+    'channels',  # For WebSocket support
     'apps.accounts',
     'apps.jobs',
     'apps.applications',
@@ -239,6 +241,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'x_crewter.wsgi.application'
+ASGI_APPLICATION = 'x_crewter.asgi.application'
 
 
 # Database
@@ -258,7 +261,6 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # For production
 STATICFILES_DIRS = [
     BASE_DIR / 'static',  # Project-level static files
-    BASE_DIR / 'apps' / 'accounts' / 'static',  # Accounts app static files
 ]
 
 # Celery Configuration
@@ -268,6 +270,24 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Channel Layers Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [env('REDIS_URL', default='redis://localhost:6379/0')],
+        },
+    },
+}
+
+CELERY_BEAT_SCHEDULE = {
+    # Monitor and refresh tokens every 5 minutes
+    'monitor-and-refresh-tokens': {
+        'task': 'apps.accounts.tasks.monitor_and_refresh_tokens',
+        'schedule': crontab(minute='*/5'),  # Every 5 minutes
+    },
+}
 
 
 # Password validation

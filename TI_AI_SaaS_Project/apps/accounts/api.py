@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from .tasks import refresh_user_token, get_tokens_by_reference
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -672,6 +673,10 @@ def login(request):
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
 
+            # Trigger the refresh_user_token task to create a pre-generated token
+            # This will be used by the monitor_and_refresh_tokens task
+            refresh_user_token.delay(user.id)
+
             # Serialize user data
             user_serializer = UserSerializer(user)
 
@@ -1128,13 +1133,55 @@ def cookie_token_refresh(request):
                 {'error': 'User not found'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+        # Flag to track if token has already been blacklisted to avoid double-blacklisting
+        token_blacklisted = False
 
-        # Blacklist the old refresh token if the blacklist app is enabled
-        try:
-            token.blacklist()
-        except AttributeError:
-            # This can happen if the blacklist app is not properly configured
-            logger.warning("AttributeError during token refresh - blacklist method not available")
+        if user_id:
+            try:
+                # Attempt to retrieve pre-generated tokens using the user ID
+                token_result = get_tokens_by_reference.delay(user_id)
+
+                if 'error' not in token_result:
+                    new_access_token = token_result['access_token']
+                    new_refresh_token = token_result['refresh_token']
+                    pregen_user_id = token_result['user_id']  # Use distinct variable name to avoid shadowing
+
+                    # Blacklist the old refresh token if the blacklist app is enabled
+                    try:
+                        token.blacklist()
+                        token_blacklisted = True  # Set flag to avoid double-blacklisting
+                    except AttributeError:
+                        # This can happen if the blacklist app is not properly configured
+                        logger.warning("AttributeError during token refresh - blacklist method not available")
+
+                    # Create response with new tokens in cookies
+                    response = Response(
+                        {'detail': 'Token refreshed successfully'},
+                        status=status.HTTP_200_OK
+                    )
+
+                    # Set authentication cookies using utility function
+                    set_auth_cookies(response, new_access_token, new_refresh_token)
+
+                    # Trigger refresh_user_token task to update token expiration in Redis
+                    refresh_user_token.delay(pregen_user_id)
+
+                    return response
+                else:
+                    logger.warning(f"Failed to retrieve tokens by reference: {token_result['error']}")
+                    # Fall through to standard refresh process
+            except Exception as e:
+                logger.error(f"Error retrieving tokens by reference: {str(e)}")
+                # Fall through to standard refresh process
+
+        # Fallback: Standard refresh process if pre-created tokens are not available
+        # Blacklist the old refresh token if it hasn't been blacklisted already and the blacklist app is enabled
+        if not token_blacklisted:
+            try:
+                token.blacklist()
+            except AttributeError:
+                # This can happen if the blacklist app is not properly configured
+                logger.warning("AttributeError during token refresh - blacklist method not available")
 
         # Generate new refresh token for the user
         new_refresh = RefreshToken.for_user(user)
@@ -1149,6 +1196,9 @@ def cookie_token_refresh(request):
 
         # Set authentication cookies using utility function
         set_auth_cookies(response, new_access_token, new_refresh_token)
+
+        # Update the token expiration in Redis for the fallback case
+        refresh_user_token.delay(user.id)
 
         return response
 
