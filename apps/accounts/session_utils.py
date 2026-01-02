@@ -145,3 +145,22 @@ def clear_user_activity(user_id: Union[str, int]) -> bool:
     except Exception as e:
         logger.error(f"Failed to clear user activity for user {user_id}: {str(e)}")
         return False
+
+def clear_expiry_token(user_id: Union[str, int]) -> bool:
+    """
+    Clear the expiry token for a user (e.g., on logout)
+
+    Args:
+        user_id: The ID of the user whose activity record should be cleared (int or str)
+
+    Returns:
+        bool: True if the operation succeeded, False otherwise
+    """
+    try:
+        key = f"token_expires:{str(user_id)}"
+        result = redis_client.delete(key)
+        # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
+        return result > 0
+    except Exception as e:
+        logger.error(f"Failed to clear expiry for user {user_id}: {str(e)}")
+        return False

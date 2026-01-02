@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta    # JWT Configuration
 from celery.schedules import crontab
@@ -58,6 +59,7 @@ INSTALLED_APPS = [
     'djoser',
     'social_django',  # Social authentication
     'channels',  # For WebSocket support
+    'django_celery_beat',  # For Celery periodic tasks
     'apps.accounts',
     'apps.jobs',
     'apps.applications',
@@ -261,6 +263,8 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # For production
 STATICFILES_DIRS = [
     BASE_DIR / 'static',  # Project-level static files
+    BASE_DIR / 'apps' / 'accounts' / 'static',
+    BASE_DIR / 'apps' / 'jobs' / 'static',
 ]
 
 # Celery Configuration
@@ -270,6 +274,13 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Celery Beat Configuration for periodic tasks
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Windows-specific Celery settings to avoid the billiard issue
+if os.name == 'nt':  # Windows
+    CELERY_WORKER_POOL = 'solo'
 
 # Channel Layers Configuration
 CHANNEL_LAYERS = {
@@ -342,11 +353,11 @@ SECURE_REFERRER_POLICY = 'same-origin'  # Control referrer information
 
 # CSP Configuration
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net")
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com")
 CSP_IMG_SRC = ("'self'", "data:", "https:")
 CSP_FONT_SRC = ("'self'",)
-CSP_CONNECT_SRC = ("'self'",)
+CSP_CONNECT_SRC = ("'self'", "ws:", "wss:", "https://cdn.jsdelivr.net")
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_BASE_URI = ("'self'",)
 CSP_FORM_ACTION = ("'self'",)

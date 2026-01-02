@@ -48,8 +48,8 @@ class TestSessionUtilsIntegration(TestCase):
         
         # Verify TTL is set appropriately (should be around 61 minutes)
         ttl = self.redis_client.ttl(self.redis_key)
-        self.assertGreater(ttl, 3600)  # More than 1 hour
-        self.assertLessEqual(ttl, 3720)  # Less than or equal to 62 minutes (61*60+60)
+        self.assertGreater(ttl, 1500)  # More than 1 hour
+        self.assertLessEqual(ttl, 1620)  # Less than or equal to 62 minutes (61*60+60)
     
     def test_get_last_user_activity_with_redis(self):
         """Test that get_last_user_activity retrieves data from actual Redis"""

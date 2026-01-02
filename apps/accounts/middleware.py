@@ -19,29 +19,18 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
             '/api/jobs/',  # Job-related endpoints
             '/dashboard/',  # Dashboard pages
         ]
-
         # Check if the user is authenticated and the path requires activity tracking
         if (request.user.is_authenticated and
             any(request.path.startswith(path) for path in activity_tracking_paths)):
-
             # Check if the user's access token has expired due to inactivity (26 minutes)
             try:
                 if is_user_session_expired(request.user.id):
-                    # Clear authentication cookies and return unauthorized response
+                    # Return unauthorized response without deleting cookies
+                    # Cookie deletion will be handled by logout API when triggered by frontend
                     response = JsonResponse(
                         {'error': 'Session expired due to inactivity'},
                         status=401
                     )
-                    # Delete cookies with the same attributes used when they were set
-                    # Using the same samesite, path, and domain attributes as when set
-                    response.delete_cookie('access_token',
-                                          path='/',
-                                          domain=None,
-                                          samesite='Lax')
-                    response.delete_cookie('refresh_token',
-                                          path='/',
-                                          domain=None,
-                                          samesite='Lax')
                     return response
             except Exception as e:
                 # Log the error server-side without exposing sensitive details
@@ -52,22 +41,6 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
                     status=500
                 )
                 return response
-            else:
-                # Update the user's activity timestamp
-                try:
-                    success = update_user_activity(request.user.id)
-                    if not success:
-                        # Log the failure but don't block the request
-                        # This prevents users from being unexpectedly logged out due to perceived inactivity
-                        logger.warning(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: operation returned False")
-                        # Optionally increment a monitoring metric here
-                        # For example: metrics.increment('user_activity_update_failure')
-                except Exception as e:
-                    # Log the error but don't block the request
-                    # This prevents users from being unexpectedly logged out due to perceived inactivity
-                    logger.error(f"Failed to update user activity for user {request.user.id if hasattr(request.user, 'id') else 'unknown'}: {str(e)}", exc_info=True)
-                    # Optionally increment a monitoring metric here
-                    # For example: metrics.increment('user_activity_update_exception')
 
         return None  # Continue with the request
 
