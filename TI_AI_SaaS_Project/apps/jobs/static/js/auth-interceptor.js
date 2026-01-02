@@ -31,7 +31,7 @@ async function checkAndRefreshToken() {
     if (document.hidden) {
         return false;
     }
-
+    console.log("Updating User's activity!")
     try {
         // Make a request to the user profile endpoint which will update activity
         // and potentially trigger server-side refresh if needed
@@ -53,21 +53,27 @@ async function checkAndRefreshToken() {
 
 // Track user activity to trigger token refresh
 let lastActivity = Date.now();
-const ACTIVITY_TIMEOUT = 20 * 60 * 1000; // 20 minutes in milliseconds
+const ACTIVITY_TIMEOUT = 18 * 60 * 1000; 
 const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
 
-// Function to handle user activity
-function handleUserActivity() {
+async function handleUserActivity() {
     const now = Date.now();
 
     const deltaTime = now - lastActivity;
 
-    // Only refresh if enough time has passed since the last activity and within acces_token life span 
-    if ((deltaTime >= ACTIVITY_TIMEOUT) && (deltaTime < accessTokenExpiry)) {
-        checkAndRefreshToken();
+    if((deltaTime >= ACTIVITY_TIMEOUT) && (deltaTime < accessTokenExpiry))
+    {
+        try {
+            const refreshretVal = await checkAndRefreshToken();
+            if(refreshretVal)
+            {
+                lastActivity = now;
+            }
+        } catch (error) {
+            console.error('Error during token refresh in handleUserActivity:', error);
+        }
     }
-    
-    lastActivity = now;
+
 }
 
 // Add event listeners for user activities
@@ -122,10 +128,17 @@ function initWebSocket() {
 
     wsSocket.onmessage = function(event) {
         const data = JSON.parse(event.data);
-        if (data.message === 'Token refresh needed') {
+        // Check for the new format: {"type": "refresh_tokens", "message": "REFRESH"}
+        if (data.type === 'refresh_tokens' && data.message === 'REFRESH') {
             console.log('Received token refresh notification from server');
             // Call the cookie refresh endpoint to get new tokens
             refreshTokenFromServer();
+        }
+        // Check for logout notification: {"type": "refresh_tokens", "message": "LOGOUT"}
+        else if (data.type === 'refresh_tokens' && data.message === 'LOGOUT') {
+            console.log('Received logout notification from server');
+            // Call logoutAndRedirect to handle proper user logout
+            logoutAndRedirect();
         }
     };
 

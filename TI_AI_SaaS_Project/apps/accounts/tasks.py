@@ -6,17 +6,15 @@ from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta, datetime
 import pytz
-from rest_framework_simplejwt.tokens import RefreshToken 
-from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import CustomUser
 from .session_utils import get_last_user_activity
 from .consumers import TokenNotificationConsumer
 import logging
 import redis
 import json
-import uuid
 
 logger = logging.getLogger(__name__)
-User = get_user_model()
 
 # Connect to Redis for storing token expiration information
 redis_client = redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
@@ -34,14 +32,16 @@ def monitor_and_refresh_tokens():
     logger.info("Starting token monitoring task")
 
     try:
-        # Get the time threshold (5 minutes before expiration)
-        threshold_time = timezone.now() + timedelta(minutes=5)
+        # Get the time thresholds
+        # 5 minutes threshold for tokens with recent activity (normal refresh)
+        threshold_time_with_activity = timezone.now() + timedelta(minutes=5)
 
         # In our implementation, we'll use Redis to track when tokens need refresh
         # Use SCAN instead of KEYS to avoid blocking Redis (non-blocking, O(1) per call)
         token_keys = list(redis_client.scan_iter(match="token_expires:*"))
 
         tokens_to_refresh = []
+        tokens_to_logout = []
 
         for key in token_keys:
             try:
@@ -50,21 +50,24 @@ def monitor_and_refresh_tokens():
                     key_str = key.decode('utf-8')
                 else:
                     key_str = str(key)
-
+                logger.info(f"Key: {key}")
                 # Get the expiration timestamp for this token
                 expire_timestamp = float(redis_client.get(key))
+                logger.info(f"expiry time: {expire_timestamp}")
                 token_expire_time = datetime.fromtimestamp(expire_timestamp, tz=pytz.UTC)
 
-                # Check if this token expires within the next 5 minutes
-                if token_expire_time < threshold_time:
+                # Check if this token expires within the next 5 minutes (with recent activity)
+                if token_expire_time < threshold_time_with_activity:
                     # Extract user ID from the key (token_expires:<user_id>)
                     user_id = key_str.split(':')[1]
 
                     # Check if the user was recently active (within 26 minutes)
                     last_activity = get_last_user_activity(user_id)
                     if last_activity:
+                        logger.info(f"Last Activity For {user_id}: {last_activity}")
                         current_time = timezone.now().timestamp()
                         time_since_activity = current_time - last_activity
+                        logger.info(f"Time Since Last Activity: {time_since_activity}")
 
                         # Only refresh if user was active within the last 26 minutes
                         if time_since_activity <= (26 * 60):  # 26 minutes in seconds
@@ -73,9 +76,8 @@ def monitor_and_refresh_tokens():
                         else:
                             logger.info(f"Token for user {user_id} expires at {token_expire_time}, but user was not active recently - skipping refresh")
                     else:
-                        # If no activity record, still consider for refresh (might be first time tracking)
-                        tokens_to_refresh.append(int(user_id))
-                        logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh (no activity record)")
+                        tokens_to_logout.append(int(user_id))
+                        logger.info(f"Token for user {user_id} expires at {token_expire_time} with no activity record, marking for logout")
 
             except (ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Error processing token key {key}: {str(e)}")
@@ -88,19 +90,38 @@ def monitor_and_refresh_tokens():
                 # This will trigger the client-side to call the cookie refresh endpoint
                 logger.info(f"Initiating refresh process for user {user_id}")
 
+                # Generate new tokens and store them in Redis before sending notification
+                refresh_user_token.delay(user_id)
+
                 # Use WebSocket to notify the client about token refresh
                 try:
-                    # Call the consumer's notify_user method to send a notification
-                    TokenNotificationConsumer.notify_user(user_id)
+                    # Call the TokenNotificationConsumer's new format notify method to send a notification
+                    # This maintains compatibility with the existing WebSocket endpoint
+                    TokenNotificationConsumer.notify_user(user_id, "REFRESH")
                 except Exception as ws_error:
                     logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
-                    # Fallback: still call the refresh_user_token task to pre-generate tokens
-                    refresh_user_token.delay(user_id)
 
             except Exception as e:
                 logger.error(f"Error initiating refresh for user {user_id}: {str(e)}")
 
-        logger.info(f"Token monitoring task completed. {len(tokens_to_refresh)} tokens marked for refresh")
+        # Process tokens that need logout (no recent activity)
+        for user_id in tokens_to_logout:
+            try:
+                # Send notification to the client via WebSocket to trigger logout
+                logger.info(f"Initiating logout process for user {user_id}")
+
+                # Use WebSocket to notify the client about logout
+                try:
+                    # Call the TokenNotificationConsumer's new format notify method to send a logout notification
+                    # This will trigger the client-side to call logoutAndRedirect function
+                    TokenNotificationConsumer.notify_user(user_id, "LOGOUT")
+                except Exception as ws_error:
+                    logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
+
+            except Exception as e:
+                logger.error(f"Error initiating logout for user {user_id}: {str(e)}")
+
+        logger.info(f"Token monitoring task completed. {len(tokens_to_refresh)} tokens marked for refresh, {len(tokens_to_logout)} tokens marked for logout")
 
     except Exception as e:
         logger.error(f"Critical error in token monitoring task: {str(e)}")
@@ -117,8 +138,8 @@ def refresh_user_token(user_id):
     
     try:
         # Get the user
-        user = User.objects.get(id=user_id, is_active=True)
-        
+        user = CustomUser.objects.get(id=user_id, is_active=True)
+
         # Generate new tokens
         refresh = RefreshToken.for_user(user)
         
@@ -159,13 +180,12 @@ def refresh_user_token(user_id):
             'expires_at': new_expire_time.isoformat()
         }
         
-    except User.DoesNotExist:
+    except CustomUser.DoesNotExist:
         logger.warning(f"User with ID {user_id} does not exist or is not active")
         return {'error': f'User {user_id} does not exist or is not active'}
     except Exception as e:
         logger.error(f"Error refreshing token for user {user_id}: {str(e)}")
-        raise
-
+        return {'error': f'Error refreshing token for user {user_id}: {str(e)}'}
 
 @app.task
 def get_tokens_by_reference(user_id):
@@ -200,4 +220,4 @@ def get_tokens_by_reference(user_id):
 
     except Exception as e:
         logger.error(f"Error retrieving tokens for user ID {user_id}: {str(e)}")
-        raise
+        return {'error': 'Error Retrieving tokens!'}

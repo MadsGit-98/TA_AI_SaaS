@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from .tasks import refresh_user_token, get_tokens_by_reference
+from .tasks import refresh_user_token
+from .tasks import get_tokens_by_reference
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -28,7 +29,7 @@ from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
-from .session_utils import clear_user_activity, update_user_activity
+from .session_utils import clear_user_activity, update_user_activity, clear_expiry_token
 
 # Define constant redirect URLs for activation results
 # These URLs should point to frontend pages that handle activation success/error states
@@ -796,6 +797,7 @@ def logout(request):
     # Clear user activity tracking on logout if user_id is available
     if user_id is not None:
         clear_user_activity(user_id)
+        clear_expiry_token(user_id)
 
     # Create response and clear authentication cookies
     response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -1134,12 +1136,12 @@ def cookie_token_refresh(request):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         # Flag to track if token has already been blacklisted to avoid double-blacklisting
-        token_blacklisted = False
+        should_blacklist_token = True
 
         if user_id:
             try:
                 # Attempt to retrieve pre-generated tokens using the user ID
-                token_result = get_tokens_by_reference.delay(user_id)
+                token_result = get_tokens_by_reference.delay(user_id).get(timeout=0.2)
 
                 if 'error' not in token_result:
                     new_access_token = token_result['access_token']
@@ -1149,7 +1151,7 @@ def cookie_token_refresh(request):
                     # Blacklist the old refresh token if the blacklist app is enabled
                     try:
                         token.blacklist()
-                        token_blacklisted = True  # Set flag to avoid double-blacklisting
+                        should_blacklist_token = False  # Set flag to avoid double-blacklisting
                     except AttributeError:
                         # This can happen if the blacklist app is not properly configured
                         logger.warning("AttributeError during token refresh - blacklist method not available")
@@ -1168,15 +1170,23 @@ def cookie_token_refresh(request):
 
                     return response
                 else:
-                    logger.warning(f"Failed to retrieve tokens by reference: {token_result['error']}")
-                    # Fall through to standard refresh process
+                    # Check if the error is specifically about token data not being found or expired
+                    # This is an indication of no recent user activity, not a failure
+                    if token_result['error'] == 'Token data not found or expired':
+                        logger.info(f"Token data not found or expired for user {user_id}, falling back to standard refresh")
+                        should_blacklist_token = False  # This indicates no user activity captured therefore tokens will be blacklisted at ecentual logout
+
             except Exception as e:
                 logger.error(f"Error retrieving tokens by reference: {str(e)}")
-                # Fall through to standard refresh process
+                # For any exception during token retrieval, fall back to standard refresh process
+                # Do not blacklist the token to allow proper logout when triggered later
+                # Set the flag to indicate token is already blacklisted to skip blacklisting
+                should_blacklist_token = True
 
         # Fallback: Standard refresh process if pre-created tokens are not available
-        # Blacklist the old refresh token if it hasn't been blacklisted already and the blacklist app is enabled
-        if not token_blacklisted:
+        # Only blacklist the token if it hasn't been blacklisted already
+        # (which happens when the error was 'Token data not found or expired')
+        if  should_blacklist_token:
             try:
                 token.blacklist()
             except AttributeError:
@@ -1205,9 +1215,10 @@ def cookie_token_refresh(request):
     except Exception as e:
         # Log the error server-side without exposing details to the client
         logger.warning(f"Cookie token refresh failed: {str(e)}")
+        # Return 200 with error message instead of 400/401 to allow proper logout handling
         return Response(
-            {'error': 'Invalid or expired refresh token'},
-            status=status.HTTP_400_BAD_REQUEST
+            {'detail': 'Invalid or expired refresh token'},
+            status=status.HTTP_200_OK
         )
 
 

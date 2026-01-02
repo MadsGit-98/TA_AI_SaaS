@@ -1,4 +1,5 @@
 import json
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from channels.layers import get_channel_layer
@@ -6,7 +7,7 @@ from asgiref.sync import async_to_sync
 
 User = get_user_model()
 
-
+logger = logging.getLogger(__name__)
 class TokenNotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Check if user is authenticated before accepting the connection
@@ -20,10 +21,8 @@ class TokenNotificationConsumer(AsyncWebsocketConsumer):
             # Accept the WebSocket connection only if authenticated
             await self.accept()
         else:
-            # Set user_id to None and reject the connection for unauthenticated users
-            self.user_id = None
-            # Reject the connection immediately
-            await self.close()
+            # Close the connection with a 403-equivalent for unauthenticated users
+            await self.close(code=403)
 
     async def disconnect(self, close_code):
         # Remove user from group when disconnecting
@@ -68,18 +67,34 @@ class TokenNotificationConsumer(AsyncWebsocketConsumer):
             'message': event['message']
         }))
 
+    # Receive refresh_tokens message for new format compatibility
+    async def refresh_tokens(self, event):
+        # Send message to WebSocket in the new format
+        await self.send(text_data=json.dumps({
+            'type': 'refresh_tokens',
+            'message': event['message']
+        }))
+
     # Method to notify a specific user
     @classmethod
-    def notify_user(cls, user_id):
+    def notify_user(cls, user_id, message="REFRESH", use_new_format=False):
         """
         Notify a specific user that their token needs to be refreshed
         """
         channel_layer = get_channel_layer()
 
-        async_to_sync(channel_layer.group_send)(
-            f"token_notifications_{user_id}",
-            {
-                'type': 'token_refresh_notification',
-                'message': 'Token refresh needed'
-            }
-        )
+        # Early return if channel layer is not available
+        if channel_layer is None:
+            logger.warning("Channel layer is not available, cannot send notification")
+            return
+
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f"token_notifications_{user_id}",
+                {
+                    'type': 'refresh_tokens',
+                    'message': message
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to send notification to user {user_id}: {str(e)}")

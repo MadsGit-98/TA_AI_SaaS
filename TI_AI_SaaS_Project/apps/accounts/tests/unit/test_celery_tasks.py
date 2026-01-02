@@ -1,0 +1,188 @@
+"""
+Integration tests for Celery tasks in the accounts app.
+These tests verify that the Celery tasks work properly with the Django application,
+Redis, and other components.
+"""
+import json
+from datetime import timedelta
+from unittest.mock import patch, MagicMock
+
+from django.test import TestCase
+from django.utils import timezone
+
+from apps.accounts.models import CustomUser
+from apps.accounts.tasks import monitor_and_refresh_tokens, refresh_user_token, get_tokens_by_reference
+
+
+class TestCeleryTasksIntegration(TestCase):
+    """Integration tests for the Celery tasks in the accounts app."""
+
+    def setUp(self):
+        """Set up test users and data."""
+        self.user = CustomUser.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123',
+            is_active=True
+        )
+        self.inactive_user = CustomUser.objects.create_user(
+            username='inactiveuser',
+            email='inactive@example.com',
+            password='testpass123',
+            is_active=False
+        )
+
+    @patch('apps.accounts.tasks.TokenNotificationConsumer')
+    @patch('apps.accounts.tasks.redis_client')
+    def test_monitor_and_refresh_tokens_task(self, mock_redis, mock_token_consumer):
+        """Test the monitor_and_refresh_tokens task."""
+        # Setup mock Redis client
+        mock_redis.scan_iter.return_value = [b'token_expires:1']
+        mock_redis.get.return_value = (timezone.now() + timedelta(minutes=3)).timestamp()  # Expires in 3 mins
+
+        # Mock the get_last_user_activity function to return a recent activity
+        with patch('apps.accounts.tasks.get_last_user_activity', return_value=timezone.now().timestamp()):
+            # Run the task - this function returns None on success
+            result = monitor_and_refresh_tokens()
+
+            # Verify the task executed without errors (doesn't return anything on success)
+            self.assertIsNone(result)
+
+            # Verify Redis was called appropriately
+            mock_redis.scan_iter.assert_called_once_with(match="token_expires:*")
+            mock_redis.get.assert_called()
+
+            # Verify WebSocket notification was attempted
+            mock_token_consumer.notify_user.assert_called_once_with(1)
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_refresh_user_token_task_success(self, mock_redis):
+        """Test the refresh_user_token task with a valid user."""
+        # Setup mock Redis client
+        mock_redis.setex = MagicMock()
+
+        # Run the task
+        result = refresh_user_token(self.user.id)
+
+        # Verify the result
+        self.assertEqual(result['user_id'], self.user.id)
+        self.assertTrue(result['token_refreshed'])
+        self.assertIn('expires_at', result)
+
+        # Verify Redis was called to store the token expiration
+        # Check that setex was called at least twice (for token_expires and temp_tokens)
+        self.assertEqual(mock_redis.setex.call_count, 2)
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_refresh_user_token_task_user_not_found(self, mock_redis):
+        """Test the refresh_user_token task with a non-existent user."""
+        # Run the task with a non-existent user ID
+        result = refresh_user_token(99999)
+        
+        # Verify the error result
+        self.assertIn('error', result)
+        self.assertIn('99999', result['error'])
+        self.assertIn('does not exist', result['error'])
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_refresh_user_token_task_inactive_user(self, mock_redis):
+        """Test the refresh_user_token task with an inactive user."""
+        # Run the task with an inactive user
+        result = refresh_user_token(self.inactive_user.id)
+        
+        # Verify the error result
+        self.assertIn('error', result)
+        self.assertIn(str(self.inactive_user.id), result['error'])
+        self.assertIn('does not exist', result['error'])
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_get_tokens_by_reference_success(self, mock_redis):
+        """Test the get_tokens_by_reference function with valid tokens."""
+        # Setup mock Redis client to return token data
+        token_data = {
+            'access_token': 'access_token_value',
+            'refresh_token': 'refresh_token_value',
+            'user_id': self.user.id,
+            'expires_at': (timezone.now() + timedelta(minutes=25)).isoformat()
+        }
+        mock_redis.get.return_value = json.dumps(token_data)
+        mock_redis.delete = MagicMock()
+        
+        # Run the function
+        result = get_tokens_by_reference(self.user.id)
+        
+        # Verify the result
+        self.assertEqual(result['user_id'], self.user.id)
+        self.assertEqual(result['access_token'], 'access_token_value')
+        self.assertEqual(result['refresh_token'], 'refresh_token_value')
+        self.assertIn('expires_at', result)
+        
+        # Verify Redis was called to retrieve and delete the token data
+        mock_redis.get.assert_called_once_with(f"temp_tokens:{self.user.id}")
+        mock_redis.delete.assert_called_once_with(f"temp_tokens:{self.user.id}")
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_get_tokens_by_reference_not_found(self, mock_redis):
+        """Test the get_tokens_by_reference function when tokens are not found."""
+        # Setup mock Redis client to return None
+        mock_redis.get.return_value = None
+        
+        # Run the function
+        result = get_tokens_by_reference(self.user.id)
+        
+        # Verify the error result
+        self.assertIn('error', result)
+        self.assertIn('not found', result['error'])
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_get_tokens_by_reference_invalid_json(self, mock_redis):
+        """Test the get_tokens_by_reference function with invalid JSON."""
+        # Setup mock Redis client to return invalid JSON
+        mock_redis.get.return_value = '{invalid_json'
+        
+        # Run the function and expect an exception
+        with self.assertRaises(json.JSONDecodeError):
+            get_tokens_by_reference(self.user.id)
+
+    def test_refresh_user_token_integration_with_real_components(self):
+        """Integration test for refresh_user_token with real Django and JWT components."""
+        # Run the actual task
+        result = refresh_user_token(self.user.id)
+        
+        # Verify the result
+        self.assertEqual(result['user_id'], self.user.id)
+        self.assertTrue(result['token_refreshed'])
+        self.assertIn('expires_at', result)
+        
+        # Verify that the token was actually stored in Redis
+        # (This would require actual Redis connection, so we'll just verify the logic)
+        from django.core.cache import cache
+        # Note: This test would require actual Redis connection to fully validate
+        # The task creates tokens and stores them in Redis, which we can't easily check without Redis connection
+
+    @patch('apps.accounts.tasks.redis_client')
+    def test_monitor_and_refresh_tokens_with_multiple_users(self, mock_redis):
+        """Test monitor_and_refresh_tokens with multiple users approaching token expiration."""
+        # Create additional users
+        user2 = CustomUser.objects.create_user(
+            username='testuser2',
+            email='test2@example.com',
+            password='testpass123',
+            is_active=True
+        )
+
+        # Setup mock Redis client to return multiple token expiration keys
+        mock_redis.scan_iter.return_value = [b'token_expires:1', b'token_expires:2']
+        # Return timestamps that are about to expire (within 5 minutes)
+        mock_redis.get.side_effect = [
+            (timezone.now() + timedelta(minutes=2)).timestamp(),  # For user 1
+            (timezone.now() + timedelta(minutes=4)).timestamp()   # For user 2
+        ]
+
+        # Mock the get_last_user_activity function to return recent activity for both users
+        with patch('apps.accounts.tasks.get_last_user_activity', return_value=timezone.now().timestamp()):
+            # Run the task
+            result = monitor_and_refresh_tokens()
+
+            # The task should complete without errors (doesn't return anything on success)
+            self.assertIsNone(result)
