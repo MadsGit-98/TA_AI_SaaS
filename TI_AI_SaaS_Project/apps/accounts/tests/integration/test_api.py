@@ -137,7 +137,16 @@ class TestAPIContract(APITestCase):
         self.assertTrue(hasattr(user, 'profile'))
 
     def test_login_api_contract(self):
-        """Contract test for login API"""
+        """
+        Verify the login API conforms to the contract for successful authentication.
+        
+        Asserts that a POST to the login endpoint responds with HTTP 200, includes `user`
+        and `redirect_url` in the response body, and does not include JWT tokens in the
+        body. Confirms the authenticated user's `email`, `first_name`, and `last_name`
+        match expected values. Ensures authentication tokens are issued via cookies
+        named `access_token` and `refresh_token` with `HttpOnly=True`, `SameSite='Lax'`,
+        and `Secure` set to True when DEBUG is False (False when DEBUG is True).
+        """
         url = reverse('api:login')
         data = {
             'username': 'test@example.com',  # Using email as username
@@ -185,7 +194,9 @@ class TestAPIContract(APITestCase):
         self.assertEqual(refresh_cookie['samesite'], 'Lax')
 
     def test_login_api_with_invalid_credentials(self):
-        """Contract test for login API with invalid credentials"""
+        """
+        Verify the login endpoint rejects invalid credentials and returns a 400 response containing 'non_field_errors'.
+        """
         url = reverse('api:login')
         data = {
             'username': 'test@example.com',

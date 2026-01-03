@@ -11,6 +11,11 @@ import json
 
 class TestJWTAuthenticationIntegration(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures for integration tests.
+        
+        Creates a Django test client, defines default user credentials in `self.user_data`, and creates an active `CustomUser` instance stored on `self.user`. These fixtures are used by the test methods to perform authentication and protected-endpoint requests.
+        """
         self.client = Client()
         self.user_data = {
             'username': 'testuser',
@@ -30,6 +35,11 @@ class TestJWTAuthenticationIntegration(TestCase):
 
     def tearDown(self):
         # Clear the cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset rate limiting and shared state between tests.
+        
+        This ensures subsequent tests run with a clean cache (e.g., rate-limit counters) and prevents state leakage.
+        """
         cache.clear()
 
     def test_complete_login_flow_with_cookie_storage(self):

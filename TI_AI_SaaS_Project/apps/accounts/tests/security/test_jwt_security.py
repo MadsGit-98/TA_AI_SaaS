@@ -12,6 +12,11 @@ from django.core.cache import cache
 
 class TestJWTSecurity(TestCase):
     def setUp(self):
+        """
+        Prepare the test environment by creating an API test client and an active test user.
+        
+        Creates an APIClient instance assigned to `self.client`, and creates/saves an active user with username 'testuser', email 'test@example.com', and password 'testpass123', assigned to `self.user`.
+        """
         self.client = APIClient()
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -24,6 +29,11 @@ class TestJWTSecurity(TestCase):
     
     def tearDown(self):
         # Clear the cache to reset rate limiting between tests
+        """
+        Clear the global cache to reset rate limiting and shared state between tests.
+        
+        This runs after each test case to ensure subsequent tests start with a clean cache.
+        """
         cache.clear()
 
     def test_tokens_not_accessible_via_javascript(self):
@@ -200,6 +210,5 @@ class TestJWTSecurity(TestCase):
         # Verify the operation completed in under 500ms (0.5 seconds)
         duration_ms = (end_time - start_time) * 1000
         self.assertLess(duration_ms, 500, f"Refresh operation took {duration_ms}ms, which exceeds 500ms limit")
-
 
 

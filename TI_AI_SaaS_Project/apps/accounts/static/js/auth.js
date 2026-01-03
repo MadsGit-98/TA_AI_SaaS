@@ -1,5 +1,8 @@
 // auth.js - Authentication functionality for X-Crewter (Cookie-based JWT)
-// Function to get CSRF token from cookie or meta tag
+/**
+ * Retrieve the CSRF token from the document, preferring a meta tag and falling back to a cookie.
+ * @returns {string|undefined} The CSRF token if found, otherwise `undefined`.
+ */
 
 function getCsrfToken() {
     // Try to get from meta tag first
@@ -42,6 +45,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+/**
+ * Handle submission of the registration form: send form data to the server, show success or error UI, and redirect to the login page on success.
+ *
+ * Prevents the default form submission, gathers registration fields, sends a POST to /api/accounts/auth/register/ with a CSRF token and cookies included, displays validation or generic errors when present, and on success shows a success message, hides the form, and navigates to /login/ after a short delay. The submit button is disabled and shows a loading state during the request and is restored afterwards.
+ *
+ * @param {SubmitEvent} e - The form submit event.
+ */
 async function handleRegister(e) {
     e.preventDefault();
     
@@ -112,6 +122,17 @@ async function handleRegister(e) {
     }
 }
 
+/**
+ * Handle submission of the login form and authenticate the user.
+ *
+ * Sends the entered username and password to the server with the CSRF token and cookies included.
+ * On success, navigates to the server-provided redirect URL if it matches the whitelist (/dashboard/, /landing/, /),
+ * otherwise redirects to /landing/. On failure, displays a user-facing error in the DOM elements
+ * with IDs "login-error-message" and "login-error-text". Updates the submit button label and disabled state
+ * while the request is in progress.
+ *
+ * @param {Event} e - The form submit event.
+ */
 async function handleLogin(e) {
     e.preventDefault();
 
@@ -188,6 +209,10 @@ async function handleLogin(e) {
     }
 }
 
+/**
+ * Handle the password reset form submission by sending a reset request and updating the UI with success or error feedback.
+ * @param {Event} e - The submit event from the password reset form.
+ */
 async function handlePasswordReset(e) {
     e.preventDefault();
     
@@ -243,4 +268,3 @@ async function handlePasswordReset(e) {
         submitBtn.textContent = 'Send Reset Link';
     }
 }
-

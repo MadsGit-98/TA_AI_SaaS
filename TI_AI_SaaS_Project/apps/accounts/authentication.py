@@ -128,7 +128,15 @@ class CookieBasedJWTAuthentication(JWTAuthentication):
     """
     def authenticate(self, request):
         """
-        Override authenticate to extract token from cookies first, then fall back to Authorization header
+        Authenticate the request using a JWT from the 'access_token' cookie, falling back to the Authorization header.
+        
+        Attempts to read and validate a token from the 'access_token' cookie; if present and valid, returns the authenticated (user, validated_token) pair provided the user is active. If the cookie token is invalid, returns None. If no cookie token is present, defers to the parent class's authenticate method and enforces that any returned user is active.
+        
+        Returns:
+            tuple or None: `(user, validated_token)` when authentication succeeds, or `None` if authentication fails.
+        
+        Raises:
+            AuthenticationFailed: If an authenticated user's account is not active.
         """
         # First try to get the token from the access_token cookie
         raw_token = self.get_raw_token_from_cookies(request)
@@ -165,7 +173,12 @@ class CookieBasedJWTAuthentication(JWTAuthentication):
 
     def get_raw_token_from_cookies(self, request):
         """
-        Extract raw token from the access_token cookie
+        Retrieve the raw JWT from the 'access_token' cookie and return it as bytes.
+        
+        If the cookie value is a string, it is encoded using UTF-8; if it is already bytes it is returned unchanged.
+        
+        Returns:
+            bytes or None: Token bytes when the cookie is present, otherwise None.
         """
         # Try to get the access token from cookies
         cookie_token = request.COOKIES.get('access_token')

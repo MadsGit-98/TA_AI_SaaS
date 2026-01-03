@@ -17,20 +17,50 @@ class DummyRedisClient:
     """A dummy Redis client that provides no-op implementations for Redis operations"""
     def setex(self, key, time: Union[int, timedelta], value):
         # No-op
+        """
+        Accepts a Redis-style setex call but performs no operation.
+        
+        Parameters:
+            key: The key to set (accepted and ignored).
+            time (int | timedelta): Expiration time in seconds or a timedelta (accepted and ignored).
+            value: The value to set (accepted and ignored).
+        """
         pass
 
     def get(self, key):
         # Always return None
+        """
+        Always return None for any key (no-op retrieval).
+        
+        Parameters:
+            key: The Redis key to retrieve (ignored).
+        
+        Returns:
+            None: Always returns `None`.
+        """
         return None
 
     def delete(self, key):
         # Always return 0 (indicating no keys were deleted)
+        """
+        No-op deletion for the fallback Redis client; performs no action.
+        
+        Parameters:
+            key (str): The key to delete.
+        
+        Returns:
+            int: Always 0 indicating no keys were deleted.
+        """
         return 0
 
 def get_redis_client():
     """
-    Lazy-initialize Redis client with retry/backoff and graceful degradation.
-    Returns a real Redis client if connection succeeds, otherwise returns a dummy client.
+    Return a Redis client configured from settings or a dummy client if a connection cannot be established.
+    
+    Attempts to connect to the Redis URL from settings (or the default) and retries on failure; if all attempts fail, returns a DummyRedisClient for graceful degradation.
+    
+    Returns:
+        redis.Redis or DummyRedisClient: A connected Redis client when successful, otherwise a DummyRedisClient with no-op methods.
     """
     max_retries = 3
     base_delay = 0.5  # seconds
@@ -54,13 +84,15 @@ redis_client = get_redis_client()
 
 def update_user_activity(user_id: Union[int, str]) -> bool:
     """
-    Update the last activity timestamp for a user
-
-    Args:
-        user_id: The ID of the user whose activity should be updated
-
+    Record the current timestamp as a user's last activity.
+    
+    Stores the timestamp under the Redis key `user_activity:{user_id}` with a 26-minute expiration.
+    
+    Parameters:
+        user_id (int | str): Identifier of the user whose activity timestamp will be updated.
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        True if the timestamp was stored successfully, False otherwise.
     """
 
     key = f"user_activity:{user_id}"
@@ -81,13 +113,15 @@ def update_user_activity(user_id: Union[int, str]) -> bool:
 
 def get_last_user_activity(user_id: Union[int, str]) -> Optional[float]:
     """
-    Get the last activity timestamp for a user
-
-    Args:
-        user_id: The ID of the user whose activity should be retrieved
-
+    Retrieve the user's last activity timestamp from Redis.
+    
+    If the activity key is missing, Redis is unavailable, or the stored value cannot be parsed as a float, returns None.
+    
+    Parameters:
+        user_id (int | str): Identifier used to construct the Redis key for the user's activity.
+    
     Returns:
-        Optional[float]: The timestamp of last activity if found, None otherwise
+        float | None: The last activity timestamp as a float if present and valid, None otherwise.
     """
     key = f"user_activity:{user_id}"
 
@@ -109,7 +143,13 @@ def get_last_user_activity(user_id: Union[int, str]) -> Optional[float]:
 
 def is_user_session_expired(user_id):
     """
-    Check if a user's session has expired due to inactivity (26 minutes)
+    Determine whether a user's session has expired due to 26 minutes of inactivity.
+    
+    Parameters:
+        user_id (str | int): Identifier for the user whose session expiry is being checked.
+    
+    Returns:
+        bool: `True` if more than 26 minutes have elapsed since the user's last recorded activity, `False` otherwise. If no activity record is available (for example, when Redis is inaccessible), the function returns `False`.
     """
     last_activity = get_last_user_activity(user_id)
 
@@ -148,13 +188,13 @@ def clear_user_activity(user_id: Union[str, int]) -> bool:
 
 def clear_expiry_token(user_id: Union[str, int]) -> bool:
     """
-    Clear the expiry token for a user (e.g., on logout)
-
-    Args:
-        user_id: The ID of the user whose activity record should be cleared (int or str)
-
+    Clear the expiry token stored in Redis for the given user.
+    
+    Parameters:
+        user_id (str | int): Identifier used to form the Redis key "token_expires:{user_id}".
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        bool: `True` if a Redis key was deleted, `False` otherwise.
     """
     try:
         key = f"token_expires:{str(user_id)}"

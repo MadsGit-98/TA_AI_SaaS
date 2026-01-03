@@ -5,6 +5,15 @@ from apps.accounts.models import CustomUser, VerificationToken
 
 class AuthenticationIntegrationTestCase(APITestCase):
     def setUp(self):
+        """
+        Prepare test credentials used across authentication integration tests.
+        
+        Initializes:
+        - self.user_data: a dict with fields required for user registration (`first_name`, `last_name`, `email`, `password`, `password_confirm`, `username`).
+        - self.login_data: a dict used to authenticate the created user; the API expects the login `username` to contain the user's email.
+        
+        These attributes are consumed by registration, login, password reset, and profile access test cases.
+        """
         self.user_data = {
             'first_name': 'John',
             'last_name': 'Doe',
@@ -114,7 +123,11 @@ class AuthenticationIntegrationTestCase(APITestCase):
         self.assertIn(response.status_code, [302, 401, 403])  # Redirect or auth error
 
     def test_user_profile_access(self):
-        """Test accessing user profile after authentication"""
+        """
+        Verify an authenticated user can retrieve their profile when authentication tokens are provided via cookies.
+        
+        This test registers a new user, activates the account, logs in to obtain authentication cookies, asserts that access and refresh tokens are present in cookies, and then requests the user profile endpoint to confirm a successful authenticated response and the expected email in the profile payload.
+        """
         # Create and login user
         register_response = self.client.post(
             reverse('api:register'),

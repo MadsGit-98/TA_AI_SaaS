@@ -11,6 +11,14 @@ from django.core.cache import cache
 
 class TestCookieBasedJWTAuthentication(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: create a RequestFactory, create a test user, and instantiate CookieBasedJWTAuthentication.
+        
+        Attributes set on self:
+            factory: RequestFactory instance used to build requests.
+            user: A persisted CustomUser created for authentication tests.
+            auth: CookieBasedJWTAuthentication instance under test.
+        """
         self.factory = RequestFactory()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -35,7 +43,11 @@ class TestCookieBasedJWTAuthentication(TestCase):
         self.assertEqual(result[0], self.user)
 
     def test_authenticate_with_inactive_user(self):
-        """Test that authentication fails for inactive users"""
+        """
+        Ensure authentication raises an exception when an access token in cookies belongs to an inactive user.
+        
+        Marks the test user inactive, places a valid access token for that user into the request cookies, and asserts that authentication fails by raising an exception.
+        """
         self.user.is_active = False
         self.user.save()
 
@@ -71,6 +83,11 @@ class TestCookieBasedJWTAuthentication(TestCase):
 
 class TestJWTTokenRefresh(TestCase):
     def setUp(self):
+        """
+        Set up a fresh APIClient and a test user before each test.
+        
+        Creates self.client as a new APIClient instance and self.user as a newly created CustomUser with username 'testuser', email 'test@example.com', and password 'testpass123'.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -80,10 +97,19 @@ class TestJWTTokenRefresh(TestCase):
 
     def tearDown(self):
         # Clear the cache to reset rate limiting between tests
+        """
+        Clear Django's cache between tests.
+        
+        Removes any cached state (for example rate-limiting or authentication-related entries) to ensure each test runs with a clean cache.
+        """
         cache.clear()
 
     def test_login_sets_tokens_in_cookies(self):
-        """Test that login endpoint sets JWT tokens in HttpOnly cookies"""
+        """
+        Ensure the login endpoint sets both access and refresh JWT tokens as HttpOnly cookies.
+        
+        Asserts that the response includes 'access_token' and 'refresh_token' cookies and that each cookie has the HttpOnly attribute.
+        """
         response = self.client.post('/api/accounts/auth/login/', {
             'username': 'testuser',
             'password': 'testpass123'
@@ -143,6 +169,12 @@ class TestJWTTokenRefresh(TestCase):
 
 class TestInactiveUserAuthentication(TestCase):
     def setUp(self):
+        """
+        Set up test fixtures: create an APIClient and an inactive CustomUser saved on the test instance.
+        
+        The created client is stored as `self.client`. The created user (username 'inactiveuser', email 'inactive@example.com')
+        is marked inactive, saved, and stored as `self.user` for use by tests that verify behavior for inactive accounts.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='inactiveuser',
@@ -154,6 +186,11 @@ class TestInactiveUserAuthentication(TestCase):
 
     def tearDown(self):
         # Clear the cache to reset rate limiting between tests
+        """
+        Clear Django's cache between tests.
+        
+        Removes any cached state (for example rate-limiting or authentication-related entries) to ensure each test runs with a clean cache.
+        """
         cache.clear()
 
     def test_inactive_user_cannot_login(self):
@@ -184,6 +221,11 @@ class TestInactiveUserAuthentication(TestCase):
 
 class TestTokenSecurityAttributes(TestCase):
     def setUp(self):
+        """
+        Set up a fresh APIClient and a test user before each test.
+        
+        Creates self.client as a new APIClient instance and self.user as a newly created CustomUser with username 'testuser', email 'test@example.com', and password 'testpass123'.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -193,6 +235,11 @@ class TestTokenSecurityAttributes(TestCase):
 
     def tearDown(self):
         # Clear the cache to reset rate limiting between tests
+        """
+        Clear Django's cache between tests.
+        
+        Removes any cached state (for example rate-limiting or authentication-related entries) to ensure each test runs with a clean cache.
+        """
         cache.clear()
 
     def test_tokens_set_with_correct_security_attributes(self):

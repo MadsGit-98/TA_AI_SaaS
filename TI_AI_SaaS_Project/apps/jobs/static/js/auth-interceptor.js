@@ -1,7 +1,10 @@
 // auth-interceptor.js - Authentication interceptor for jobs app with user activity tracking
 // Uses axios instead of fetch with activity-based token refresh
 
-// Function to get CSRF token from cookie or meta tag
+/**
+ * Retrieve the page CSRF token from a meta[name="csrf-token"] tag or the "csrftoken" cookie.
+ * @returns {string|undefined} The CSRF token if found, otherwise `undefined`.
+ */
 function getCsrfToken() {
     // Try to get from meta tag first
     let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -25,7 +28,12 @@ function getCsrfToken() {
     return token;
 }
 
-// Check if tokens are about to expire and refresh them automatically
+/**
+ * Trigger a server-side activity check that refreshes authentication tokens when appropriate; does nothing if the document is hidden.
+ *
+ * Sends a request to the user profile endpoint to update activity and let the server perform any necessary token refresh.
+ * @returns {boolean} `true` if the server responded with status 200, `false` otherwise.
+ */
 async function checkAndRefreshToken() {
     // Don't refresh if page is hidden (tab switched or minimized)
     if (document.hidden) {
@@ -54,7 +62,11 @@ async function checkAndRefreshToken() {
 // Track user activity to trigger token refresh
 let lastActivity = Date.now();
 const ACTIVITY_TIMEOUT = 18 * 60 * 1000; 
-const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
+const accessTokenExpiry =  25 * 60 * 1000; /**
+ * Monitors elapsed user inactivity and attempts a token refresh when the inactivity threshold is reached.
+ *
+ * When the time since the last recorded activity is at least ACTIVITY_TIMEOUT and before the access token expiry, calls checkAndRefreshToken(); if that succeeds, updates lastActivity to the current time.
+ */
 
 async function handleUserActivity() {
     const now = Date.now();
@@ -76,7 +88,12 @@ async function handleUserActivity() {
 
 }
 
-// Add event listeners for user activities
+/**
+ * Attach event listeners for user activity and page visibility to trigger activity handling.
+ *
+ * Registers handlers for load, mousedown, click, keydown, touchstart, and scroll (using the capture phase)
+ * and treats the page becoming visible again as activity by invoking handleUserActivity on visibility changes.
+ */
 function setupActivityListeners() {
     // Events that count as user activity
     const events = ['load', 'mousedown', 'click', 'keydown', 'touchstart', 'scroll'];
@@ -102,6 +119,14 @@ const maxRetryAttempts = 10;
 const baseDelay = 1000; // 1 second base delay
 let retryTimer = null;
 
+/**
+ * Establishes a single WebSocket connection to receive server-driven token notifications.
+ *
+ * When a connection is already opening or open, the function returns without creating a new socket.
+ * Listens for messages of type "refresh_tokens" with message "REFRESH" to invoke refreshTokenFromServer,
+ * and with message "LOGOUT" to invoke logoutAndRedirect. On open, it resets retry state and clears any pending retry timer.
+ * If the connection closes unintentionally, it attempts reconnection using exponential backoff up to maxRetryAttempts (with a capped delay); intentional closes do not trigger reconnection.
+ */
 function initWebSocket() {
     // Check if there's already an active connection and return early to avoid multiple connections
     if (wsSocket && (wsSocket.readyState === WebSocket.CONNECTING || wsSocket.readyState === WebSocket.OPEN)) {
@@ -170,7 +195,11 @@ function initWebSocket() {
     };
 }
 
-// Function to properly close the WebSocket connection
+/**
+ * Close the active WebSocket connection, prevent automatic reconnection attempts, and clear any pending retry timer.
+ *
+ * If no WebSocket is present, the function is a no-op.
+ */
 function closeWebSocket() {
     if (wsSocket) {
         // Set the intentional disconnect flag to prevent reconnection attempts
@@ -188,7 +217,11 @@ function closeWebSocket() {
     }
 }
 
-// Function to handle user logout and redirect to login
+/**
+ * Perform a user logout flow: close the WebSocket, attempt a CSRF-protected server logout, and navigate to the login page.
+ *
+ * Attempts to POST to the server logout endpoint with credentials and a CSRF token; logs any errors but always redirects the browser to /login/ after the attempt.
+ */
 async function logoutAndRedirect() {
     // Close the WebSocket connection before logging out
     closeWebSocket();
@@ -214,7 +247,13 @@ async function logoutAndRedirect() {
 // Function to call the cookie refresh endpoint
 let refreshPromise = null; // Promise to deduplicate concurrent refresh attempts
 let retryCount = 0;
-const maxRetries = 5; // 1 second base delay
+const maxRetries = 5; /**
+ * Refreshes authentication tokens by calling the server cookie-refresh endpoint and returns the server response.
+ *
+ * Deduplicates concurrent refresh attempts by returning the same in-flight promise, retries on transient failures
+ * with exponential backoff and random jitter, and triggers logoutAndRedirect on persistent failures or on 401/403 responses.
+ * @returns {Promise<import("axios").AxiosResponse|undefined>} The axios response when refresh succeeds; `undefined` if the refresh failed or logout was triggered.
+ */
 
 async function refreshTokenFromServer() {
     // Deduplicate concurrent refresh attempts by returning the same promise if one is in flight
@@ -278,7 +317,13 @@ async function refreshTokenFromServer() {
     return refreshPromise;
 }
 
-// Function to set up the authentication interceptor
+/**
+ * Configure Axios to handle authentication failures by redirecting users to the login page.
+ *
+ * Installs a global Axios response interceptor that invokes logoutAndRedirect when a response
+ * indicates an authentication error (HTTP 401 or 403). Successful responses are returned
+ * unchanged and other errors are propagated to the caller.
+ */
 function setupAuthInterceptor() {
     // Add axios interceptor for handling 401 and 403 responses
     window.axios.interceptors.response.use(

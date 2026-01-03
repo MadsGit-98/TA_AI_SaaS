@@ -34,6 +34,11 @@ class TestWebSocketNotificationE2E(LiveServerTestCase):
 
     @classmethod
     def setUpClass(cls):
+        """
+        Initialize a Selenium Chrome WebDriver for end-to-end tests and assign it to cls.driver.
+        
+        Configures the browser to run in visible (non-headless) mode with a 1920x1080 window and enables browser and performance logging so JavaScript console messages and WebSocket activity can be captured during tests.
+        """
         super().setUpClass()
 
         # Set up Chrome options for non-headless testing to properly capture JavaScript behavior
@@ -51,11 +56,20 @@ class TestWebSocketNotificationE2E(LiveServerTestCase):
 
     @classmethod
     def tearDownClass(cls):
+        """
+        Shut down the Selenium WebDriver and perform the class-level teardown.
+        
+        This closes the browser driver started for the test class and then delegates to the superclass' teardown to finalize class-level cleanup.
+        """
         cls.driver.quit()
         super().tearDownClass()
 
     def setUp(self):
-        """Set up test users and Redis connection."""
+        """
+        Prepare an active test user, an associated UserProfile configured for dashboard/RBAC access, and a Redis client with test keys cleared.
+        
+        Creates a CustomUser with is_active=True, creates a UserProfile with attributes required for dashboard access (is_talent_acquisition_specialist=True, subscription_status='active', subscription_end_date set 30 days in the future, chosen_subscription_plan='pro'), initializes a Redis client pointing at redis://localhost:6379/0, and deletes the Redis keys token_expires:<user_id> and temp_tokens:<user_id> for the created user.
+        """
         # Create user with is_active=True to ensure the user is activated
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -85,13 +99,21 @@ class TestWebSocketNotificationE2E(LiveServerTestCase):
         self.redis_client.delete(f"temp_tokens:{self.user.id}")
 
     def tearDown(self):
-        """Clean up Redis after each test."""
+        """
+        Remove Redis keys for the current test user to ensure a clean state between tests.
+        
+        Deletes the keys "token_expires:<user_id>" and "temp_tokens:<user_id>" for self.user.id.
+        """
         # Clean up any test data in Redis
         self.redis_client.delete(f"token_expires:{self.user.id}")
         self.redis_client.delete(f"temp_tokens:{self.user.id}")
 
     def login_user(self):
-        """Helper method to log in the test user."""
+        """
+        Log the test user in via the Django test client, transfer session cookies into the Selenium browser, and navigate to the dashboard.
+        
+        Performs an API login using the test client, asserts the login and redirect to /dashboard/, injects the client's cookies into the Selenium WebDriver to share the authenticated session, then opens the dashboard and waits for the page body to be present.
+        """
         # Use the Django test client to perform the login via API
         login_response = self.client.post(
             f"{self.live_server_url}/api/accounts/auth/login/",
@@ -143,7 +165,11 @@ class TestWebSocketNotificationE2E(LiveServerTestCase):
         )
 
     def test_websocket_reconnection_after_notification(self):
-        """Test WebSocket reconnection behavior after notifications."""
+        """
+        Verifies WebSocket reconnection resilience when multiple backend notifications are sent while the dashboard is open.
+        
+        Triggers several backend WebSocket notifications for the logged-in test user with the dashboard loaded and asserts that browser logs report fewer than three WebSocket-related errors (`WebSocket error` or `WebSocket reconnection stopped`), indicating acceptable reconnection behavior.
+        """
         # Log in the user to establish session
         self.login_user()
         

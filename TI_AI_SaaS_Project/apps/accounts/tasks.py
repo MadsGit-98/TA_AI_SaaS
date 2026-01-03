@@ -23,10 +23,17 @@ redis_client = redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:
 @app.task
 def monitor_and_refresh_tokens():
     """
-    Celery task to monitor user tokens and refresh them before expiration.
-    This task identifies tokens that are about to expire and initiates refresh process.
-    In our implementation, this would identify users with tokens expiring soon and
-    trigger the client-side to call the cookie refresh endpoint.
+    Monitor token expirations and trigger refresh or logout workflows for affected users.
+    
+    Scans Redis for keys named "token_expires:<user_id>", identifies tokens that will expire within 5 minutes, and classifies each user into one of two actions:
+    - If the user has a recorded last activity timestamp and it is within the last 26 minutes, enqueue a server-side token refresh and notify the client via WebSocket with a "REFRESH" signal.
+    - If there is no recorded last activity, notify the client via WebSocket with a "LOGOUT" signal.
+    
+    Side effects:
+    - Reads token expiration timestamps from Redis.
+    - May enqueue a token refresh task.
+    - Sends WebSocket notifications to clients.
+    - Updates internal Redis state as part of the refresh workflow.
     """
 
     logger.info("Starting token monitoring task")
@@ -131,8 +138,18 @@ def monitor_and_refresh_tokens():
 @app.task
 def refresh_user_token(user_id):
     """
-    Refresh the token for a specific user
-    This is a server-side operation that could be triggered when needed
+    Refresh the JWT access and refresh tokens for the specified active user and store them temporarily in Redis.
+    
+    Parameters:
+        user_id (int | str): ID of the user whose tokens should be refreshed.
+    
+    Returns:
+        dict: On success, returns {'user_id': user_id, 'token_refreshed': True, 'expires_at': <ISO 8601 timestamp>}.
+              On failure, returns an error dict with an 'error' message describing the problem.
+    
+    Notes:
+        - Stores a persistent token expiry marker under `token_expires:<user_id>` and short-lived token data under `temp_tokens:<user_id>` in Redis.
+        - If the user does not exist or is not active, returns an error dict instead of raising.
     """
     logger.info(f"Refreshing token for user ID: {user_id}")
     
@@ -190,8 +207,15 @@ def refresh_user_token(user_id):
 @app.task
 def get_tokens_by_reference(user_id):
     """
-    Retrieve tokens using the user ID from secure storage.
-    This provides a secure way to access the tokens that were generated in the background.
+    Retrieve and return one-time temporary JWT tokens stored for a user.
+    
+    Retrieves token data from Redis key `temp_tokens:<user_id>`, deletes that key (one-time retrieval), and returns the stored tokens and expiry metadata. If no token data exists or an error occurs, returns an error dict.
+    
+    Parameters:
+        user_id (int | str): Identifier of the user whose temporary tokens were stored.
+    
+    Returns:
+        dict: On success, a dict containing `user_id`, `access_token`, `refresh_token`, and `expires_at`. On failure, a dict with an `error` message.
     """
     logger.info(f"Retrieving tokens for user ID: {user_id}")
 

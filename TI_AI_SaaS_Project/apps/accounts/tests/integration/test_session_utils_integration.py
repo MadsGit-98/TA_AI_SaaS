@@ -19,7 +19,11 @@ class TestSessionUtilsIntegration(TestCase):
     """Integration tests for session utility functions with actual Redis"""
     
     def setUp(self):
-        """Set up test data"""
+        """
+        Prepare Redis-backed test fixtures for each test.
+        
+        Initializes a test user_id and corresponding Redis key, obtains a fresh Redis client via get_redis_client, and ensures the test key is removed from Redis before the test runs.
+        """
         self.user_id = "test_user_123"
         self.redis_key = f"user_activity:{self.user_id}"
         
@@ -30,7 +34,11 @@ class TestSessionUtilsIntegration(TestCase):
         self.redis_client.delete(self.redis_key)
     
     def tearDown(self):
-        """Clean up after tests"""
+        """
+        Remove the Redis key created for the test.
+        
+        Deletes the per-test Redis key to ensure no residual activity data remains after each test case.
+        """
         # Remove any test data
         self.redis_client.delete(self.redis_key)
     

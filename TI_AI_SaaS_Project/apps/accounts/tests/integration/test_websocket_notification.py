@@ -17,7 +17,9 @@ class WebSocketNotificationIntegrationTest(TestCase):
     
     async def test_websocket_connection_authenticated(self):
         """
-        Test the WebSocket connection with an authenticated user
+        Verify that an authenticated user can establish a WebSocket connection and receive a channel-layer `refresh_tokens` notification.
+        
+        This test creates an active test user, injects it into the communicator scope, asserts the WebSocket connection is accepted, sends a `refresh_tokens` group message to the user's notification group, and asserts the consumer forwards the message as JSON with the expected payload.
         """
         # Create a test user
         user = await CustomUser.objects.acreate_user(
