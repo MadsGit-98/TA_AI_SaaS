@@ -53,7 +53,7 @@ class TestCeleryTasksIntegration(TestCase):
             mock_redis.get.assert_called()
 
             # Verify WebSocket notification was attempted
-            mock_token_consumer.notify_user.assert_called_once_with(1)
+            mock_token_consumer.notify_user.assert_called_once_with(1, 'REFRESH')
 
     @patch('apps.accounts.tasks.redis_client')
     def test_refresh_user_token_task_success(self, mock_redis):
@@ -139,10 +139,13 @@ class TestCeleryTasksIntegration(TestCase):
         """Test the get_tokens_by_reference function with invalid JSON."""
         # Setup mock Redis client to return invalid JSON
         mock_redis.get.return_value = '{invalid_json'
-        
-        # Run the function and expect an exception
-        with self.assertRaises(json.JSONDecodeError):
-            get_tokens_by_reference(self.user.id)
+
+        # Run the function and expect an error response
+        result = get_tokens_by_reference(self.user.id)
+
+        # Verify the error result
+        self.assertIn('error', result)
+        self.assertIn('Error Retrieving tokens!', result['error'])
 
     def test_refresh_user_token_integration_with_real_components(self):
         """Integration test for refresh_user_token with real Django and JWT components."""
@@ -186,3 +189,26 @@ class TestCeleryTasksIntegration(TestCase):
 
             # The task should complete without errors (doesn't return anything on success)
             self.assertIsNone(result)
+
+    @patch('apps.accounts.tasks.TokenNotificationConsumer')
+    @patch('apps.accounts.tasks.redis_client')
+    def test_monitor_and_refresh_tokens_task_logout_user(self, mock_redis, mock_token_consumer):
+        """Test the monitor_and_refresh_tokens task when a user has no activity record and should be logged out."""
+        # Setup mock Redis client
+        mock_redis.scan_iter.return_value = [b'token_expires:1']
+        mock_redis.get.return_value = (timezone.now() + timedelta(minutes=3)).timestamp()  # Expires in 3 mins
+
+        # Mock the get_last_user_activity function to return None (no activity record)
+        with patch('apps.accounts.tasks.get_last_user_activity', return_value=None):
+            # Run the task - this function returns None on success
+            result = monitor_and_refresh_tokens()
+
+            # Verify the task executed without errors (doesn't return anything on success)
+            self.assertIsNone(result)
+
+            # Verify Redis was called appropriately
+            mock_redis.scan_iter.assert_called_once_with(match="token_expires:*")
+            mock_redis.get.assert_called()
+
+            # Verify WebSocket notification was attempted for logout
+            mock_token_consumer.notify_user.assert_called_once_with(1, 'LOGOUT')
