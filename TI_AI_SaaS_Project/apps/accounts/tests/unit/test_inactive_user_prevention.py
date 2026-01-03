@@ -9,6 +9,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 class TestInactiveUserPrevention(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: initialize an APIClient and create one active user and one inactive user.
+        
+        Sets:
+            self.client: DRF APIClient instance for making test requests.
+            self.user: an active user with username 'activeuser' and email 'active@example.com'.
+            self.inactive_user: an inactive user with username 'inactiveuser' and email 'inactive@example.com'.
+        """
         self.client = APIClient()
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -26,7 +34,11 @@ class TestInactiveUserPrevention(TestCase):
         )
 
     def test_inactive_user_cannot_log_in(self):
-        """T025: Create test for inactive user attempting to log in"""
+        """
+        Verify that an inactive user cannot obtain authentication and cannot refresh tokens.
+        
+        Asserts that posting the inactive user's credentials to the login endpoint returns HTTP 400 with a 'non_field_errors' message indicating the account is not activated, and that attempting to refresh with a refresh token issued for the inactive user returns HTTP 401.
+        """
         response = self.client.post('/api/accounts/auth/login/', {
             'username': 'inactiveuser',
             'password': 'testpass123'

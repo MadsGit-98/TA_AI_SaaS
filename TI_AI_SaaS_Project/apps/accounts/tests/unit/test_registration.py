@@ -8,10 +8,21 @@ from ...models import CustomUser, UserProfile
 
 class RegistrationTestCase(APITestCase):
     def setUp(self):
+        """
+        Prepare test case by resolving and storing the registration endpoint URL.
+        
+        Sets:
+            self.url (str): URL for the 'api:register' endpoint used by test methods.
+        """
         self.url = reverse('api:register')
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the global cache to reset rate limiting state between tests.
+        
+        Ensures each test runs with a fresh rate-limit environment by removing cached counters and related entries.
+        """
         cache.clear()
 
     def test_user_registration_success(self):

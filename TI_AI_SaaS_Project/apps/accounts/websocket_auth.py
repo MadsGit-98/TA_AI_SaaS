@@ -12,7 +12,15 @@ logger = logging.getLogger(__name__)
 @database_sync_to_async
 def get_user_from_token(token_string):
     """
-    Get user from JWT token string
+    Resolve a Django user from a JWT access token string.
+    
+    Decodes the provided access token, looks up the corresponding CustomUser by the token's `user_id`, and returns that user if found and active. If the token is invalid, the user does not exist, or the user is inactive, returns an AnonymousUser.
+    
+    Parameters:
+        token_string (str): JWT access token string containing a `user_id` claim.
+    
+    Returns:
+        CustomUser or AnonymousUser: The authenticated user when the token is valid and the user is active; otherwise an AnonymousUser.
     """
     try:
         # Decode the access token
@@ -43,10 +51,29 @@ class JWTAuthMiddleware(BaseMiddleware):
     Custom middleware to authenticate WebSocket connections using JWT tokens from cookies
     """
     def __init__(self, inner):
+        """
+        Initialize the middleware with the given inner ASGI application.
+        
+        Parameters:
+            inner: The downstream ASGI application (callable) that this middleware wraps.
+        """
         super().__init__(inner)
 
     async def __call__(self, scope, receive, send):
         # Get cookies from the scope
+        """
+        Authenticate a WebSocket connection by extracting a JWT access token from cookies and injecting the resolved user into the ASGI scope.
+        
+        Parses cookies from the incoming ASGI scope headers, looks for common access token cookie names, resolves the token to a user (or AnonymousUser on failure), assigns that user to scope['user'], and then delegates to the inner application.
+        
+        Parameters:
+            scope (dict): ASGI connection scope; this function will set scope['user'] to the resolved user.
+            receive (callable): ASGI receive callable for incoming events.
+            send (callable): ASGI send callable for outgoing events.
+        
+        Returns:
+            The value returned by the inner ASGI application after the call.
+        """
         cookies = {}
         for header_name, header_value in scope.get('headers', []):
             if header_name == b'cookie':

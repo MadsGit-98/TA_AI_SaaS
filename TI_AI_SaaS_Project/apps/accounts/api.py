@@ -439,7 +439,12 @@ def card_logos_api(request):
 @permission_classes([AllowAny])  # Allow unauthenticated users to register
 def register(request):
     """
-    Register a new user with email and password
+    Create a new inactive user account and initiate email-based activation.
+    
+    Validates registration payload and password complexity, ensures the email is not already registered, creates the user and a 24-hour email confirmation VerificationToken, and attempts to send an activation email. On success returns a Response with HTTP 201 containing the serialized user and an activation message; includes a 'warning' field if the activation email could not be sent. On validation or duplicate-email errors returns a Response with HTTP 400 and validation errors. The view does not authenticate the user or set authentication cookies.
+     
+    Returns:
+        Response: HTTP 201 with serialized user and message on success; HTTP 400 with validation errors on failure.
     """
     logger.info(f"Registration attempt from IP: {get_client_ip(request)}")
 
@@ -651,7 +656,12 @@ def password_reset_request(request):
 @throttle_classes([AnonRateThrottle, LoginAttemptThrottle])  # Apply rate limiting
 def login(request):
     """
-    Login endpoint for users
+    Authenticate a user and set JWT tokens in HttpOnly cookies.
+    
+    Validates login credentials from the request, logs the user in if active, enqueues a background task to pre-generate refresh tokens, and returns serialized user data along with a post-login redirect URL. On success the response has HttpOnly cookies set for the access and refresh tokens. If credentials are invalid or the account is not activated, responds with HTTP 400 and error details.
+    
+    Returns:
+        Response: On success, a DRF Response with keys `user` (serialized user) and `redirect_url`; on failure, a DRF Response with error details and HTTP 400 status.
     """
     logger.info(f"Login attempt from IP: {get_client_ip(request)}")
 
@@ -751,7 +761,12 @@ def get_redirect_url_after_login(user):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Logout endpoint that blacklists the refresh token and clears authentication cookies
+    Log out the current session, blacklist the refresh token from cookies if present, and clear authentication cookies.
+    
+    The view will attempt to blacklist the refresh token found in the 'refresh_token' cookie; if blacklisting fails due to an invalid token or missing blacklist support, it still clears authentication cookies and returns an error response. On successful logout the user session is terminated, user activity/expiry tokens are cleared when available, and a 204 No Content response with authentication cookies cleared is returned.
+    
+    Returns:
+        rest_framework.response.Response: `204 No Content` on successful logout with cookies cleared; `400 Bad Request` with an error body if token blacklisting fails, with cookies cleared in all cases.
     """
     try:
         # Get refresh token from cookies if available
@@ -808,7 +823,13 @@ def logout(request):
 @permission_classes([IsAuthenticated])
 def get_user_profile(request):
     """
-    Get authenticated user's profile information
+    Return the authenticated user's serialized data, including profile and optional token timing metadata.
+    
+    Parameters:
+        request (rest_framework.request.Request): Request object whose authenticated user will be serialized.
+    
+    Returns:
+        rest_framework.response.Response: HTTP 200 response containing the serialized user data. The payload includes a "profile" object if the user has a profile, and, when a valid access token cookie is present, integer fields "token_expiration" (epoch seconds) and "token_will_refresh_at" (epoch seconds, five minutes before expiration).
     """
     # Update user activity for session timeout tracking
     update_user_activity(request.user.id)  # Result is intentionally ignored as it's non-critical
@@ -841,9 +862,16 @@ def get_user_profile(request):
 @permission_classes([IsAuthenticated])
 def user_profile(request):
     """
-    Get or Update authenticated user's profile information based on HTTP method
-    GET: Returns user profile information
-    PUT/PATCH: Updates user profile information
+    Retrieve or update the authenticated user's profile.
+    
+    GET: Return serialized user data and, if present, the user's profile.
+    PUT/PATCH: Validate and update only the user's first_name, last_name, and email when values change; profile fields are not editable via this endpoint.
+    
+    Parameters:
+        request (HttpRequest): DRF request. PUT/PATCH requires an authenticated user; GET updates last-activity tracking for the requesting user.
+    
+    Returns:
+        Response: DRF Response containing serialized user (and profile if present) with HTTP 200 on success, or a validation/error Response on failure.
     """
     if request.method == 'GET':
         # Update user activity for session timeout tracking
@@ -920,9 +948,15 @@ def user_profile(request):
 @permission_classes([AllowAny])  # Allow unauthenticated users to use social login
 def social_login(request, provider):
     """
-    Handle social login for different providers (Google, LinkedIn, Microsoft)
-    This would typically redirect to the provider's OAuth page.
-    For API-based implementation, we expect the access token from the frontend.
+    Initiate a social login flow for a given provider or return guidance for the correct endpoint.
+    
+    If an access token is not provided in the request body, returns an error response indicating the missing token. Otherwise, returns a message and the dedicated social authentication endpoint URL for the given provider.
+    
+    Parameters:
+        provider (str): The social authentication provider identifier (e.g., "google", "linkedin", "microsoft").
+    
+    Returns:
+        Response: JSON containing either an error when the access token is missing or a guidance message and `social_login_url` for the provider.
     """
     access_token = request.data.get('access_token')
 
@@ -1063,8 +1097,12 @@ def social_login_jwt(request):
 @throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
 def token_refresh(request):
     """
-    Refresh JWT token endpoint
-    Expects a refresh token in the request data and returns a new access token
+    Refreshes JWT credentials using a provided refresh token.
+    
+    Expects the request body to contain a 'refresh' token. Validates and (when configured) rotates/blacklists tokens via the token refresh serializer.
+    
+    Returns:
+        dict: Validated token payload containing a new 'access' token and, if rotated, a new 'refresh' token. For missing, invalid, or expired refresh tokens the view responds with HTTP 400 and an error message.
     """
     # Check if there's a refresh token in the request data
     if 'refresh' not in request.data:
@@ -1101,8 +1139,12 @@ def token_refresh(request):
 @throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
 def cookie_token_refresh(request):
     """
-    Refresh JWT token endpoint using cookies
-    Extracts refresh token from cookies and returns new tokens in cookies
+    Refresh JWT tokens using the refresh token stored in cookies and set new tokens in HttpOnly cookies.
+    
+    Attempts to read the 'refresh_token' cookie, validate it and the associated user, and issue new access and refresh tokens. If available, uses a pre-generated token pair retrieved by reference; otherwise generates a new pair and blacklists the old refresh token when appropriate. On success the response contains a success detail and the new tokens are set in cookies; a background task is triggered to update token expiration state. If the refresh cookie is missing the endpoint returns a 400 response; if the user is missing or inactive it returns a 401 response; if the refresh token is invalid or expired it returns a 200 response with a detail indicating the token is invalid or expired to allow client-side logout handling.
+    
+    Returns:
+        Response: HTTP response with new tokens set in cookies on success; on error a Response with an explanatory `detail` or `error` message and an appropriate status code.
     """
     # For additional CSRF protection, we can require the referer header or a custom header
     # Since this is an API endpoint, we'll rely primarily on SameSite cookie attribute
@@ -1220,5 +1262,4 @@ def cookie_token_refresh(request):
             {'detail': 'Invalid or expired refresh token'},
             status=status.HTTP_200_OK
         )
-
 

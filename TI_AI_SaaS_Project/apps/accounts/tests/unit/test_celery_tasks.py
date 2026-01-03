@@ -18,7 +18,13 @@ class TestCeleryTasksIntegration(TestCase):
     """Integration tests for the Celery tasks in the accounts app."""
 
     def setUp(self):
-        """Set up test users and data."""
+        """
+        Create active and inactive test users and assign them to instance attributes for use in test methods.
+        
+        Sets:
+        - self.user: an active CustomUser created with username 'testuser'.
+        - self.inactive_user: an inactive CustomUser created with username 'inactiveuser'.
+        """
         self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',

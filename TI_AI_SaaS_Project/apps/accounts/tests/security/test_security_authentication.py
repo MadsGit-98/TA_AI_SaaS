@@ -9,6 +9,14 @@ from django.core.cache import cache
 
 class SecurityTestCase(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: initialize an API client and create two users with corresponding profiles.
+        
+        Creates:
+        - an APIClient instance assigned to self.client.
+        - a regular test user (username 'testuser', email 'test@example.com') with a UserProfile where is_talent_acquisition_specialist is True, assigned to self.user.
+        - a non-TAS test user (username 'nontasuser', email 'nontas@example.com') with a UserProfile where is_talent_acquisition_specialist is False, assigned to self.non_tas_user.
+        """
         self.client = APIClient()
         # Create a regular user
         self.user = CustomUser.objects.create_user(

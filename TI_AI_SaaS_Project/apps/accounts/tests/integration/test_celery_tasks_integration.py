@@ -25,7 +25,11 @@ class TestCeleryTasksRealIntegration(TestCase):
     """Real integration tests for the Celery tasks in the accounts app."""
 
     def setUp(self):
-        """Set up test users and Redis connection."""
+        """
+        Prepare two test users, initialize a Redis client, and remove related Redis keys.
+        
+        Creates an active test user on self.user and an inactive test user on self.inactive_user, assigns a Redis client to self.redis_client using settings.REDIS_URL (falls back to redis://localhost:6379/0), and deletes the Redis keys token_expires:<user_id> and temp_tokens:<user_id> for both users to ensure a clean test state.
+        """
         self.user = CustomUser.objects.create_user(
             username='testuser',
             email='test@example.com',

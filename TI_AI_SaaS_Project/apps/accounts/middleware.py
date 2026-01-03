@@ -13,6 +13,17 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
     """
     def process_request(self, request):
         # Define paths that should trigger activity tracking
+        """
+        Enforces inactivity-based session timeout for authenticated users on selected API and dashboard paths.
+        
+        Checks whether the authenticated user's session has expired due to inactivity for requests whose path starts with any of the configured activity-tracking prefixes; if expired, returns a 401 JSON response indicating session expiration, if the expiry check fails returns a 500 JSON response indicating verification failure, otherwise allows normal request processing.
+        
+        Parameters:
+            request (HttpRequest): The incoming Django request object; used to inspect the authenticated user and request path.
+        
+        Returns:
+            HttpResponse or None: A JsonResponse with status 401 when the session is expired, a JsonResponse with status 500 when session verification fails, or `None` to continue regular request handling.
+        """
         activity_tracking_paths = [
             '/api/accounts/auth/users/me/',  # User profile endpoint
             '/api/analysis/',  # Analysis endpoints
@@ -51,6 +62,17 @@ class RBACMiddleware(MiddlewareMixin):
     """
     def process_request(self, request):
         # Define protected paths that require specific roles
+        """
+        Enforces role-based access control for protected API and dashboard paths.
+        
+        Checks whether the incoming request targets a protected path and, if so, verifies that the user is authenticated, has an associated profile, and that the profile's `is_talent_acquisition_specialist` flag is true. If any check fails, returns an appropriate JSON error response; otherwise allows request processing to continue.
+        
+        Parameters:
+            request (HttpRequest): The incoming Django request object.
+        
+        Returns:
+            JsonResponse or None: A `JsonResponse` containing an error message and HTTP status (`401` for missing authentication, `403` for missing profile or insufficient permissions) when access is denied, or `None` to continue processing when access is allowed or the path is not protected.
+        """
         protected_paths = [
             '/api/analysis/',  # Dashboard and analysis endpoints
             '/dashboard/',     # Dashboard views
