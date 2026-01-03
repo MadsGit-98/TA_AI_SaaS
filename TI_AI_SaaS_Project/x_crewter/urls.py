@@ -54,12 +54,13 @@ def fallback_view(request, *args, **kwargs):
 
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
-    # Updated to explicitly exclude activation paths
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|activation-).*$', fallback_view, name='fallback'),
+    # Updated to explicitly exclude activation paths, static/media files, and WebSocket URLs
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-).*$', fallback_view, name='fallback'),
 ]
 
 
 if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # In production, if using a separate frontend, you might need a catch-all route

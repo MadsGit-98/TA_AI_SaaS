@@ -3,9 +3,8 @@ Custom authentication backends for the X-Crewter application
 """
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
-from django.db.models import Q
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 from django.utils.translation import gettext_lazy as _
 import logging
 
@@ -120,6 +119,64 @@ class EmailOrUsernameBackend(ModelBackend):
             return UserModel.objects.get(pk=user_id)
         except UserModel.DoesNotExist:
             return None
+
+
+class CookieBasedJWTAuthentication(JWTAuthentication):
+    """
+    Custom JWT authentication class that extracts tokens from cookies instead of the Authorization header
+    Also ensures the user is active before allowing authentication
+    """
+    def authenticate(self, request):
+        """
+        Override authenticate to extract token from cookies first, then fall back to Authorization header
+        """
+        # First try to get the token from the access_token cookie
+        raw_token = self.get_raw_token_from_cookies(request)
+
+        if raw_token is not None:
+            try:
+                # Validate the token and get user
+                validated_token = self.get_validated_token(raw_token)
+                user = self.get_user(validated_token)
+
+                # Check if the user is active
+                if not user.is_active:
+                    raise AuthenticationFailed(_('User account is not active.'))
+
+                return user, validated_token
+            except InvalidToken:
+                # If the token is invalid, return None to indicate authentication failure
+                return None
+
+        # If no token in cookies, fall back to the parent's header-based authentication
+        user_auth_tuple = super().authenticate(request)
+
+        if user_auth_tuple is not None:
+            user, validated_token = user_auth_tuple
+
+            # Check if the user is active
+            if not user.is_active:
+                raise AuthenticationFailed(_('User account is not active.'))
+
+            return user, validated_token
+
+        # If super().authenticate returned None, return None
+        return user_auth_tuple
+
+    def get_raw_token_from_cookies(self, request):
+        """
+        Extract raw token from the access_token cookie
+        """
+        # Try to get the access token from cookies
+        cookie_token = request.COOKIES.get('access_token')
+
+        if cookie_token is not None:
+            # Decode the token if it's a string
+            if isinstance(cookie_token, str):
+                return cookie_token.encode('utf-8')
+            return cookie_token
+
+        return None
 
 
 class ActiveUserJWTAuthentication(JWTAuthentication):

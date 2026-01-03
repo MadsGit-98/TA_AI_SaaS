@@ -149,15 +149,40 @@ class TestAPIContract(APITestCase):
 
         # Check that the response contains expected fields
         self.assertIn('user', response.data)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
         self.assertIn('redirect_url', response.data)
+
+        # We should NOT receive access and refresh tokens in the response body
+        # JWT tokens are now set in HttpOnly cookies for security
+        self.assertNotIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
 
         # Check that user data is present
         user_data = response.data['user']
         self.assertEqual(user_data['email'], 'test@example.com')
         self.assertEqual(user_data['first_name'], 'Test')
         self.assertEqual(user_data['last_name'], 'User')
+
+        # Verify that tokens are set in cookies instead of response body
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
+
+        # Verify security attributes of authentication cookies
+        access_cookie = response.cookies['access_token']
+        refresh_cookie = response.cookies['refresh_token']
+
+        # Check HttpOnly attribute
+        self.assertTrue(access_cookie['httponly'])
+        self.assertTrue(refresh_cookie['httponly'])
+
+        # Check Secure attribute (will be True in production, False in development)
+        from django.conf import settings
+        expected_secure = not settings.DEBUG
+        self.assertEqual(access_cookie['secure'], expected_secure)
+        self.assertEqual(refresh_cookie['secure'], expected_secure)
+
+        # Check SameSite attribute
+        self.assertEqual(access_cookie['samesite'], 'Lax')
+        self.assertEqual(refresh_cookie['samesite'], 'Lax')
 
     def test_login_api_with_invalid_credentials(self):
         """Contract test for login API with invalid credentials"""
@@ -198,17 +223,25 @@ class TestAPIContract(APITestCase):
         login_response = self.client.post(login_url, login_data, format='json')
 
         self.assertEqual(login_response.status_code, 200)
-        refresh_token = login_response.data['refresh']
+        refresh_token = login_response.cookies['refresh_token']
 
         # Now test the token refresh endpoint
-        url = reverse('api:token_refresh')
-        data = {
-            'refresh': refresh_token
-        }
-        response = self.client.post(url, data, format='json')
+        url = reverse('api:cookie_token_refresh')
+        # Use cookies instead of request body for refresh token
+        self.client.cookies['refresh_token'] = refresh_token.value
+
+        response = self.client.post(url, format='json')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('access', response.data)
+
+        # For cookie-based refresh, tokens are set in response cookies, not in response body
+        self.assertNotIn('access', response.data)  # No tokens in response body
+        self.assertIn('detail', response.data)  # Should have success message
+        self.assertEqual(response.data['detail'], 'Token refreshed successfully')
+
+        # Verify that new tokens are set in cookies
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
 
     def test_password_reset_request_api_contract(self):
         """Contract test for password reset request API"""

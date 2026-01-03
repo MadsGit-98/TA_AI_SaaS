@@ -1,4 +1,6 @@
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from .tasks import refresh_user_token
+from .tasks import get_tokens_by_reference
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -12,7 +14,7 @@ import logging
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
@@ -22,10 +24,12 @@ from .serializers import (HomePageContentSerializer, LegalPageSerializer,
                          CardLogoSerializer, UserRegistrationSerializer,
                          UserLoginSerializer, UserSerializer, UserProfileSerializer,
                          UserUpdateSerializer)
+from .utils import set_auth_cookies, clear_auth_cookies
 from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
+from .session_utils import clear_user_activity, update_user_activity, clear_expiry_token
 
 # Define constant redirect URLs for activation results
 # These URLs should point to frontend pages that handle activation success/error states
@@ -489,7 +493,8 @@ def register(request):
         if not email_sent:
             response_data['warning'] = 'Account created but activation email could not be sent. Please contact support.'
 
-        logger.info(f"Registration successful for user id={user.id}")
+        # Return response without setting authentication cookies
+        # User must be activated before accessing protected endpoints
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     logger.warning(f"Registration failed with errors: {serializer.errors}")
@@ -669,20 +674,32 @@ def login(request):
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
 
+            # Trigger the refresh_user_token task to create a pre-generated token
+            # This will be used by the monitor_and_refresh_tokens task
+            refresh_user_token.delay(user.id)
+
             # Serialize user data
             user_serializer = UserSerializer(user)
 
             # Determine redirect URL based on subscription status
             redirect_url = get_redirect_url_after_login(user)
 
+            # Create response with user data but without tokens in response body
             response_data = {
                 'user': user_serializer.data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
                 'redirect_url': redirect_url
             }
 
-            return Response(response_data, status=status.HTTP_200_OK)
+            response = Response(response_data, status=status.HTTP_200_OK)
+
+            # Set tokens in HttpOnly cookies using utility function
+            response = set_auth_cookies(
+                response,
+                str(refresh.access_token),
+                str(refresh)
+            )
+
+            return response
         else:
             logger.warning(f"Login attempt for inactive account: {user.id}")
             return Response(
@@ -734,40 +751,57 @@ def get_redirect_url_after_login(user):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Logout endpoint that blacklists the refresh token
+    Logout endpoint that blacklists the refresh token and clears authentication cookies
     """
     try:
-        refresh_token = request.data.get('refresh')
+        # Get refresh token from cookies if available
+        refresh_token = request.COOKIES.get('refresh_token')
         if refresh_token:
             token = RefreshToken(refresh_token)
             token.blacklist()
         else:
-            # If no refresh token provided, still logout the session
-            logger.info("Logout attempted without refresh token")
+            # If no refresh token in cookies, still logout the session
+            logger.info("Logout attempted without refresh token in cookies")
     except AttributeError:
         # This can happen if the blacklist app is not properly configured
         logger.error("AttributeError during logout - blacklist method not available")
-        return Response(
+        response = Response(
             {'error': 'Invalid refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
     except (TokenError, InvalidToken):
         # Handle invalid or malformed refresh token
         logger.warning("Invalid refresh token provided during logout")
-        return Response(
+        response = Response(
             {'error': 'Invalid refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
     except Exception as e:
         # Log the specific error for debugging while returning a safe response
         logger.error(f"Unexpected error during logout: {str(e)}")
-        return Response(
+        response = Response(
             {'error': 'Logout failed'},
             status=status.HTTP_400_BAD_REQUEST
         )
+        # Still clear cookies even if token blacklisting fails
+        return clear_auth_cookies(response)
 
+    # Capture the user ID before logout since request.user becomes AnonymousUser after logout
+    user_id = getattr(request.user, 'id', None)
     auth_logout(request)
-    return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # Clear user activity tracking on logout if user_id is available
+    if user_id is not None:
+        clear_user_activity(user_id)
+        clear_expiry_token(user_id)
+
+    # Create response and clear authentication cookies
+    response = Response(status=status.HTTP_204_NO_CONTENT)
+    return clear_auth_cookies(response)
 
 
 @api_view(['GET'])
@@ -776,6 +810,9 @@ def get_user_profile(request):
     """
     Get authenticated user's profile information
     """
+    # Update user activity for session timeout tracking
+    update_user_activity(request.user.id)  # Result is intentionally ignored as it's non-critical
+
     user_serializer = UserSerializer(request.user)
     response_data = user_serializer.data
 
@@ -783,6 +820,19 @@ def get_user_profile(request):
     if hasattr(request.user, 'profile'):
         profile_serializer = UserProfileSerializer(request.user.profile)
         response_data['profile'] = profile_serializer.data
+
+    # Add token expiration information for frontend handling
+    # Extract the access token from cookies to get its expiration
+    access_token_str = request.COOKIES.get('access_token')
+    if access_token_str:
+        try:
+            access_token = AccessToken(access_token_str)
+            # Add expiration info to response
+            response_data['token_expiration'] = access_token['exp']
+            response_data['token_will_refresh_at'] = access_token['exp'] - (5 * 60)  # 5 minutes before expiration
+        except Exception:
+            # If there's an issue parsing the token, don't include expiration info
+            pass
 
     return Response(response_data, status=status.HTTP_200_OK)
 
@@ -796,6 +846,9 @@ def user_profile(request):
     PUT/PATCH: Updates user profile information
     """
     if request.method == 'GET':
+        # Update user activity for session timeout tracking
+        update_user_activity(request.user.id)  # Result is intentionally ignored as it's non-critical
+
         # Use the existing get_user_profile functionality
         user_serializer = UserSerializer(request.user)
         response_data = user_serializer.data
@@ -808,7 +861,6 @@ def user_profile(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     elif request.method in ['PUT', 'PATCH']:
-        # Use the existing update_user_profile functionality
         user = request.user
 
         # Explicit change tracking: only save if fields have actually changed
@@ -862,17 +914,6 @@ def user_profile(request):
             response_data['profile'] = profile_serializer.data
 
         return Response(response_data, status=status.HTTP_200_OK)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
-def update_user_profile(request):
-    """
-    Update authenticated user's profile information
-    NOTE: This endpoint is deprecated. Use user_profile (GET/PUT/PATCH) instead.
-    """
-    # Delegate to the primary user_profile function to avoid duplication
-    return user_profile(request)
 
 
 @api_view(['POST'])
@@ -1053,3 +1094,131 @@ def token_refresh(request):
             {'error': 'Invalid or expired refresh token'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])  # Allow unauthenticated users to refresh tokens via cookies
+@throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
+def cookie_token_refresh(request):
+    """
+    Refresh JWT token endpoint using cookies
+    Extracts refresh token from cookies and returns new tokens in cookies
+    """
+    # For additional CSRF protection, we can require the referer header or a custom header
+    # Since this is an API endpoint, we'll rely primarily on SameSite cookie attribute
+    # but also check for a custom header as additional protection
+
+    # Extract refresh token from cookies
+    refresh_token = request.COOKIES.get('refresh_token')
+
+    if not refresh_token:
+        return Response(
+            {'error': 'Refresh token not found in cookies'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Create a RefreshToken instance from the cookie value
+        token = RefreshToken(refresh_token)
+
+        # Get the user from the token to check if they're still active
+        user_id = token.get('user_id')
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            if not user.is_active:
+                return Response(
+                    {'error': 'User account is not active'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        # Flag to track if token has already been blacklisted to avoid double-blacklisting
+        should_blacklist_token = True
+
+        if user_id:
+            try:
+                # Attempt to retrieve pre-generated tokens using the user ID
+                token_result = get_tokens_by_reference.delay(user_id).get(timeout=0.2)
+
+                if 'error' not in token_result:
+                    new_access_token = token_result['access_token']
+                    new_refresh_token = token_result['refresh_token']
+                    pregen_user_id = token_result['user_id']  # Use distinct variable name to avoid shadowing
+
+                    # Blacklist the old refresh token if the blacklist app is enabled
+                    try:
+                        token.blacklist()
+                        should_blacklist_token = False  # Set flag to avoid double-blacklisting
+                    except AttributeError:
+                        # This can happen if the blacklist app is not properly configured
+                        logger.warning("AttributeError during token refresh - blacklist method not available")
+
+                    # Create response with new tokens in cookies
+                    response = Response(
+                        {'detail': 'Token refreshed successfully'},
+                        status=status.HTTP_200_OK
+                    )
+
+                    # Set authentication cookies using utility function
+                    set_auth_cookies(response, new_access_token, new_refresh_token)
+
+                    # Trigger refresh_user_token task to update token expiration in Redis
+                    refresh_user_token.delay(pregen_user_id)
+
+                    return response
+                else:
+                    # Check if the error is specifically about token data not being found or expired
+                    # This is an indication of no recent user activity, not a failure
+                    if token_result['error'] == 'Token data not found or expired':
+                        logger.info(f"Token data not found or expired for user {user_id}, falling back to standard refresh")
+                        should_blacklist_token = False  # This indicates no user activity captured therefore tokens will be blacklisted at ecentual logout
+
+            except Exception as e:
+                logger.error(f"Error retrieving tokens by reference: {str(e)}")
+                # For any exception during token retrieval, fall back to standard refresh process
+                # Do not blacklist the token to allow proper logout when triggered later
+                # Set the flag to indicate token is already blacklisted to skip blacklisting
+                should_blacklist_token = True
+
+        # Fallback: Standard refresh process if pre-created tokens are not available
+        # Only blacklist the token if it hasn't been blacklisted already
+        # (which happens when the error was 'Token data not found or expired')
+        if  should_blacklist_token:
+            try:
+                token.blacklist()
+            except AttributeError:
+                # This can happen if the blacklist app is not properly configured
+                logger.warning("AttributeError during token refresh - blacklist method not available")
+
+        # Generate new refresh token for the user
+        new_refresh = RefreshToken.for_user(user)
+        new_access_token = str(new_refresh.access_token)
+        new_refresh_token = str(new_refresh)
+
+        # Create response with new tokens in cookies
+        response = Response(
+            {'detail': 'Token refreshed successfully'},
+            status=status.HTTP_200_OK
+        )
+
+        # Set authentication cookies using utility function
+        set_auth_cookies(response, new_access_token, new_refresh_token)
+
+        # Update the token expiration in Redis for the fallback case
+        refresh_user_token.delay(user.id)
+
+        return response
+
+    except Exception as e:
+        # Log the error server-side without exposing details to the client
+        logger.warning(f"Cookie token refresh failed: {str(e)}")
+        # Return 200 with error message instead of 400/401 to allow proper logout handling
+        return Response(
+            {'detail': 'Invalid or expired refresh token'},
+            status=status.HTTP_200_OK
+        )
+
+

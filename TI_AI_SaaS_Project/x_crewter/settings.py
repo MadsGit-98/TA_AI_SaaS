@@ -10,8 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta    # JWT Configuration
+from celery.schedules import crontab
 import environ
 
 # Initialize environment variables
@@ -56,6 +58,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'djoser',
     'social_django',  # Social authentication
+    'channels',  # For WebSocket support
+    'django_celery_beat',  # For Celery periodic tasks
     'apps.accounts',
     'apps.jobs',
     'apps.applications',
@@ -72,6 +76,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.accounts.middleware.SessionTimeoutMiddleware',  # Session timeout middleware
     'social_django.middleware.SocialAuthExceptionMiddleware',  # Social auth middleware
     'apps.accounts.middleware.RBACMiddleware',  # Role-Based Access Control middleware
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -102,9 +107,18 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # REST Framework Configuration
+# Check if we should enable dual authentication support
+ENABLE_DUAL_AUTH = env('ENABLE_DUAL_AUTH', default=True)  # Set to False to use only cookie-based auth
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'apps.accounts.authentication.ActiveUserJWTAuthentication',
+        # Support both header-based and cookie-based authentication for migration path
+        'apps.accounts.authentication.CookieBasedJWTAuthentication',
+    ) + (
+        # Conditionally add header-based authentication for backward compatibility
+        ('rest_framework_simplejwt.authentication.JWTAuthentication',)
+        if ENABLE_DUAL_AUTH
+        else ()
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -124,12 +138,20 @@ REST_FRAMEWORK = {
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
 
+# JWT Configuration for secure token handling
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Matches session timeout requirement
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=25),  # Refresh 5 minutes before standard expiration
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
+}
+
+# Custom settings for token refresh configuration
+TOKEN_REFRESH_CONFIG = {
+    'REFRESH_THRESHOLD_SECONDS': 5 * 60,  # 5 minutes before expiration
+    'TOKEN_MONITORING_ENABLED': True,
+    'MONITORING_INTERVAL_SECONDS': 60,  # Check every minute
 }
 
 # Djoser Configuration
@@ -221,6 +243,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'x_crewter.wsgi.application'
+ASGI_APPLICATION = 'x_crewter.asgi.application'
 
 
 # Database
@@ -240,7 +263,8 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # For production
 STATICFILES_DIRS = [
     BASE_DIR / 'static',  # Project-level static files
-    BASE_DIR / 'apps' / 'accounts' / 'static',  # Accounts app static files
+    BASE_DIR / 'apps' / 'accounts' / 'static',
+    BASE_DIR / 'apps' / 'jobs' / 'static',
 ]
 
 # Celery Configuration
@@ -250,6 +274,31 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Celery Beat Configuration for periodic tasks
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Windows-specific Celery settings to avoid the billiard issue
+if os.name == 'nt':  # Windows
+    CELERY_WORKER_POOL = 'solo'
+
+# Channel Layers Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [env('REDIS_URL', default='redis://localhost:6379/0')],
+        },
+    },
+}
+
+CELERY_BEAT_SCHEDULE = {
+    # Monitor and refresh tokens every 5 minutes
+    'monitor-and-refresh-tokens': {
+        'task': 'apps.accounts.tasks.monitor_and_refresh_tokens',
+        'schedule': crontab(minute='*/5'),  # Every 5 minutes
+    },
+}
 
 
 # Password validation
@@ -294,6 +343,8 @@ SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE', default=False)  # Set to Tr
 CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE', default=False)  # Set to True in production
 CSRF_COOKIE_HTTPONLY = True  # Prevent CSRF token access from JavaScript
 SESSION_COOKIE_HTTPONLY = True  # Prevent session cookie access from JavaScript
+SESSION_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
+CSRF_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
 X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='DENY')
 
 # Additional SSL/Security Configuration
@@ -302,11 +353,11 @@ SECURE_REFERRER_POLICY = 'same-origin'  # Control referrer information
 
 # CSP Configuration
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net")
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com")
 CSP_IMG_SRC = ("'self'", "data:", "https:")
 CSP_FONT_SRC = ("'self'",)
-CSP_CONNECT_SRC = ("'self'",)
+CSP_CONNECT_SRC = ("'self'", "ws:", "wss:", "https://cdn.jsdelivr.net")
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_BASE_URI = ("'self'",)
 CSP_FORM_ACTION = ("'self'",)

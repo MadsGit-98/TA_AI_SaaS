@@ -1,4 +1,3 @@
-from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -37,12 +36,31 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to landing page since user doesn't have active subscription
         self.assertEqual(response.data['redirect_url'], '/landing/')
+
+        # Verify security attributes of authentication cookies
+        access_cookie = response.cookies['access_token']
+        refresh_cookie = response.cookies['refresh_token']
+
+        # Check HttpOnly attribute
+        self.assertTrue(access_cookie['httponly'])
+        self.assertTrue(refresh_cookie['httponly'])
+
+        # Check Secure attribute (will be True in production, False in development)
+        from django.conf import settings
+        expected_secure = not settings.DEBUG
+        self.assertEqual(access_cookie['secure'], expected_secure)
+        self.assertEqual(refresh_cookie['secure'], expected_secure)
+
+        # Check SameSite attribute
+        self.assertEqual(access_cookie['samesite'], 'Lax')
+        self.assertEqual(refresh_cookie['samesite'], 'Lax')
 
     def test_user_login_success_with_username(self):
         """Test successful user login with username and password"""
@@ -54,8 +72,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['username'], 'testuser')
         # Check that redirect is to landing page since user doesn't have active subscription
@@ -126,8 +145,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has active subscription
@@ -148,8 +168,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has trial subscription
@@ -171,8 +192,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to dashboard since user has valid subscription end date
@@ -196,8 +218,9 @@ class LoginTestCase(APITestCase):
         response = self.client.post(self.url, data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Check that tokens are set in cookies, not in the response data
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
         self.assertIn('redirect_url', response.data)
         self.assertEqual(response.data['user']['email'], 'test@example.com')
         # Check that redirect is to landing since user's subscription has expired

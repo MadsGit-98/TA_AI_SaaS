@@ -1,27 +1,6 @@
-// auth.js - Authentication functionality for X-Crewter
-
-// Unified function to get token from either localStorage or sessionStorage
-function getToken(tokenName) {
-    // Try localStorage first, then sessionStorage
-    return localStorage.getItem(tokenName) || sessionStorage.getItem(tokenName);
-}
-
-// Unified function to set token
-function setToken(tokenName, tokenValue, isPersistent) {
-    if (isPersistent) {
-        localStorage.setItem(tokenName, tokenValue);
-    } else {
-        sessionStorage.setItem(tokenName, tokenValue);
-    }
-}
-
-// Unified function to remove token
-function removeToken(tokenName) {
-    localStorage.removeItem(tokenName);
-    sessionStorage.removeItem(tokenName);
-}
-
+// auth.js - Authentication functionality for X-Crewter (Cookie-based JWT)
 // Function to get CSRF token from cookie or meta tag
+
 function getCsrfToken() {
     // Try to get from meta tag first
     let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -92,7 +71,7 @@ async function handleRegister(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
         
@@ -161,16 +140,15 @@ async function handleLogin(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            // Store tokens based on remember me setting
-            setToken('access_token', data.access, rememberMe);
-            setToken('refresh_token', data.refresh, rememberMe);
+            // Tokens are now stored in HttpOnly cookies, no need to store them in JS
+            // The server sets the tokens in cookies automatically
 
             // Use server-provided redirect URL for navigation
             if (data.redirect_url && typeof data.redirect_url === 'string' && data.redirect_url.length > 0) {
@@ -234,7 +212,7 @@ async function handlePasswordReset(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            credentials: 'same-origin',
+            credentials: 'include',  // Include cookies in request
             body: JSON.stringify(formData)
         });
         
@@ -265,3 +243,4 @@ async function handlePasswordReset(e) {
         submitBtn.textContent = 'Send Reset Link';
     }
 }
+
