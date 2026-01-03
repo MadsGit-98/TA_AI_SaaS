@@ -70,7 +70,7 @@ class TestTokenRefreshEndpoint(TestCase):
         # Call the cookie_token_refresh view
         response = cookie_token_refresh(request)
 
-        # Check the response
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('error', response.data)
-        self.assertEqual(response.data['error'], 'Invalid or expired refresh token')
+        # Check the response - function returns 200 with error detail to allow proper logout handling
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('detail', response.data)
+        self.assertEqual(response.data['detail'], 'Invalid or expired refresh token')

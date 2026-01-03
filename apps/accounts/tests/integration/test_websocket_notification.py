@@ -8,7 +8,6 @@ from django.test import TestCase
 from apps.accounts.consumers import TokenNotificationConsumer
 from apps.accounts.models import CustomUser
 from channels.layers import get_channel_layer
-import json
 
 
 class WebSocketNotificationIntegrationTest(TestCase):
@@ -45,7 +44,7 @@ class WebSocketNotificationIntegrationTest(TestCase):
         # Send a message to the channel layer to simulate a Celery task notification
         channel_layer = get_channel_layer()
         await channel_layer.group_send(
-            f"user_{user.id}",
+            f"token_notifications_{user.id}",
             {
                 'type': 'refresh_tokens',
                 'message': 'REFRESH'

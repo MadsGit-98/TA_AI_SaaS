@@ -77,7 +77,7 @@ class TokenNotificationConsumer(AsyncWebsocketConsumer):
 
     # Method to notify a specific user
     @classmethod
-    def notify_user(cls, user_id, message="REFRESH", use_new_format=False):
+    def notify_user(cls, user_id, message="REFRESH"):
         """
         Notify a specific user that their token needs to be refreshed
         """
