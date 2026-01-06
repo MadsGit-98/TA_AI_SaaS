@@ -7,7 +7,6 @@ urlpatterns = [
     path('auth/register/', api.register, name='register'),
     path('auth/login/', api.login, name='login'),
     path('auth/logout/', api.logout, name='logout'),
-    path('auth/token/refresh/', api.token_refresh, name='token_refresh'),
     path('auth/token/cookie-refresh/', api.cookie_token_refresh, name='cookie_token_refresh'),
     path('auth/password/reset/', api.password_reset_request, name='password_reset_request'),
     path('auth/password/reset/validate/<str:uid>/<str:token>/', api.validate_password_reset_token, name='validate_password_reset_token'),

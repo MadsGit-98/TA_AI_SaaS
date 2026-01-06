@@ -3,30 +3,18 @@ End-to-end tests for WebSocket notification system integration with auth-interce
 These tests use Selenium to verify the real interaction between the backend WebSocket notifications
 and the frontend JavaScript code in auth-interceptor.js.
 """
-import json
 import time
-import threading
-from datetime import timedelta
-
+import redis
 from django.test import LiveServerTestCase, override_settings
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-
 from apps.accounts.models import CustomUser
 from apps.accounts.consumers import TokenNotificationConsumer
-import redis
-
 
 User = get_user_model()
-
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class TestWebSocketNotificationE2E(LiveServerTestCase):

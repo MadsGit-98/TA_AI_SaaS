@@ -1056,45 +1056,7 @@ def social_login_jwt(request):
     except Exception as e:
         logger.exception(f"Social login error for provider {backend_name}: {str(e)}")
         return handle_auth_error('Authentication error', status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])  # Allow unauthenticated users to refresh tokens (they provide the refresh token)
-@throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
-def token_refresh(request):
-    """
-    Refresh JWT token endpoint
-    Expects a refresh token in the request data and returns a new access token
-    """
-    # Check if there's a refresh token in the request data
-    if 'refresh' not in request.data:
-        return Response(
-            {'error': 'Refresh token is required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        # Use the TokenRefreshSerializer to properly handle token rotation and blacklisting
-        serializer = TokenRefreshSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        # Return validated data which includes new access token and optionally new refresh token
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
-
-    except serializers.ValidationError as e:
-        # Handle serializer validation errors appropriately
-        return Response(
-            {'error': 'Invalid or expired refresh token'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    except Exception as e:
-        # Log the error server-side without exposing details to the client
-        logger.warning(f"Token refresh failed: {str(e)}")
-        return Response(
-            {'error': 'Invalid or expired refresh token'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
+        
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to refresh tokens via cookies
