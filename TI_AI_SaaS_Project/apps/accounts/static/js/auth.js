@@ -29,16 +29,40 @@ document.addEventListener('DOMContentLoaded', function() {
     if (registerForm) {
         registerForm.addEventListener('submit', handleRegister);
     }
-    
+
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
     }
-    
+
     // Password reset request form
     const passwordResetForm = document.getElementById('password-reset-form');
     if (passwordResetForm) {
         passwordResetForm.addEventListener('submit', handlePasswordReset);
+    }
+
+    // Check if we're on the login page and show inactivity message if needed
+    const loginFormContainer = document.getElementById('login-form-container');
+    if (loginFormContainer) {
+        // Check URL parameters to show inactivity message if needed
+        const urlParams = new URLSearchParams(window.location.search);
+        const reason = urlParams.get('reason');
+
+        if (reason === 'inactive') {
+            // Show the inactivity message
+            const inactivityMessage = document.getElementById('login-inactivity-message');
+            const errorMessage = document.getElementById('login-error-message');
+
+            // Hide the regular error message if it's visible
+            if (errorMessage) {
+                errorMessage.classList.add('hidden');
+            }
+
+            // Show the inactivity message if it exists
+            if (inactivityMessage) {
+                inactivityMessage.classList.remove('hidden');
+            }
+        }
     }
 });
 
