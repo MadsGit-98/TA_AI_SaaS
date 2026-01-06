@@ -189,7 +189,7 @@ function closeWebSocket() {
 }
 
 // Function to handle user logout and redirect to login
-async function logoutAndRedirect() {
+async function logoutAndRedirect(logoutReason = 'inactive') {
     // Close the WebSocket connection before logging out
     closeWebSocket();
 
@@ -206,8 +206,9 @@ async function logoutAndRedirect() {
         console.error('Error during logout:', error);
         // Even if the logout API call fails, still redirect to login
     } finally {
-        // Redirect to login page regardless of logout API result
-        window.location.href = '/login/';
+        // Redirect to login page with reason parameter regardless of logout API result
+        const reasonParam = logoutReason ? `?reason=${encodeURIComponent(logoutReason)}` : '';
+        window.location.href = `/login/${reasonParam}`;
     }
 }
 
