@@ -1,7 +1,6 @@
 """
 End-to-end tests for the password reset flow using Selenium
 """
-import time
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,7 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from apps.accounts.models import CustomUser, VerificationToken
-
+import base64
 
 class PasswordResetE2ETest(StaticLiveServerTestCase):
     @classmethod
@@ -80,7 +79,8 @@ class PasswordResetE2ETest(StaticLiveServerTestCase):
         
         # Step 6: Navigate directly to the password reset form using the token
         # (In a real scenario, the user would click a link in their email)
-        reset_form_url = f"{self.live_server_url}/password-reset/form/{self.user.id}/{reset_token.token}/"
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+        reset_form_url = f"{self.live_server_url}/password-reset/form/{uidb64}/{reset_token.token}/"
         self.selenium.get(reset_form_url)
         
         # Wait for the password reset form page to load
@@ -124,7 +124,8 @@ class PasswordResetE2ETest(StaticLiveServerTestCase):
     def test_password_reset_with_invalid_token(self):
         """Test password reset with an invalid token"""
         # Navigate to a password reset form with an invalid token
-        invalid_url = f"{self.live_server_url}/password-reset/form/999/invalidtoken123/"
+        invalid_uidb64 = base64.urlsafe_b64encode(b'999').decode()
+        invalid_url = f"{self.live_server_url}/password-reset/form/{invalid_uidb64}/invalidtoken123/"
         self.selenium.get(invalid_url)
 
         # Wait for the password reset form page to load

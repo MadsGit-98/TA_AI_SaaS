@@ -50,6 +50,7 @@ class PasswordResetTestCase(APITestCase):
 
     def test_password_reset_confirm_success(self):
         """Test successful password reset confirmation"""
+        import base64
         # Create a verification token
         token = 'testtoken1234567890abcdef'
         VerificationToken.objects.create(
@@ -60,8 +61,9 @@ class PasswordResetTestCase(APITestCase):
             is_used=False
         )
 
-        # The endpoint now expects uid and token in the URL path
-        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': token})
+        # The endpoint now expects uidb64 (base64-encoded UUID) and token in the URL path
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uidb64': uidb64, 'token': token})
 
         # Post the payload with just the new passwords
         data = {
@@ -82,6 +84,7 @@ class PasswordResetTestCase(APITestCase):
 
     def test_password_reset_confirm_mismatched_passwords(self):
         """Test password reset confirmation with mismatched passwords"""
+        import base64
         token = 'testtoken1234567890abcdef'
         VerificationToken.objects.create(
             user=self.user,
@@ -90,7 +93,9 @@ class PasswordResetTestCase(APITestCase):
             expires_at=timezone.now() + timedelta(hours=24)
         )
 
-        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': token})
+        # The endpoint now expects uidb64 (base64-encoded UUID) and token in the URL path
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uidb64': uidb64, 'token': token})
 
         data = {
             'new_password': 'NewSecurePass123!',
@@ -103,9 +108,11 @@ class PasswordResetTestCase(APITestCase):
 
     def test_password_reset_confirm_invalid_token(self):
         """Test password reset confirmation with invalid token"""
+        import base64
         # This test is for an invalid token, so we don't need to create a VerificationToken
-        # The endpoint expects uid and token in the URL path
-        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uid': str(self.user.id), 'token': 'invalidtoken'})
+        # The endpoint expects uidb64 (base64-encoded UUID) and token in the URL path
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+        reset_confirm_url = reverse('api:update_password_with_token', kwargs={'uidb64': uidb64, 'token': 'invalidtoken'})
 
         # Post the payload with just the new passwords
         data = {

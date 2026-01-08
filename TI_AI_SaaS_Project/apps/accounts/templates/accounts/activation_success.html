@@ -36,7 +36,7 @@
             </p>
 
             <!-- Hidden form that will auto-submit to activate the account -->
-            <form id="activationForm" method="post" action="{% url 'api:activate_account' uid=uid token=token %}" style="display:none;" aria-hidden="true">
+            <form id="activationForm" method="post" action="{% url 'api:activate_account' uidb64=uid token=token %}" style="display:none;" aria-hidden="true">
                 {% csrf_token %}
             </form>
 

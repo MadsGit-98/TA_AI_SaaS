@@ -6,6 +6,7 @@ from apps.accounts.models import CustomUser, UserProfile, VerificationToken
 from django.utils import timezone
 from datetime import timedelta
 from django.core.cache import cache
+import base64
 
 class SecurityTestCase(TestCase):
     def setUp(self):
@@ -132,9 +133,12 @@ class SecurityTestCase(TestCase):
             expires_at=timezone.now() - timedelta(hours=1)  # Expired 1 hour ago
         )
         
+        # Encode the UUID for URL
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+
         # Try to use the expired token for activation
-        activation_url = reverse('api:activate_account', 
-                                kwargs={'uid': str(self.user.id), 'token': 'expiredtoken123'})
+        activation_url = reverse('api:activate_account',
+                                kwargs={'uidb64': uidb64, 'token': 'expiredtoken123'})
         
         response = self.client.post(activation_url)
         
@@ -154,9 +158,12 @@ class SecurityTestCase(TestCase):
             is_used=True  # Mark as already used
         )
 
+        # Encode the UUID for URL
+        uidb64 = base64.urlsafe_b64encode(str(self.user.id).encode()).decode()
+
         # Try to use the already-used token for activation
         activation_url = reverse('api:activate_account',
-                                kwargs={'uid': str(self.user.id), 'token': 'usedtoken123'})
+                                kwargs={'uidb64': uidb64, 'token': 'usedtoken123'})
 
         response = self.client.post(activation_url)
 
@@ -222,9 +229,12 @@ class SecurityTestCase(TestCase):
         ).first()
         self.assertIsNotNone(verification_token)
 
+        # Encode the UUID for URL
+        uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+
         # Try to confirm password reset with wrong data multiple times
         reset_confirm_url = reverse('api:update_password_with_token',
-                                   kwargs={'uid': str(user.id), 'token': verification_token.token})
+                                   kwargs={'uidb64': uidb64, 'token': verification_token.token})
 
         for i in range(5):  # 5 attempts before the final one that should be rate limited
             reset_confirm_data = {

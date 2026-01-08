@@ -71,12 +71,12 @@ def monitor_and_refresh_tokens():
 
                         # Only refresh if user was active within the last 26 minutes
                         if time_since_activity <= (26 * 60):  # 26 minutes in seconds
-                            tokens_to_refresh.append(int(user_id))
+                            tokens_to_refresh.append(user_id)  # Keep as string since it might be UUID
                             logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh (user was recently active)")
                         else:
                             logger.info(f"Token for user {user_id} expires at {token_expire_time}, but user was not active recently - skipping refresh")
                     else:
-                        tokens_to_logout.append(int(user_id))
+                        tokens_to_logout.append(user_id)  # Keep as string since it might be UUID
                         logger.info(f"Token for user {user_id} expires at {token_expire_time} with no activity record, marking for logout")
 
             except (ValueError, TypeError, AttributeError) as e:
@@ -91,13 +91,13 @@ def monitor_and_refresh_tokens():
                 logger.info(f"Initiating refresh process for user {user_id}")
 
                 # Generate new tokens and store them in Redis before sending notification
-                refresh_user_token.delay(user_id)
+                refresh_user_token.delay(str(user_id))  # Ensure user_id is string when passed to Celery task
 
                 # Use WebSocket to notify the client about token refresh
                 try:
                     # Call the TokenNotificationConsumer's new format notify method to send a notification
                     # This maintains compatibility with the existing WebSocket endpoint
-                    TokenNotificationConsumer.notify_user(user_id, "REFRESH")
+                    TokenNotificationConsumer.notify_user(str(user_id), "REFRESH")  # Ensure user_id is string
                 except Exception as ws_error:
                     logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
 
@@ -114,7 +114,7 @@ def monitor_and_refresh_tokens():
                 try:
                     # Call the TokenNotificationConsumer's new format notify method to send a logout notification
                     # This will trigger the client-side to call logoutAndRedirect function
-                    TokenNotificationConsumer.notify_user(user_id, "LOGOUT")
+                    TokenNotificationConsumer.notify_user(str(user_id), "LOGOUT")  # Ensure user_id is string
                 except Exception as ws_error:
                     logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
 
@@ -135,9 +135,9 @@ def refresh_user_token(user_id):
     This is a server-side operation that could be triggered when needed
     """
     logger.info(f"Refreshing token for user ID: {user_id}")
-    
+
     try:
-        # Get the user
+        # Get the user - convert user_id to appropriate type if needed
         user = CustomUser.objects.get(id=user_id, is_active=True)
 
         # Generate new tokens
@@ -158,7 +158,7 @@ def refresh_user_token(user_id):
         token_data = {
             'access_token': str(refresh.access_token),
             'refresh_token': str(refresh),
-            'user_id': user_id,
+            'user_id': str(user_id),  # Convert to string to ensure JSON serializability
             'expires_at': new_expire_time.isoformat()
         }
 
@@ -175,7 +175,7 @@ def refresh_user_token(user_id):
         # This could be via WebSocket, server-sent events, or another mechanism
         # The tokens are stored in Redis using the user ID as key
         return {
-            'user_id': user_id,
+            'user_id': str(user_id),  # Ensure user_id is string for JSON serialization
             'token_refreshed': True,
             'expires_at': new_expire_time.isoformat()
         }
@@ -197,7 +197,7 @@ def get_tokens_by_reference(user_id):
 
     try:
         # Retrieve the token data from Redis using user ID as key
-        token_data_json = redis_client.get(f"temp_tokens:{user_id}")
+        token_data_json = redis_client.get(f"temp_tokens:{str(user_id)}")  # Ensure user_id is string
 
         if not token_data_json:
             logger.warning(f"No token data found for user ID: {user_id}")
@@ -207,7 +207,7 @@ def get_tokens_by_reference(user_id):
         token_data = json.loads(token_data_json)
 
         # Remove the token data from Redis after retrieval (one-time use)
-        redis_client.delete(f"temp_tokens:{user_id}")
+        redis_client.delete(f"temp_tokens:{str(user_id)}")  # Ensure user_id is string
 
         logger.info(f"Successfully retrieved tokens for user ID: {user_id}")
 
