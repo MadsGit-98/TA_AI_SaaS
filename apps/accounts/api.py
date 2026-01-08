@@ -30,6 +30,7 @@ from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
 from .session_utils import clear_user_activity, update_user_activity, clear_expiry_token
+import base64
 
 # Define constant redirect URLs for activation results
 # These URLs should point to frontend pages that handle activation success/error states
@@ -214,8 +215,11 @@ def send_password_reset_email(user, token):
     """
     subject = 'Reset your X-Crewter password'
 
+    # Encode the UUID for URL safety
+    uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+
     # The reset link includes the token - now pointing to our new validation API
-    reset_link = f"{settings.BACKEND_URL}/api/accounts/auth/password/reset/validate/{user.id}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/password/reset/validate/{user.id}/{token}/"
+    reset_link = f"{settings.BACKEND_URL}/api/accounts/auth/password/reset/validate/{uidb64}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/password/reset/validate/{uidb64}/{token}/"
 
     message = render_to_string('accounts/password_reset_email.html', {
         'user': user,
@@ -253,11 +257,17 @@ def send_password_reset_email(user, token):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PasswordResetConfirmThrottle])
-def validate_password_reset_token(request, uid, token):
+def validate_password_reset_token(request, uidb64, token):
     """
     Validate a password reset token and return redirect URL based on validity
     """
     try:
+        # Decode the base64 encoded UUID
+        try:
+            uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
+        except Exception:
+            return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
+
         # Find the verification token by token and token_type first
         verification_token = VerificationToken.objects.get(
             token=token,
@@ -274,7 +284,7 @@ def validate_password_reset_token(request, uid, token):
             return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
 
         # Token is valid, return URL to password reset form
-        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password-reset/form/{uid}/{token}/?valid=True" if hasattr(settings, 'FRONTEND_URL') else f"/password-reset/form/{uid}/{token}/?valid=True")
+        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password-reset/form/{uidb64}/{token}/?valid=True" if hasattr(settings, 'FRONTEND_URL') else f"/password-reset/form/{uidb64}/{token}/?valid=True")
 
     except VerificationToken.DoesNotExist:
         return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/password/reset/failure/?valid=False" if hasattr(settings, 'FRONTEND_URL') else "/password/reset/failure/?valid=False")
@@ -283,7 +293,7 @@ def validate_password_reset_token(request, uid, token):
 @api_view(['PATCH'])
 @permission_classes([AllowAny])
 @throttle_classes([PasswordResetConfirmThrottle])
-def update_password_with_token(request, uid, token):
+def update_password_with_token(request, uidb64, token):
     """
     Update user's password using the password reset token
     """
@@ -311,6 +321,15 @@ def update_password_with_token(request, uid, token):
         )
 
     try:
+        # Decode the base64 encoded UUID
+        try:
+            uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
+        except Exception:
+            return Response(
+                {'error': 'Invalid UID encoding.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Find the verification token by token and token_type first
         verification_token = VerificationToken.objects.get(
             token=token,
@@ -504,10 +523,16 @@ def register(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 @throttle_classes([AnonRateThrottle, ActivationAttemptThrottle])
-def show_activation_form(request, uid, token):
+def show_activation_form(request, uidb64, token):
     """
     Show the activation page to the user which will auto-submit to activate the account
     """
+    # Decode the base64 encoded UUID
+    try:
+        uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
+    except Exception:
+        return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Invalid activation link.")
+
     # Check if the token exists and is valid without marking it as used
     try:
         verification_token = VerificationToken.objects.get(
@@ -525,7 +550,7 @@ def show_activation_form(request, uid, token):
             return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Activation link has expired.")
 
         # If the token is valid, render the activation page which auto-submits the form
-        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/activation-step/{uid}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"/activation-step/{uid}/{token}/")
+        return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/activation-step/{uidb64}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"/activation-step/{uidb64}/{token}/")
     except VerificationToken.DoesNotExist:
         return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Invalid activation token.")
 
@@ -533,10 +558,22 @@ def show_activation_form(request, uid, token):
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated users to activate their accounts
 @throttle_classes([AnonRateThrottle, ActivationAttemptThrottle])
-def activate_account(request, uid, token):
+def activate_account(request, uidb64, token):
     """
     Activate account using the confirmation token and return redirect URL
     """
+    # Decode the base64 encoded UUID
+    try:
+        uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
+    except Exception:
+        return Response(
+            {
+                'error': 'Invalid UID encoding.',
+                'redirect_url': ACTIVATION_ERROR_REDIRECT
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     try:
         # Find the verification token by token and token_type first
         verification_token = VerificationToken.objects.get(
@@ -835,6 +872,54 @@ def get_user_profile(request):
             pass
 
     return Response(response_data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_detail(request, uuid):
+    """
+    Get user profile by UUID
+    """
+    try:
+        user = CustomUser.objects.get(id=uuid)
+        user_serializer = UserSerializer(user)
+        response_data = user_serializer.data
+
+        # Include subscription details which are in the profile
+        if hasattr(user, 'profile'):
+            profile_serializer = UserProfileSerializer(user.profile)
+            response_data['profile'] = profile_serializer.data
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    except CustomUser.DoesNotExist:
+        return Response(
+            {'error': 'User not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_by_slug(request, slug):
+    """
+    Get user profile by slug
+    """
+    try:
+        user = CustomUser.objects.get(uuid_slug=slug)
+        user_serializer = UserSerializer(user)
+        response_data = user_serializer.data
+
+        # Include subscription details which are in the profile
+        if hasattr(user, 'profile'):
+            profile_serializer = UserProfileSerializer(user.profile)
+            response_data['profile'] = profile_serializer.data
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    except CustomUser.DoesNotExist:
+        return Response(
+            {'error': 'User not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 
 @api_view(['GET', 'PUT', 'PATCH'])

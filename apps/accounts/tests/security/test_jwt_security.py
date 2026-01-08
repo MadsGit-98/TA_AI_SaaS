@@ -158,7 +158,7 @@ class TestJWTSecurity(TestCase):
         """Test proper handling of expired tokens"""
         # Create an expired access token using the test user
         expired_token = AccessToken()
-        expired_token['user_id'] = self.user.id
+        expired_token['user_id'] = str(self.user.id)  # Convert UUID to string
         expired_token['username'] = self.user.username
         # Set expiration to 1 hour ago (definitely expired)
         expired_token.set_exp(lifetime=timedelta(hours=-1))

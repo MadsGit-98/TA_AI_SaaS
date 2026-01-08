@@ -3,13 +3,17 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 import uuid
+from uuid6 import uuid6
+from .utils import generate_user_slug
 
 
 class CustomUser(AbstractUser):
     """
     Custom user model extending AbstractUser to ensure unique email addresses
     """
+    id = models.UUIDField(primary_key=True, default=uuid6, editable=False)  # UUIDv6 as primary key
     email = models.EmailField(unique=True, help_text="Unique email address for the user")
+    uuid_slug = models.CharField(max_length=22, unique=True, editable=False, null=True)  # Opaque slug for public URLs
 
     USERNAME_FIELD = 'username'  # Use username for authentication
     REQUIRED_FIELDS = ['email']  # Email is required when creating a superuser
@@ -39,17 +43,29 @@ class CustomUser(AbstractUser):
 
     def save(self, *args, **kwargs):
         """
-        Override save method to track field changes
+        Override save method to generate UUID slug and track field changes
         """
+        # Generate UUID slug if it doesn't exist
+        if not self.uuid_slug:
+            self.uuid_slug = generate_user_slug()
+
         # Check if this is an update to existing record
         if self.pk:
-            original = CustomUser.objects.get(pk=self.pk)
-            # Track changes to important fields
-            self._field_updates = {
-                'email': self.email != original.email,
-                'first_name': self.first_name != original.first_name,
-                'last_name': self.last_name != original.last_name
-            }
+            try:
+                original = CustomUser.objects.get(pk=self.pk)
+                # Track changes to important fields
+                self._field_updates = {
+                    'email': self.email != original.email,
+                    'first_name': self.first_name != original.first_name,
+                    'last_name': self.last_name != original.last_name
+                }
+            except CustomUser.DoesNotExist:
+                # If original doesn't exist, treat as new user
+                self._field_updates = {
+                    'email': True,
+                    'first_name': True,
+                    'last_name': True
+                }
         else:
             # New user, all fields are changes
             self._field_updates = {
@@ -79,7 +95,7 @@ class UserProfile(models.Model):
         ('enterprise', 'Enterprise'),
     ]
 
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile', db_column='user_id')
     subscription_status = models.CharField(
         max_length=20,
         choices=SUBSCRIPTION_STATUS_CHOICES,
@@ -132,7 +148,7 @@ class VerificationToken(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='verification_tokens')
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='verification_tokens', db_column='user_id')
     token = models.CharField(max_length=255, unique=True, help_text="Secure token for verification")
     token_type = models.CharField(max_length=20, choices=TOKEN_TYPE_CHOICES, help_text="Type of verification this token is for")
     expires_at = models.DateTimeField(help_text="Time after which token becomes invalid")
@@ -159,7 +175,7 @@ class SocialAccount(models.Model):
     """
     Model for storing social authentication connections
     """
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='social_accounts')
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='social_accounts', db_column='user_id')
     provider = models.CharField(max_length=50, help_text="Social provider (e.g., google, linkedin, microsoft)")
     provider_account_id = models.CharField(max_length=255, help_text="Unique ID from the provider")
     date_connected = models.DateTimeField(auto_now_add=True, help_text="When the account was connected")

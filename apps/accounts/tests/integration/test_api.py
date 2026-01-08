@@ -2,10 +2,10 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from apps.accounts.models import CustomUser, HomePageContent, LegalPage, CardLogo, VerificationToken
-from django.utils.http import urlsafe_base64_encode
 from django.utils import timezone
 from datetime import timedelta
 import uuid
+import base64
 
 
 class TestAPIContract(APITestCase):
@@ -287,13 +287,13 @@ class TestAPIContract(APITestCase):
             expires_at=timezone.now() + timedelta(hours=24)  # 24 hours validity
         )
 
-        # Generate uid for the user
-        uid = urlsafe_base64_encode(str(user.pk).encode())
+        # Generate uidb64 for the user (base64-encoded UUID)
+        uidb64 = base64.urlsafe_b64encode(str(user.pk).encode()).decode()
 
         # Attempt to access the activation form multiple times with invalid token
         # This should trigger the throttle after several requests
         url = reverse('api:activate_account', kwargs={
-            'uid': uid,
+            'uidb64': uidb64,
             'token': 'invalid-token-for-testing'
         })
 
@@ -333,13 +333,13 @@ class TestAPIContract(APITestCase):
             expires_at=timezone.now() + timedelta(hours=24)  # 24 hours validity
         )
 
-        # Generate uid for the user
-        uid = urlsafe_base64_encode(str(user.pk).encode())
+        # Generate uidb64 for the user (base64-encoded UUID)
+        uidb64 = base64.urlsafe_b64encode(str(user.pk).encode()).decode()
 
         # Attempt to access the activation endpoint multiple times with invalid token
         # This should trigger the throttle after several requests
         url = reverse('api:activate_account', kwargs={
-            'uid': uid,
+            'uidb64': uidb64,
             'token': 'invalid-token-for-testing'
         })
 

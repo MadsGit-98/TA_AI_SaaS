@@ -11,6 +11,7 @@ from selenium.webdriver.chrome.options import Options
 from apps.accounts.models import CustomUser, VerificationToken
 from django.utils import timezone
 from datetime import timedelta
+import base64
 
 
 class AccountActivationE2ETest(StaticLiveServerTestCase):
@@ -115,7 +116,8 @@ class AccountActivationE2ETest(StaticLiveServerTestCase):
 
         # Step 7: Navigate directly to the activation step using the token
         # (In a real scenario, the user would click a link in their email)
-        activation_url = f"{self.live_server_url}/activation-step/{user.id}/{activation_token.token}/"
+        uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+        activation_url = f"{self.live_server_url}/activation-step/{uidb64}/{activation_token.token}/"
         self.selenium.get(activation_url)
 
         # Step 8: The activation-step view processes the activation automatically
@@ -136,7 +138,8 @@ class AccountActivationE2ETest(StaticLiveServerTestCase):
     def test_account_activation_with_invalid_token(self):
         """Test account activation with an invalid token"""
         # Navigate to an activation step URL with an invalid token
-        invalid_url = f"{self.live_server_url}/activation-step/999/invalidtoken123/"
+        invalid_uidb64 = base64.urlsafe_b64encode(b'999').decode()
+        invalid_url = f"{self.live_server_url}/activation-step/{invalid_uidb64}/invalidtoken123/"
         self.selenium.get(invalid_url)
 
         # Wait for potential redirect or error handling
@@ -168,7 +171,8 @@ class AccountActivationE2ETest(StaticLiveServerTestCase):
         )
 
         # Navigate to the activation step URL with the expired token
-        expired_activation_url = f"{self.live_server_url}/activation-step/{user.id}/{expired_token.token}/"
+        uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+        expired_activation_url = f"{self.live_server_url}/activation-step/{uidb64}/{expired_token.token}/"
         self.selenium.get(expired_activation_url)
 
         # Wait for potential redirect or error handling

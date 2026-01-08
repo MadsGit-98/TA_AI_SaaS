@@ -205,7 +205,7 @@ def password_reset_form_view(request, uid, token):
     View for password reset form page
     """
     context = {
-        'uid': uid,
+        'uidb64': uid,  # Pass as uidb64 to match template expectation
         'token': token
     }
     return render(request, 'accounts/password_reset_form.html', context)

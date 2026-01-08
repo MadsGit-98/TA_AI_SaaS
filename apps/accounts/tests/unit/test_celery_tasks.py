@@ -36,8 +36,8 @@ class TestCeleryTasksIntegration(TestCase):
     @patch('apps.accounts.tasks.redis_client')
     def test_monitor_and_refresh_tokens_task(self, mock_redis, mock_token_consumer):
         """Test the monitor_and_refresh_tokens task."""
-        # Setup mock Redis client
-        mock_redis.scan_iter.return_value = [b'token_expires:1']
+        # Setup mock Redis client - use a UUID string to reflect the new UUID-based system
+        mock_redis.scan_iter.return_value = [b'token_expires:test-uuid-string']
         mock_redis.get.return_value = (timezone.now() + timedelta(minutes=3)).timestamp()  # Expires in 3 mins
 
         # Mock the get_last_user_activity function to return a recent activity
@@ -52,8 +52,8 @@ class TestCeleryTasksIntegration(TestCase):
             mock_redis.scan_iter.assert_called_once_with(match="token_expires:*")
             mock_redis.get.assert_called()
 
-            # Verify WebSocket notification was attempted
-            mock_token_consumer.notify_user.assert_called_once_with(1, 'REFRESH')
+            # Verify WebSocket notification was attempted - user_id should be a string now
+            mock_token_consumer.notify_user.assert_called_once_with('test-uuid-string', 'REFRESH')
 
     @patch('apps.accounts.tasks.redis_client')
     def test_refresh_user_token_task_success(self, mock_redis):
@@ -64,8 +64,8 @@ class TestCeleryTasksIntegration(TestCase):
         # Run the task
         result = refresh_user_token(self.user.id)
 
-        # Verify the result
-        self.assertEqual(result['user_id'], self.user.id)
+        # Verify the result - user_id should be string for JSON serialization
+        self.assertEqual(result['user_id'], str(self.user.id))
         self.assertTrue(result['token_refreshed'])
         self.assertIn('expires_at', result)
 
@@ -102,24 +102,24 @@ class TestCeleryTasksIntegration(TestCase):
         token_data = {
             'access_token': 'access_token_value',
             'refresh_token': 'refresh_token_value',
-            'user_id': self.user.id,
+            'user_id': str(self.user.id),  # Convert UUID to string for JSON serialization
             'expires_at': (timezone.now() + timedelta(minutes=25)).isoformat()
         }
         mock_redis.get.return_value = json.dumps(token_data)
         mock_redis.delete = MagicMock()
-        
+
         # Run the function
         result = get_tokens_by_reference(self.user.id)
-        
+
         # Verify the result
-        self.assertEqual(result['user_id'], self.user.id)
+        self.assertEqual(result['user_id'], str(self.user.id))  # Compare with string version
         self.assertEqual(result['access_token'], 'access_token_value')
         self.assertEqual(result['refresh_token'], 'refresh_token_value')
         self.assertIn('expires_at', result)
-        
+
         # Verify Redis was called to retrieve and delete the token data
-        mock_redis.get.assert_called_once_with(f"temp_tokens:{self.user.id}")
-        mock_redis.delete.assert_called_once_with(f"temp_tokens:{self.user.id}")
+        mock_redis.get.assert_called_once_with(f"temp_tokens:{str(self.user.id)}")  # Use string version
+        mock_redis.delete.assert_called_once_with(f"temp_tokens:{str(self.user.id)}")  # Use string version
 
     @patch('apps.accounts.tasks.redis_client')
     def test_get_tokens_by_reference_not_found(self, mock_redis):
@@ -151,12 +151,12 @@ class TestCeleryTasksIntegration(TestCase):
         """Integration test for refresh_user_token with real Django and JWT components."""
         # Run the actual task
         result = refresh_user_token(self.user.id)
-        
-        # Verify the result
-        self.assertEqual(result['user_id'], self.user.id)
+
+        # Verify the result - user_id should be string for JSON serialization
+        self.assertEqual(result['user_id'], str(self.user.id))
         self.assertTrue(result['token_refreshed'])
         self.assertIn('expires_at', result)
-        
+
         # Verify that the token was actually stored in Redis
         # (This would require actual Redis connection, so we'll just verify the logic)
         from django.core.cache import cache
@@ -194,8 +194,8 @@ class TestCeleryTasksIntegration(TestCase):
     @patch('apps.accounts.tasks.redis_client')
     def test_monitor_and_refresh_tokens_task_logout_user(self, mock_redis, mock_token_consumer):
         """Test the monitor_and_refresh_tokens task when a user has no activity record and should be logged out."""
-        # Setup mock Redis client
-        mock_redis.scan_iter.return_value = [b'token_expires:1']
+        # Setup mock Redis client - use a UUID string to reflect the new UUID-based system
+        mock_redis.scan_iter.return_value = [b'token_expires:test-uuid-string']
         mock_redis.get.return_value = (timezone.now() + timedelta(minutes=3)).timestamp()  # Expires in 3 mins
 
         # Mock the get_last_user_activity function to return None (no activity record)
@@ -211,4 +211,4 @@ class TestCeleryTasksIntegration(TestCase):
             mock_redis.get.assert_called()
 
             # Verify WebSocket notification was attempted for logout
-            mock_token_consumer.notify_user.assert_called_once_with(1, 'LOGOUT')
+            mock_token_consumer.notify_user.assert_called_once_with('test-uuid-string', 'LOGOUT')

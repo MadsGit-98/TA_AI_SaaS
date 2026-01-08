@@ -10,7 +10,6 @@ from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.conf import settings
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import CustomUser
 from apps.accounts.tasks import monitor_and_refresh_tokens, refresh_user_token, get_tokens_by_reference
@@ -61,8 +60,8 @@ class TestCeleryTasksRealIntegration(TestCase):
         # Run the actual task
         result = refresh_user_token(self.user.id)
         
-        # Verify the result
-        self.assertEqual(result['user_id'], self.user.id)
+        # Verify the result - compare string version of UUID
+        self.assertEqual(result['user_id'], str(self.user.id))
         self.assertTrue(result['token_refreshed'])
         self.assertIn('expires_at', result)
         
@@ -78,7 +77,7 @@ class TestCeleryTasksRealIntegration(TestCase):
         
         # Parse the token data to verify it's valid JSON
         token_data = json.loads(temp_tokens_data)
-        self.assertEqual(token_data['user_id'], self.user.id)
+        self.assertEqual(token_data['user_id'], str(self.user.id))
         self.assertIn('access_token', token_data)
         self.assertIn('refresh_token', token_data)
         self.assertIn('expires_at', token_data)
@@ -111,9 +110,9 @@ class TestCeleryTasksRealIntegration(TestCase):
         
         # Now retrieve the tokens using get_tokens_by_reference
         result = get_tokens_by_reference(self.user.id)
-        
+
         # Verify the result
-        self.assertEqual(result['user_id'], self.user.id)
+        self.assertEqual(result['user_id'], str(self.user.id))
         self.assertIn('access_token', result)
         self.assertIn('refresh_token', result)
         self.assertIn('expires_at', result)
@@ -247,7 +246,7 @@ class TestCeleryTasksRealIntegration(TestCase):
 
         # Step 4: Retrieve the tokens using get_tokens_by_reference
         retrieval_result = get_tokens_by_reference(self.user.id)
-        self.assertEqual(retrieval_result['user_id'], self.user.id)
+        self.assertEqual(retrieval_result['user_id'], str(self.user.id))
         self.assertIn('access_token', retrieval_result)
         self.assertIn('refresh_token', retrieval_result)
 
