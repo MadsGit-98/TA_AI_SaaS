@@ -262,7 +262,7 @@ def validate_password_reset_token(request, uidb64, token):
     Validate a password reset token and return redirect URL based on validity
     """
     try:
-        # Decode the base64 encoded UUID
+        # Decode the base64 encoded user ID
         try:
             uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
         except Exception:
@@ -321,7 +321,7 @@ def update_password_with_token(request, uidb64, token):
         )
 
     try:
-        # Decode the base64 encoded UUID
+        # Decode the base64 encoded user ID
         try:
             uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
         except Exception:
@@ -527,7 +527,7 @@ def show_activation_form(request, uidb64, token):
     """
     Show the activation page to the user which will auto-submit to activate the account
     """
-    # Decode the base64 encoded UUID
+    # Decode the base64 encoded user ID
     try:
         uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
     except Exception:
@@ -562,7 +562,7 @@ def activate_account(request, uidb64, token):
     """
     Activate account using the confirmation token and return redirect URL
     """
-    # Decode the base64 encoded UUID
+    # Decode the base64 encoded user ID
     try:
         uid = base64.urlsafe_b64decode(uidb64.encode()).decode()
     except Exception:
@@ -874,52 +874,6 @@ def get_user_profile(request):
     return Response(response_data, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def user_detail(request, uuid):
-    """
-    Get user profile by UUID
-    """
-    try:
-        user = CustomUser.objects.get(id=uuid)
-        user_serializer = UserSerializer(user)
-        response_data = user_serializer.data
-
-        # Include subscription details which are in the profile
-        if hasattr(user, 'profile'):
-            profile_serializer = UserProfileSerializer(user.profile)
-            response_data['profile'] = profile_serializer.data
-
-        return Response(response_data, status=status.HTTP_200_OK)
-    except CustomUser.DoesNotExist:
-        return Response(
-            {'error': 'User not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def user_by_slug(request, slug):
-    """
-    Get user profile by slug
-    """
-    try:
-        user = CustomUser.objects.get(uuid_slug=slug)
-        user_serializer = UserSerializer(user)
-        response_data = user_serializer.data
-
-        # Include subscription details which are in the profile
-        if hasattr(user, 'profile'):
-            profile_serializer = UserProfileSerializer(user.profile)
-            response_data['profile'] = profile_serializer.data
-
-        return Response(response_data, status=status.HTTP_200_OK)
-    except CustomUser.DoesNotExist:
-        return Response(
-            {'error': 'User not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
 
 
 @api_view(['GET', 'PUT', 'PATCH'])
