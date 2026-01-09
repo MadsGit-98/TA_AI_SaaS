@@ -2,6 +2,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from apps.accounts.models import CustomUser, VerificationToken
+import base64
 
 class AuthenticationIntegrationTestCase(APITestCase):
     def setUp(self):
@@ -88,16 +89,19 @@ class AuthenticationIntegrationTestCase(APITestCase):
 
         self.assertIsNotNone(verification_token)
 
+        # Encode the UUID for URL
+        uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+
         # Update password with token
         reset_confirm_data = {
-            'uid': str(user.id),
+            'uid': str(user.id),  # Keep original uid in request body for compatibility
             'new_password': 'NewSecurePass123!',
             'confirm_password': 'NewSecurePass123!',
             'token': verification_token.token  # Include token in request body as well
         }
 
         reset_confirm_response = self.client.patch(
-            reverse('api:update_password_with_token', kwargs={'uid': str(user.id), 'token': verification_token.token}),
+            reverse('api:update_password_with_token', kwargs={'uidb64': uidb64, 'token': verification_token.token}),
             reset_confirm_data,
             format='json'
         )

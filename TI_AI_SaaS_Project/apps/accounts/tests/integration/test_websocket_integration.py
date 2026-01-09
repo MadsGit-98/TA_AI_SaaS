@@ -6,7 +6,6 @@ to the frontend JavaScript code.
 
 import asyncio
 import socket
-import subprocess
 import time
 import threading
 import redis
@@ -256,7 +255,7 @@ class WebSocketIntegrationTest(TestCase):
 
         # Verify the result contains expected fields
         self.assertIn('user_id', result)
-        self.assertEqual(result['user_id'], self.user.id)
+        self.assertEqual(result['user_id'], str(self.user.id))
 
         # Check if it's a success or error result
         has_success_fields = 'token_refreshed' in result

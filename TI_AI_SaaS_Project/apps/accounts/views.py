@@ -185,12 +185,12 @@ def activation_error_view(request):
     return render(request, 'accounts/activation_error.html', context)
     
 
-def activation_step_view(request, uid, token): 
+def activation_step_view(request, uidb64, token):
     context = {
-        'uid': uid,
+        'uidb64': uidb64,  # Standardized to use 'uidb64' key
         'token': token
     }
-    return render(request, 'accounts/activation_success.html', context)    
+    return render(request, 'accounts/activation_success.html', context)
 
 
 def password_reset_failure_view(request):
@@ -200,12 +200,12 @@ def password_reset_failure_view(request):
     return render(request, 'accounts/password_reset_failure.html', {})
 
 
-def password_reset_form_view(request, uid, token):
+def password_reset_form_view(request, uidb64, token):
     """
     View for password reset form page
     """
     context = {
-        'uid': uid,
+        'uidb64': uidb64,  # Standardized to use 'uidb64' parameter and key
         'token': token
     }
     return render(request, 'accounts/password_reset_form.html', context)
