@@ -24,7 +24,7 @@ urlpatterns = [
 
     # Password reset pages
     path('password/reset/failure/', views.password_reset_failure_view, name='password_reset_failure'),
-    path('password-reset/form/<str:uid>/<str:token>/', views.password_reset_form_view, name='password_reset_form'),
+    path('password-reset/form/<str:uidb64>/<str:token>/', views.password_reset_form_view, name='password_reset_form'),
 
     # Additional authentication URLs will be defined in future features
 ]
