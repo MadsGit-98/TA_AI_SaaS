@@ -1,7 +1,6 @@
 from django.contrib.auth.models import AbstractUser, User as DjangoUser
 from django.db import models
 from django.utils import timezone
-from django.contrib.auth.hashers import make_password
 import uuid
 from uuid6 import uuid6
 from .utils import generate_user_slug
@@ -51,16 +50,16 @@ class CustomUser(AbstractUser):
 
         # Check if this is an update to existing record
         if self.pk:
-            try:
-                original = CustomUser.objects.get(pk=self.pk)
+            original = CustomUser.objects.filter(pk=self.pk).first()
+            if original:
                 # Track changes to important fields
                 self._field_updates = {
                     'email': self.email != original.email,
                     'first_name': self.first_name != original.first_name,
                     'last_name': self.last_name != original.last_name
                 }
-            except CustomUser.DoesNotExist:
-                # If original doesn't exist, treat as new user
+            else:
+                # Original doesn't exist, treat as new user
                 self._field_updates = {
                     'email': True,
                     'first_name': True,

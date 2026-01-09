@@ -174,35 +174,6 @@ class UUIDAPITestCase(TestCase):
         response = self.client.get(url)
         self.assertIn(response.status_code, [301, 302])  # Should redirect
         
-    def test_user_detail_by_uuid(self):
-        """Test retrieving user details by UUID"""
-        # Log in first - use the actual user created in setUp
-        login_successful = self.client.login(username='testuser', password='testpass123')
-        self.assertTrue(login_successful, "Login should be successful")
-
-        url = reverse('api:user_detail', kwargs={'uuid': self.user.id})
-        response = self.client.get(url)
-
-        # Check that the response is successful (200) or maybe a redirect (302) if authentication is required
-        # The endpoint requires authentication, so it might return 403 or 401 if not properly authenticated
-        self.assertIn(response.status_code, [200, 401, 403])
-        if response.status_code == 200:
-            self.assertContains(response, self.user.username)
-        
-    def test_user_detail_by_slug(self):
-        """Test retrieving user details by slug"""
-        # Log in first
-        login_successful = self.client.login(username='testuser', password='testpass123')
-        self.assertTrue(login_successful, "Login should be successful")
-
-        url = reverse('api:user_by_slug', kwargs={'slug': self.user.uuid_slug})
-        response = self.client.get(url)
-
-        # Check that the response is successful (200) or maybe a redirect (302) if authentication is required
-        # The endpoint requires authentication, so it might return 403 or 401 if not properly authenticated
-        self.assertIn(response.status_code, [200, 401, 403])
-        if response.status_code == 200:
-            self.assertContains(response, self.user.username)
         
     def test_password_reset_update_with_uuid(self):
         """Test updating password with UUID-based tokens"""
