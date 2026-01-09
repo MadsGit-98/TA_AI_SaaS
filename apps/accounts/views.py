@@ -185,12 +185,12 @@ def activation_error_view(request):
     return render(request, 'accounts/activation_error.html', context)
     
 
-def activation_step_view(request, uid, token): 
+def activation_step_view(request, uidb64, token):
     context = {
-        'uid': uid,
+        'uid': uidb64,  # Pass as 'uid' to match template expectation
         'token': token
     }
-    return render(request, 'accounts/activation_success.html', context)    
+    return render(request, 'accounts/activation_success.html', context)
 
 
 def password_reset_failure_view(request):

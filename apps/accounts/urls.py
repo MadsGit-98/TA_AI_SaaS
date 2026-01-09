@@ -20,7 +20,7 @@ urlpatterns = [
     # Activation pages
     path('activation-success/', views.activation_completed_view, name='activation_completed'),
     path('activation-error/', views.activation_error_view, name='activation_error'),
-    path('activation-step/<str:uid>/<str:token>/',views.activation_step_view, name = 'activation_step'), 
+    path('activation-step/<str:uidb64>/<str:token>/',views.activation_step_view, name = 'activation_step'), 
 
     # Password reset pages
     path('password/reset/failure/', views.password_reset_failure_view, name='password_reset_failure'),
