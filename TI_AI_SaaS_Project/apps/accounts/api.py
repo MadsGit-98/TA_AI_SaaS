@@ -165,9 +165,12 @@ def send_activation_email(user, token):
     """
     subject = 'Activate your X-Crewter account'
 
+    # Encode the UUID for URL safety (similar to how password reset works)
+    uidb64 = base64.urlsafe_b64encode(str(user.id).encode()).decode()
+
     # The activation link includes the token - using the current request's host to build the URL
     # This ensures the activation link points to the current Django application
-    activation_link = f"{settings.BACKEND_URL}/api/accounts/auth/activate/{user.id}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/activate/{user.id}/{token}/"
+    activation_link = f"{settings.BACKEND_URL}/api/accounts/auth/activate/{uidb64}/{token}/" if hasattr(settings, 'BACKEND_URL') else f"http://localhost:8000/api/accounts/auth/activate/{uidb64}/{token}/"
 
     message = render_to_string('accounts/activation_email.html', {
         'user': user,
@@ -550,6 +553,7 @@ def show_activation_form(request, uidb64, token):
             return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Activation link has expired.")
 
         # If the token is valid, render the activation page which auto-submits the form
+        # Pass the base64 encoded UID so the frontend can make the API call properly
         return redirect(f"{getattr(settings, 'FRONTEND_URL', '')}/activation-step/{uidb64}/{token}/" if hasattr(settings, 'FRONTEND_URL') else f"/activation-step/{uidb64}/{token}/")
     except VerificationToken.DoesNotExist:
         return redirect(f"{ACTIVATION_ERROR_REDIRECT}?error_message=Invalid activation token.")
