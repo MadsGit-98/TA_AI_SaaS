@@ -91,7 +91,7 @@ As a user, I want the system to treat my session differently based on whether I 
 
 - **SC-001**: Users with "Remember Me" enabled remain logged in for at least 7 days of inactivity without requiring re-authentication, with an absolute maximum of 30 days
 - **SC-002**: Access token refresh for "Remember Me" sessions occurs automatically 5 minutes before expiration without user intervention, achieving 99% success rate
-- **SC-003**: Users report 60% fewer login interruptions during extended work sessions compared to standard session behavior
+- **SC-003**: Users experience 60% fewer login interruptions during extended work sessions compared to standard session behavior, measured by comparing number of re-authentication events per hour of usage
 - **SC-004**: Standard sessions continue to enforce 26-minute inactivity timeouts with 100% reliability when "Remember Me" is not selected
 - **SC-005**: Background "Remember Me" token refresh tasks complete successfully within 10 seconds 95% of the time
 - **SC-006**: Users can successfully terminate "Remember Me" sessions from account settings within 2 clicks, with immediate effect
