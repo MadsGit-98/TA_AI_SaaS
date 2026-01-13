@@ -136,6 +136,7 @@ class UserLoginSerializer(serializers.Serializer):
     """
     username = serializers.CharField(required=True, help_text="Username or email address")
     password = serializers.CharField(required=True, write_only=True)
+    remember_me = serializers.BooleanField(default=False, required=False)
 
 
 class UserSerializer(serializers.ModelSerializer):

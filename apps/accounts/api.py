@@ -29,7 +29,7 @@ from rest_framework import serializers
 from social_django.utils import load_strategy, load_backend, psa
 from social_core.exceptions import MissingBackend
 from django.shortcuts import redirect
-from .session_utils import clear_user_activity, update_user_activity, clear_expiry_token
+from .session_utils import clear_user_activity, update_user_activity, clear_expiry_token, has_active_remember_me_session, terminate_all_remember_me_sessions
 import base64
 
 # Define constant redirect URLs for activation results
@@ -704,20 +704,25 @@ def login(request):
 
     username = serializer.validated_data['username']
     password = serializer.validated_data['password']
+    remember_me = serializer.validated_data.get('remember_me', False)  # Get remember_me flag, default to False
 
     user = authenticate(request=request, username=username, password=password)
 
     if user is not None:
         if user.is_active:
             auth_login(request, user)
-            logger.info(f"Successful login for user: {user.id}")
+            logger.info(f"Successful login for user: {user.id}, remember_me: {remember_me}")
 
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
 
-            # Trigger the refresh_user_token task to create a pre-generated token
+            # Trigger the refresh_user_token task with remember_me flag
             # This will be used by the monitor_and_refresh_tokens task
-            refresh_user_token.delay(user.id)
+            refresh_user_token.delay(user.id, remember_me=remember_me)
+
+            # Log Remember Me session creation for audit trail
+            if remember_me:
+                logger.info(f"Remember Me session initiated for user: {user.id}")
 
             # Serialize user data
             user_serializer = UserSerializer(user)
@@ -835,10 +840,19 @@ def logout(request):
     user_id = getattr(request.user, 'id', None)
     auth_logout(request)
 
-    # Clear user activity tracking on logout if user_id is available
+    # Log logout activity
     if user_id is not None:
+        logger.info(f"User {user_id} logged out")
+
+        # Clear user activity tracking on logout if user_id is available
         clear_user_activity(user_id)
         clear_expiry_token(user_id)
+
+        # Terminate all Remember Me sessions for the user
+        terminate_all_remember_me_sessions(user_id)
+
+        # Log Remember Me session termination for audit trail
+        logger.info(f"Terminated all Remember Me sessions for user: {user_id}")
 
     # Create response and clear authentication cookies
     response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -1145,6 +1159,9 @@ def cookie_token_refresh(request):
 
         if user_id:
             try:
+                # Check if this is a Remember Me session
+                is_remember_me_session = has_active_remember_me_session(user_id)
+
                 # Attempt to retrieve pre-generated tokens using the user ID
                 token_result = get_tokens_by_reference.delay(user_id).get(timeout=0.2)
 
@@ -1171,15 +1188,21 @@ def cookie_token_refresh(request):
                     set_auth_cookies(response, new_access_token, new_refresh_token)
 
                     # Trigger refresh_user_token task to update token expiration in Redis
-                    refresh_user_token.delay(pregen_user_id)
+                    # Pass the remember_me flag to maintain the same session type
+                    refresh_user_token.delay(pregen_user_id, remember_me=is_remember_me_session)
 
                     return response
                 else:
                     # Check if the error is specifically about token data not being found or expired
-                    # This is an indication of no recent user activity, not a failure
+                    # For Remember Me sessions, this is not necessarily due to inactivity
                     if token_result['error'] == 'Token data not found or expired':
-                        logger.info(f"Token data not found or expired for user {user_id}, falling back to standard refresh")
-                        should_blacklist_token = False  # This indicates no user activity captured therefore tokens will be blacklisted at ecentual logout
+                        if is_remember_me_session:
+                            logger.info(f"Token data not found or expired for Remember Me user {user_id}, but continuing with standard refresh")
+                            # For Remember Me sessions, we don't set the blacklist flag to false
+                            # as the session should continue regardless of activity
+                        else:
+                            logger.info(f"Token data not found or expired for user {user_id}, falling back to standard refresh")
+                            should_blacklist_token = False  # This indicates no user activity captured therefore tokens will be blacklisted at eventual logout
 
             except Exception as e:
                 logger.error(f"Error retrieving tokens by reference: {str(e)}")
@@ -1198,6 +1221,9 @@ def cookie_token_refresh(request):
                 # This can happen if the blacklist app is not properly configured
                 logger.warning("AttributeError during token refresh - blacklist method not available")
 
+        # Check if this is a Remember Me session for the fallback case
+        is_remember_me_session_fallback = has_active_remember_me_session(user.id)
+
         # Generate new refresh token for the user
         new_refresh = RefreshToken.for_user(user)
         new_access_token = str(new_refresh.access_token)
@@ -1213,7 +1239,8 @@ def cookie_token_refresh(request):
         set_auth_cookies(response, new_access_token, new_refresh_token)
 
         # Update the token expiration in Redis for the fallback case
-        refresh_user_token.delay(user.id)
+        # Pass the remember_me flag to maintain the same session type
+        refresh_user_token.delay(user.id, remember_me=is_remember_me_session_fallback)
 
         return response
 

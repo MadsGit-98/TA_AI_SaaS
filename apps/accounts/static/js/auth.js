@@ -143,15 +143,16 @@ async function handleLogin(e) {
     const errorMessage = document.getElementById('login-error-message');
     const errorText = document.getElementById('login-error-text');
 
-    // Get form data
-    const formData = {
-        username: document.getElementById('login-email').value,  // Backend expects 'username' field which handles both username and email
-        password: document.getElementById('login-password').value
-    };
-
     // Get remember me setting
     const rememberMeCheckbox = document.getElementById('remember-me');
     const rememberMe = rememberMeCheckbox ? rememberMeCheckbox.checked : false;
+
+    // Get form data
+    const formData = {
+        username: document.getElementById('login-email').value,  // Backend expects 'username' field which handles both username and email
+        password: document.getElementById('login-password').value,
+        remember_me: rememberMe  // Include remember_me flag in form data
+    };
 
     // Show loading state
     submitBtn.disabled = true;
@@ -173,6 +174,11 @@ async function handleLogin(e) {
         if (response.ok) {
             // Tokens are now stored in HttpOnly cookies, no need to store them in JS
             // The server sets the tokens in cookies automatically
+
+            // Set the remember me status in the auth interceptor if it exists
+            if (typeof window.setRememberMeStatus === 'function') {
+                window.setRememberMeStatus(rememberMe);
+            }
 
             // Use server-provided redirect URL for navigation
             if (data.redirect_url && typeof data.redirect_url === 'string' && data.redirect_url.length > 0) {
