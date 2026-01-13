@@ -28,6 +28,10 @@ class DummyRedisClient:
         # Always return 0 (indicating no keys were deleted)
         return 0
 
+    def exists(self, *keys):
+        # Always return 0 (indicating no keys exist)
+        return 0
+
 def get_redis_client():
     """
     Lazy-initialize Redis client with retry/backoff and graceful degradation.

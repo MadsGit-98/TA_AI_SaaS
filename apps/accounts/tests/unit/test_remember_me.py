@@ -1,11 +1,12 @@
 import os
 import sys
+from pathlib import Path
 import django
 from django.conf import settings
-from django.test.utils import get_runner
 
 # Add the project root to the Python path
-sys.path.insert(0, 'F:/Micro-SaaS Projects/X-Crewter/Software/TA_AI_SaaS/TI_AI_SaaS_Project')
+repo_root = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(repo_root))
 
 if not settings.configured:
     settings.configure(
@@ -103,14 +104,22 @@ class TestRememberMeFunctionality(TestCase):
         """
         mock_redis.setex.return_value = None
         mock_redis.exists.return_value = 0  # Simulate key doesn't exist initially
-        
+
         result = refresh_user_token(self.user.id, remember_me=False)
-        
+
         # Verify that the function returned correctly
         self.assertIn('token_refreshed', result)
         self.assertTrue(result['token_refreshed'])
         self.assertIn('remember_me', result)
         self.assertFalse(result['remember_me'])
+
+        # Verify that setex was not called for the auto-refresh key
+        # Find all calls to setex and ensure none are for the auto_refresh key
+        for call in mock_redis.setex.call_args_list:
+            args, kwargs = call
+            # The first argument is the key, check if it contains 'auto_refresh'
+            if len(args) > 0 and 'auto_refresh' in str(args[0]):
+                self.fail(f"redis_client.setex was unexpectedly called with auto-refresh key: {args[0]}")
     
     def test_has_active_remember_me_session_utility(self):
         """
