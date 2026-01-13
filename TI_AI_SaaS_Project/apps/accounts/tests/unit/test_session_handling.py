@@ -1,10 +1,12 @@
 import os
 import sys
+from pathlib import Path
 import django
 from django.conf import settings
 
 # Add the project root to the Python path
-sys.path.insert(0, 'F:/Micro-SaaS Projects/X-Crewter/Software/TA_AI_SaaS/TI_AI_SaaS_Project')
+repo_root = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(repo_root))
 
 if not settings.configured:
     settings.configure(

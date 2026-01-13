@@ -78,6 +78,12 @@ function setRememberMeStatus(rememberMe) {
     // If remember me is checked, start the interval-based refresh
     if (rememberMe) {
         startRememberMeRefreshInterval();
+    } else {
+        // If remember me is unchecked, clear the interval
+        if (window.rememberMeInterval) {
+            clearInterval(window.rememberMeInterval);
+            window.rememberMeInterval = null;
+        }
     }
 }
 
@@ -234,6 +240,12 @@ function closeWebSocket() {
 
 // Function to handle user logout and redirect to login
 async function logoutAndRedirect(logoutReason = 'inactive') {
+    // Clear the remember me interval before logging out
+    if (window.rememberMeInterval) {
+        clearInterval(window.rememberMeInterval);
+        window.rememberMeInterval = null;
+    }
+
     // Close the WebSocket connection before logging out
     closeWebSocket();
 
