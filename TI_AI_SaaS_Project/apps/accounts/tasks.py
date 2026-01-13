@@ -8,7 +8,7 @@ from datetime import timedelta, datetime
 import pytz
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import CustomUser
-from .session_utils import get_last_user_activity
+from .session_utils import get_last_user_activity, create_remember_me_session, has_active_remember_me_session
 from .consumers import TokenNotificationConsumer
 import logging
 import redis
@@ -25,8 +25,7 @@ def monitor_and_refresh_tokens():
     """
     Celery task to monitor user tokens and refresh them before expiration.
     This task identifies tokens that are about to expire and initiates refresh process.
-    In our implementation, this would identify users with tokens expiring soon and
-    trigger the client-side to call the cookie refresh endpoint.
+    Modified to handle Remember Me sessions differently.
     """
 
     logger.info("Starting token monitoring task")
@@ -50,10 +49,8 @@ def monitor_and_refresh_tokens():
                     key_str = key.decode('utf-8')
                 else:
                     key_str = str(key)
-                logger.info(f"Key: {key}")
                 # Get the expiration timestamp for this token
                 expire_timestamp = float(redis_client.get(key))
-                logger.info(f"expiry time: {expire_timestamp}")
                 token_expire_time = datetime.fromtimestamp(expire_timestamp, tz=pytz.UTC)
 
                 # Check if this token expires within the next 5 minutes (with recent activity)
@@ -61,23 +58,30 @@ def monitor_and_refresh_tokens():
                     # Extract user ID from the key (token_expires:<user_id>)
                     user_id = key_str.split(':')[1]
 
-                    # Check if the user was recently active (within 26 minutes)
-                    last_activity = get_last_user_activity(user_id)
-                    if last_activity:
-                        logger.info(f"Last Activity For {user_id}: {last_activity}")
-                        current_time = timezone.now().timestamp()
-                        time_since_activity = current_time - last_activity
-                        logger.info(f"Time Since Last Activity: {time_since_activity}")
+                    # Check if this user has an active "Remember Me" session
+                    has_remember_me = has_active_remember_me_session(user_id)
 
-                        # Only refresh if user was active within the last 26 minutes
-                        if time_since_activity <= (26 * 60):  # 26 minutes in seconds
-                            tokens_to_refresh.append(user_id)  # Keep as string since it might be UUID
-                            logger.info(f"Token for user {user_id} expires at {token_expire_time}, marking for refresh (user was recently active)")
-                        else:
-                            logger.info(f"Token for user {user_id} expires at {token_expire_time}, but user was not active recently - skipping refresh")
+                    # For Remember Me sessions, ignore inactivity and refresh based on expiration only
+                    if has_remember_me:
+                        tokens_to_refresh.append(user_id)  # Keep as string since it might be UUID
+                        logger.info(f"Remember Me session for user {user_id} expires at {token_expire_time}, marking for refresh")
                     else:
-                        tokens_to_logout.append(user_id)  # Keep as string since it might be UUID
-                        logger.info(f"Token for user {user_id} expires at {token_expire_time} with no activity record, marking for logout")
+                        # Standard session logic (existing behavior)
+                        last_activity = get_last_user_activity(user_id)
+                        if last_activity:
+                            current_time = timezone.now().timestamp()
+                            time_since_activity = current_time - last_activity
+
+                            # Only refresh if user was active within the last 26 minutes
+                            if time_since_activity <= (26 * 60):  # 26 minutes in seconds
+                                tokens_to_refresh.append(user_id)  # Keep as string since it might be UUID
+                                logger.info(f"Standard session for user {user_id} expires at {token_expire_time}, marking for refresh (user was recently active)")
+                            else:
+                                #tokens_to_logout.append(user_id)  # Keep as string since it might be UUID
+                                logger.info(f"Standard session for user {user_id} expires at {token_expire_time} with no recent activity, marking for logout")
+                        else:
+                            tokens_to_logout.append(user_id)  # Keep as string since it might be UUID
+                            logger.info(f"Standard session for user {user_id} expires at {token_expire_time} with no activity record, marking for logout")
 
             except (ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Error processing token key {key}: {str(e)}")
@@ -90,14 +94,23 @@ def monitor_and_refresh_tokens():
                 # This will trigger the client-side to call the cookie refresh endpoint
                 logger.info(f"Initiating refresh process for user {user_id}")
 
+                # Check if this is a remember me session to pass the flag to the refresh task
+                is_remember_me = has_active_remember_me_session(user_id)
+
+                if is_remember_me:
+                    logger.info(f"Processing Remember Me session refresh for user {user_id}")
+                else:
+                    logger.info(f"Processing standard session refresh for user {user_id}")
+
                 # Generate new tokens and store them in Redis before sending notification
-                refresh_user_token.delay(str(user_id))  # Ensure user_id is string when passed to Celery task
+                refresh_user_token.delay(str(user_id), remember_me=is_remember_me)  # Ensure user_id is string when passed to Celery task
 
                 # Use WebSocket to notify the client about token refresh
                 try:
                     # Call the TokenNotificationConsumer's new format notify method to send a notification
                     # This maintains compatibility with the existing WebSocket endpoint
                     TokenNotificationConsumer.notify_user(str(user_id), "REFRESH")  # Ensure user_id is string
+                    logger.info(f"Sent refresh notification to WebSocket for user {user_id}")
                 except Exception as ws_error:
                     logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
 
@@ -107,16 +120,24 @@ def monitor_and_refresh_tokens():
         # Process tokens that need logout (no recent activity)
         for user_id in tokens_to_logout:
             try:
-                # Send notification to the client via WebSocket to trigger logout
-                logger.info(f"Initiating logout process for user {user_id}")
+                # Check if this user has a Remember Me session that should not be logged out
+                has_remember_me = has_active_remember_me_session(user_id)
 
-                # Use WebSocket to notify the client about logout
-                try:
-                    # Call the TokenNotificationConsumer's new format notify method to send a logout notification
-                    # This will trigger the client-side to call logoutAndRedirect function
-                    TokenNotificationConsumer.notify_user(str(user_id), "LOGOUT")  # Ensure user_id is string
-                except Exception as ws_error:
-                    logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
+                if has_remember_me:
+                    # For Remember Me sessions, we don't initiate logout due to inactivity
+                    logger.info(f"Skipping logout for user {user_id} - Remember Me session detected, continuing session despite inactivity")
+                    continue
+                else:
+                    # Send notification to the client via WebSocket to trigger logout
+                    logger.info(f"Initiating logout process for user {user_id} - standard session with no recent activity")
+
+                    # Use WebSocket to notify the client about logout
+                    try:
+                        # Call the TokenNotificationConsumer's new format notify method to send a logout notification
+                        # This will trigger the client-side to call logoutAndRedirect function
+                        TokenNotificationConsumer.notify_user(str(user_id), "LOGOUT")  # Ensure user_id is string
+                    except Exception as ws_error:
+                        logger.error(f"WebSocket notification failed for user {user_id}: {str(ws_error)}")
 
             except Exception as e:
                 logger.error(f"Error initiating logout for user {user_id}: {str(e)}")
@@ -129,12 +150,13 @@ def monitor_and_refresh_tokens():
 
 
 @app.task
-def refresh_user_token(user_id):
+def refresh_user_token(user_id, remember_me=False):
     """
     Refresh the token for a specific user
+    If remember_me is True, create auto-refresh entry in Redis
     This is a server-side operation that could be triggered when needed
     """
-    logger.info(f"Refreshing token for user ID: {user_id}")
+    logger.info(f"Refreshing token for user ID: {user_id}, remember_me: {remember_me}")
 
     try:
         # Get the user - convert user_id to appropriate type if needed
@@ -142,18 +164,18 @@ def refresh_user_token(user_id):
 
         # Generate new tokens
         refresh = RefreshToken.for_user(user)
-        
-        # Calculate new expiration time (25 minutes from now)
+
+        # Calculate new expiration time (25 minutes from now) - same for both remember me and standard
         new_expire_time = timezone.now() + timedelta(minutes=25)
-        
-        # Update the token expiration tracking in Redis
+
+        # Update the token expiration tracking in Redis - always use standard expiration for token_expires
         token_key = f"token_expires:{user_id}"
         redis_client.setex(
             token_key,
             timedelta(minutes=30),  # Slightly longer than token lifetime
             new_expire_time.timestamp()
         )
-        
+
         # Store the new tokens in a secure, short-lived storage using user ID as key
         token_data = {
             'access_token': str(refresh.access_token),
@@ -169,6 +191,14 @@ def refresh_user_token(user_id):
             json.dumps(token_data, default=str)
         )
 
+        # If remember_me is True, create auto-refresh entry in Redis for remember me sessions
+        if remember_me:
+            success = create_remember_me_session(user_id)
+            if success:
+                logger.info(f"Created auto-refresh entry for Remember Me session for user {user_id}")
+            else:
+                logger.error(f"Failed to create Remember Me session for user {user_id}")
+
         logger.info(f"Successfully refreshed token for user {user_id}")
 
         # In a real implementation, you might notify the client about the refresh
@@ -177,9 +207,10 @@ def refresh_user_token(user_id):
         return {
             'user_id': str(user_id),  # Ensure user_id is string for JSON serialization
             'token_refreshed': True,
-            'expires_at': new_expire_time.isoformat()
+            'expires_at': new_expire_time.isoformat(),
+            'remember_me': remember_me
         }
-        
+
     except CustomUser.DoesNotExist:
         logger.warning(f"User with ID {user_id} does not exist or is not active")
         return {'error': f'User {user_id} does not exist or is not active'}

@@ -9,7 +9,8 @@ import logging
 from typing import Union, Optional
 import time
 import random
-       
+import json
+
 logger = logging.getLogger(__name__)
 
 # Create a dummy Redis client class for fallback
@@ -163,4 +164,74 @@ def clear_expiry_token(user_id: Union[str, int]) -> bool:
         return result > 0
     except Exception as e:
         logger.error(f"Failed to clear expiry for user {user_id}: {str(e)}")
+        return False
+
+
+def has_active_remember_me_session(user_id: Union[str, int]) -> bool:
+    """
+    Check if a user has an active Remember Me session
+
+    Args:
+        user_id: The ID of the user to check (int or str)
+
+    Returns:
+        bool: True if the user has an active Remember Me session, False otherwise
+    """
+    try:
+        key = f"auto_refresh:{str(user_id)}"
+        return redis_client.exists(key) > 0
+    except Exception as e:
+        logger.error(f"Failed to check Remember Me session for user {user_id}: {str(e)}")
+        return False
+
+
+def create_remember_me_session(user_id: Union[str, int]) -> bool:
+    """
+    Create a Remember Me session for a user.
+    If a Remember Me session already exists for the user, it will be replaced.
+
+    Args:
+        user_id: The ID of the user to create a Remember Me session for (int or str)
+
+    Returns:
+        bool: True if the operation succeeded, False otherwise
+    """
+    try:
+        # First, terminate any existing Remember Me session for this user
+        terminate_all_remember_me_sessions(user_id)
+
+        key = f"auto_refresh:{str(user_id)}"
+        auto_refresh_data = {
+            'session_token': str(user_id),  # Use user_id as session token
+            'expires_at': (timezone.now() + timedelta(minutes=30)).timestamp(),  # 30 min lifetime
+            'last_refresh': timezone.now().timestamp()
+        }
+        redis_client.setex(
+            key,
+            timedelta(minutes=30),  # 30-minute expiration
+            json.dumps(auto_refresh_data, default=str)  # Store as JSON string
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create Remember Me session for user {user_id}: {str(e)}")
+        return False
+
+
+def terminate_all_remember_me_sessions(user_id: Union[str, int]) -> bool:
+    """
+    Terminate all Remember Me sessions for a user (e.g., on logout)
+
+    Args:
+        user_id: The ID of the user whose Remember Me sessions should be terminated (int or str)
+
+    Returns:
+        bool: True if the operation succeeded, False otherwise
+    """
+    try:
+        key = f"auto_refresh:{str(user_id)}"
+        result = redis_client.delete(key)
+        # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
+        return result > 0
+    except Exception as e:
+        logger.error(f"Failed to terminate Remember Me sessions for user {user_id}: {str(e)}")
         return False
