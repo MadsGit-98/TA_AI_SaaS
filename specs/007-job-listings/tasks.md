@@ -23,9 +23,9 @@ Initialize the project structure and dependencies for the job listing feature.
 ### Phase 2: Foundational Components
 Create the foundational models, serializers, and utilities that all user stories depend on.
 
-- [ ] T006 [P] Create JobListing model in apps/jobs/models.py with all required fields
+- [ ] T006 [P] Create JobListing model in apps/jobs/models.py with all required fields (using UUID v7 for application links)
 - [ ] T007 [P] Create ScreeningQuestion model in apps/jobs/models.py with all required fields
-- [ ] T008 [P] Create ApplicationLink model in apps/jobs/models.py (derived from JobListing's application_link field)
+- [ ] T008 [P] Create ApplicationLink model in apps/jobs/models.py (derived from JobListing's application_link field using UUID v7)
 - [ ] T009 [P] Create JobListingSerializer in apps/jobs/serializers.py
 - [ ] T010 [P] Create JobListingCreateSerializer in apps/jobs/serializers.py
 - [ ] T011 [P] Create JobListingUpdateSerializer in apps/jobs/serializers.py
@@ -46,7 +46,7 @@ As a Talent Acquisition Specialist, I want to create a detailed job listing with
 - [ ] T018 [US1] Create URL patterns in apps/jobs/urls.py for job listing endpoints
 - [ ] T019 [US1] Add job listing URLs to main urls.py
 - [ ] T020 [US1] Implement validation in JobListing model to prevent expiration date before start date
-- [ ] T021 [US1] Create job listing creation form template in apps/jobs/templates/jobs/create_job.html
+- [ ] T021 [US1] Create job listing creation form template in apps/jobs/templates/jobs/create_job.html using Django Template Language (DTL)
 - [ ] T022 [US1] Add Tailwind CSS styling to job creation form following X-Crewter color grading
 - [ ] T023 [US1] Create unit tests for JobListing model validation in apps/jobs/tests/unit/test_models.py
 - [ ] T024 [US1] Create unit tests for JobListing creation API in apps/jobs/tests/unit/test_views.py
@@ -63,11 +63,14 @@ As a Talent Acquisition Specialist, I want to define specific screening question
 - [ ] T027 [US2] Create ScreeningQuestionDetailView in apps/jobs/views.py for retrieving, updating, and deleting screening questions
 - [ ] T028 [US2] Add screening question URL patterns to apps/jobs/urls.py
 - [ ] T029 [US2] Implement validation in ScreeningQuestion model for question types and choices
-- [ ] T030 [US2] Create screening question form template in apps/jobs/templates/jobs/add_screening_question.html
+- [ ] T030 [US2] Create screening question form template in apps/jobs/templates/jobs/add_screening_question.html using Django Template Language (DTL)
 - [ ] T031 [US2] Add Tailwind CSS styling to screening question form following X-Crewter color grading
 - [ ] T032 [US2] Create unit tests for ScreeningQuestion model validation in apps/jobs/tests/unit/test_models.py
 - [ ] T033 [US2] Create unit tests for ScreeningQuestion API endpoints in apps/jobs/tests/unit/test_views.py
 - [ ] T034 [US2] Create integration tests for screening question workflow in apps/jobs/tests/integration/test_screening_questions.py
+- [ ] T034a [US2] Create database model for storing common screening questions in apps/jobs/models.py
+- [ ] T034b [US2] Implement API endpoint to retrieve suggested screening questions in apps/jobs/views.py
+- [ ] T034c [US2] Add suggested questions functionality to screening question form template
 
 ### Phase 5: User Story 3 - Manage Job Listings (Priority: P2)
 As a Talent Acquisition Specialist, I want to edit, delete, or deactivate a job listing so that I can manage my open positions effectively.
@@ -79,9 +82,9 @@ As a Talent Acquisition Specialist, I want to edit, delete, or deactivate a job 
 - [ ] T035 [US3] Implement activate_job view function in apps/jobs/views.py
 - [ ] T036 [US3] Implement deactivate_job view function in apps/jobs/views.py
 - [ ] T037 [US3] Add activate/deactivate URL patterns to apps/jobs/urls.py
-- [ ] T038 [US3] Create job listing edit form template in apps/jobs/templates/jobs/edit_job.html
+- [ ] T038 [US3] Create job listing edit form template in apps/jobs/templates/jobs/edit_job.html using Django Template Language (DTL)
 - [ ] T039 [US3] Add Tailwind CSS styling to job edit form following X-Crewter color grading
-- [ ] T040 [US3] Create job listing management dashboard template in apps/jobs/templates/jobs/job_dashboard.html
+- [ ] T040 [US3] Create job listing management dashboard template in apps/jobs/templates/jobs/job_dashboard.html using Django Template Language (DTL)
 - [ ] T041 [US3] Add Tailwind CSS styling to dashboard following X-Crewter color grading
 - [ ] T042 [US3] Create unit tests for activate/deactivate functionality in apps/jobs/tests/unit/test_views.py
 - [ ] T043 [US3] Create integration tests for job management workflow in apps/jobs/tests/integration/test_job_management.py
@@ -138,6 +141,10 @@ Final touches, optimizations, and cross-cutting concerns.
 - [ ] T066 Conduct accessibility review to ensure compliance with WCAG AAA standards
 - [ ] T067 Run full test suite and ensure 90%+ code coverage
 - [ ] T068 Create deployment configuration for the job listing feature
+- [ ] T069 [P] Add AI disclaimer to all job listing templates (create_job.html, edit_job.html, job_dashboard.html)
+- [ ] T070 [P] Create reusable AI disclaimer component for consistent display across templates
+- [ ] T071 [P] Add legal footer with required links to all job listing templates
+- [ ] T072 [P] Create reusable legal footer component for consistent display across templates
 
 ## Dependencies
 
