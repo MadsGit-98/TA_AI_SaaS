@@ -19,7 +19,11 @@ class TestSessionUtilsIntegration(TestCase):
     """Integration tests for session utility functions with actual Redis"""
     
     def setUp(self):
-        """Set up test data"""
+        """
+        Prepare integration test prerequisites for Redis-backed session tests.
+        
+        Initializes test identifiers and attempts to obtain a fresh Redis client; if Redis is unavailable or a connection error occurs during setup, the test case is skipped. Ensures the test Redis key is removed before each test when a client is available.
+        """
         self.user_id = "test_user_123"
         self.redis_key = f"user_activity:{self.user_id}"
 
@@ -39,7 +43,11 @@ class TestSessionUtilsIntegration(TestCase):
             self.skipTest("Redis connection failed during setup, skipping Redis-dependent test")
     
     def tearDown(self):
-        """Clean up after tests"""
+        """
+        Remove the test Redis key created during setup.
+        
+        Attempts to delete self.redis_key from the Redis client. If the Redis client is unavailable or a connection error occurs, the teardown suppresses the error and proceeds without raising.
+        """
         # Remove any test data
         try:
             self.redis_client.delete(self.redis_key)
@@ -79,13 +87,21 @@ class TestSessionUtilsIntegration(TestCase):
         self.assertLessEqual(activity_time, current_time + 5)  # Allow 5 seconds for processing
     
     def test_get_last_user_activity_nonexistent_user_with_redis(self):
-        """Test that get_last_user_activity returns None for nonexistent user with Redis"""
+        """
+        Verify get_last_user_activity yields no result for a nonexistent user when Redis is available.
+        
+        Calls get_last_user_activity with a user id that does not exist in Redis and asserts the returned value is None.
+        """
 
         activity_time = get_last_user_activity("nonexistent_user_12345")
         self.assertIsNone(activity_time)
     
     def test_is_user_session_expired_with_redis_false(self):
-        """Test that is_user_session_expired returns False for recent activity with Redis"""
+        """
+        Verify is_user_session_expired reports the session as not expired after recent activity in Redis.
+        
+        Updates the user's activity in Redis and asserts the session is considered active (not expired).
+        """
 
         # Update user activity
         update_user_activity(self.user_id)
@@ -105,7 +121,9 @@ class TestSessionUtilsIntegration(TestCase):
         self.assertTrue(is_expired)
     
     def test_is_user_session_expired_no_activity_with_redis(self):
-        """Test that is_user_session_expired returns False when no activity record exists with Redis"""
+        """
+        Verify is_user_session_expired considers sessions with no recorded activity as active when Redis is available.
+        """
 
         # Ensure key doesn't exist
         self.redis_client.delete(self.redis_key)

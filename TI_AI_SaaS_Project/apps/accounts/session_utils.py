@@ -15,13 +15,15 @@ logger = logging.getLogger(__name__)
 
 def update_user_activity(user_id: Union[int, str]) -> bool:
     """
-    Update the last activity timestamp for a user
-
-    Args:
-        user_id: The ID of the user whose activity should be updated
-
+    Record the current time as the user's last activity in Redis.
+    
+    Stores a timestamp under the key `user_activity:{user_id}` with a 26-minute expiration so recent activity can be tracked and timed out.
+    
+    Parameters:
+        user_id (int | str): Identifier of the user whose activity is being recorded.
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        bool: `True` if the timestamp was stored and expiration set successfully, `False` otherwise.
     """
 
     key = f"user_activity:{user_id}"
@@ -48,13 +50,15 @@ def update_user_activity(user_id: Union[int, str]) -> bool:
 
 def get_last_user_activity(user_id: Union[int, str]) -> Optional[float]:
     """
-    Get the last activity timestamp for a user
-
-    Args:
-        user_id: The ID of the user whose activity should be retrieved
-
+    Return the last recorded activity timestamp for the given user.
+    
+    Retrieves the value stored at Redis key "user_activity:{user_id}" and returns it as a float timestamp. Returns `None` if no value exists, if the stored value is not a valid float, or if a Redis connection/operation fails.
+    
+    Parameters:
+        user_id (int | str): The user identifier used to construct the Redis key.
+    
     Returns:
-        Optional[float]: The timestamp of last activity if found, None otherwise
+        Optional[float]: The last activity timestamp as a float, or `None` when unavailable or invalid.
     """
     key = f"user_activity:{user_id}"
 
@@ -102,13 +106,10 @@ def is_user_session_expired(user_id):
 
 def clear_user_activity(user_id: Union[str, int]) -> bool:
     """
-    Clear the activity record for a user (e.g., on logout)
-
-    Args:
-        user_id: The ID of the user whose activity record should be cleared (int or str)
-
+    Remove a user's activity record from Redis (e.g., during logout).
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        True if the user's activity record was removed, False otherwise.
     """
     try:
         redis_client = get_redis_client()
@@ -127,13 +128,10 @@ def clear_user_activity(user_id: Union[str, int]) -> bool:
 
 def clear_expiry_token(user_id: Union[str, int]) -> bool:
     """
-    Clear the expiry token for a user (e.g., on logout)
-
-    Args:
-        user_id: The ID of the user whose activity record should be cleared (int or str)
-
+    Remove the expiry token associated with a user.
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        True if a token was deleted, False otherwise. Returns False if Redis is unavailable or the deletion fails.
     """
     try:
         redis_client = get_redis_client()
@@ -153,13 +151,10 @@ def clear_expiry_token(user_id: Union[str, int]) -> bool:
 
 def has_active_remember_me_session(user_id: Union[str, int]) -> bool:
     """
-    Check if a user has an active Remember Me session
-
-    Args:
-        user_id: The ID of the user to check (int or str)
-
+    Determine whether a Remember Me (auto-refresh) session exists for the given user.
+    
     Returns:
-        bool: True if the user has an active Remember Me session, False otherwise
+        `true` if the user has an active Remember Me session, `false` otherwise.
     """
     try:
         redis_client = get_redis_client()
@@ -177,14 +172,13 @@ def has_active_remember_me_session(user_id: Union[str, int]) -> bool:
 
 def create_remember_me_session(user_id: Union[str, int]) -> bool:
     """
-    Create a Remember Me session for a user.
-    If a Remember Me session already exists for the user, it will be replaced.
-
-    Args:
-        user_id: The ID of the user to create a Remember Me session for (int or str)
-
+    Create a Remember Me session for the given user, replacing any existing Remember Me session.
+    
+    Parameters:
+        user_id (str | int): The user's identifier used as the session token and Redis key suffix.
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        bool: `True` if the session was successfully created and stored in Redis, `False` otherwise.
     """
     try:
         redis_client = get_redis_client()
@@ -215,13 +209,15 @@ def create_remember_me_session(user_id: Union[str, int]) -> bool:
 
 def terminate_all_remember_me_sessions(user_id: Union[str, int]) -> bool:
     """
-    Terminate all Remember Me sessions for a user (e.g., on logout)
-
-    Args:
-        user_id: The ID of the user whose Remember Me sessions should be terminated (int or str)
-
+    Terminate all Remember Me sessions for a user.
+    
+    Removes the user's auto-refresh record from Redis.
+    
+    Parameters:
+        user_id (int | str): ID of the user whose Remember Me sessions should be terminated.
+    
     Returns:
-        bool: True if the operation succeeded, False otherwise
+        bool: `True` if a session record was deleted, `False` if no record existed or the operation failed (for example, if Redis was unavailable).
     """
     try:
         redis_client = get_redis_client()

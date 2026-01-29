@@ -53,7 +53,9 @@ class TestRememberMeIntegration(TestCase):
     
     def setUp(self):
         """
-        Set up test user and client
+        Prepare the test environment by creating a Django test client, a test user, and a Redis client.
+        
+        Creates a test HTTP client assigned to `self.client`, a persistent test user assigned to `self.user` (username 'testuser', email 'test@example.com'), and a Redis client assigned to `self.redis_client` pointing to the `REDIS_URL` setting or `redis://localhost:6379/0` if unset.
         """
         self.client = Client()
         self.user = CustomUser.objects.create_user(
