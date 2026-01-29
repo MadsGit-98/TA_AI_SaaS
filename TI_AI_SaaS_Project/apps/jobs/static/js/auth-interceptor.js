@@ -1,5 +1,38 @@
 // auth-interceptor.js - Authentication interceptor for jobs app with user activity tracking
-// Uses axios instead of fetch with activity-based token refresh
+
+// Initialize WebSocket connection for token refresh notifications
+let wsSocket = null;
+let intentionalDisconnect = false;
+let retryAttempts = 0;
+const maxRetryAttempts = 10;
+const baseDelay = 1000; // 1 second base delay
+let retryTimer = null;
+
+// Track user activity to trigger token refresh
+// Initialize lastActivity only if not present in localStorage (first visit)
+let lastActivity;
+if (localStorage.getItem('lastActivity') === null) {
+    lastActivity = Date.now();
+    localStorage.setItem('lastActivity', lastActivity.toString());
+} else {
+    lastActivity = parseInt(localStorage.getItem('lastActivity'));
+}
+// Initialize isRememberMeChecked from localStorage, default to false if not present
+let isRememberMeChecked = localStorage.getItem('isRememberMeChecked') === 'true'; // Track if user logged in with "Remember Me"
+
+// If remember me was previously checked, start the refresh interval on page load
+if (isRememberMeChecked) {
+    startRememberMeRefreshInterval();
+}
+
+const ACTIVITY_TIMEOUT = 18 * 60 * 1000;
+const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
+const REMEMBER_ME_REFRESH_INTERVAL = 20 * 60 * 1000; // 20 minutes for remember me sessions
+
+// Function to call the cookie refresh endpoint
+let refreshPromise = null; // Promise to deduplicate concurrent refresh attempts
+let retryCount = 0;
+const maxRetries = 5; // Max retry attempts
 
 // Function to get CSRF token from cookie or meta tag
 function getCsrfToken() {
@@ -51,13 +84,58 @@ async function checkAndRefreshToken() {
     }
 }
 
-// Track user activity to trigger token refresh
-let lastActivity = Date.now();
-const ACTIVITY_TIMEOUT = 18 * 60 * 1000; 
-const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
+// Function to set remember me status
+function setRememberMeStatus(rememberMe) {
+    isRememberMeChecked = rememberMe;
+    localStorage.setItem('isRememberMeChecked', rememberMe.toString());
+    console.log('Remember Me status set to:', rememberMe);
+
+    // If remember me is checked, start the interval-based refresh
+    if (rememberMe) {
+        startRememberMeRefreshInterval();
+    } else {
+        // If remember me is unchecked, clear the interval
+        if (window.rememberMeInterval) {
+            clearInterval(window.rememberMeInterval);
+            window.rememberMeInterval = null;
+        }
+    }
+}
+
+// Make the function globally accessible so it can be called from other scripts
+window.setRememberMeStatus = setRememberMeStatus;
+
+// Start interval-based refresh for remember me sessions
+function startRememberMeRefreshInterval() {
+    // Clear any existing interval
+    if (window.rememberMeInterval) {
+        clearInterval(window.rememberMeInterval);
+    }
+
+    // Set up interval to refresh tokens every 20 minutes for remember me sessions
+    window.rememberMeInterval = setInterval(async () => {
+        console.log('Executing interval-based token refresh for remember me session');
+        await checkAndRefreshToken();
+        // Update last activity when refresh happens
+        const now = Date.now();
+        lastActivity = now;
+        localStorage.setItem('lastActivity', now.toString());
+    }, REMEMBER_ME_REFRESH_INTERVAL);
+
+    console.log('Started interval-based token refresh for remember me sessions');
+}
 
 async function handleUserActivity() {
     const now = Date.now();
+
+    // If remember me is checked, use interval-based refresh instead of activity-based
+    if (isRememberMeChecked) {
+        // Activity-based refresh is not needed for remember me sessions
+        // The interval-based refresh will handle token refresh
+        lastActivity = now;
+        localStorage.setItem('lastActivity', now.toString());
+        return;
+    }
 
     const deltaTime = now - lastActivity;
 
@@ -68,6 +146,7 @@ async function handleUserActivity() {
             if(refreshretVal)
             {
                 lastActivity = now;
+                localStorage.setItem('lastActivity', now.toString());
             }
         } catch (error) {
             console.error('Error during token refresh in handleUserActivity:', error);
@@ -93,14 +172,6 @@ function setupActivityListeners() {
         }
     });
 }
-
-// Initialize WebSocket connection for token refresh notifications
-let wsSocket = null;
-let intentionalDisconnect = false;
-let retryAttempts = 0;
-const maxRetryAttempts = 10;
-const baseDelay = 1000; // 1 second base delay
-let retryTimer = null;
 
 function initWebSocket() {
     // Check if there's already an active connection and return early to avoid multiple connections
@@ -190,8 +261,18 @@ function closeWebSocket() {
 
 // Function to handle user logout and redirect to login
 async function logoutAndRedirect(logoutReason = 'inactive') {
+    // Clear the remember me interval before logging out
+    if (window.rememberMeInterval) {
+        clearInterval(window.rememberMeInterval);
+        window.rememberMeInterval = null;
+    }
+
     // Close the WebSocket connection before logging out
     closeWebSocket();
+
+    // Clear the local storage values
+    localStorage.removeItem('lastActivity');
+    localStorage.removeItem('isRememberMeChecked');
 
     try {
         // Call the server-side logout endpoint to properly log out the user
@@ -212,10 +293,7 @@ async function logoutAndRedirect(logoutReason = 'inactive') {
     }
 }
 
-// Function to call the cookie refresh endpoint
-let refreshPromise = null; // Promise to deduplicate concurrent refresh attempts
-let retryCount = 0;
-const maxRetries = 5; // 1 second base delay
+
 
 async function refreshTokenFromServer() {
     // Deduplicate concurrent refresh attempts by returning the same promise if one is in flight
@@ -247,26 +325,82 @@ async function refreshTokenFromServer() {
                 return;
             }
 
-            // Check if we've reached the max retry attempts
-            if (retryCount < maxRetries) {
-                // Calculate delay with exponential backoff and jitter
-                const backoff = baseDelay * Math.pow(2, retryCount); // Exponential backoff
-                const jitter = Math.random() * 1000; // Random jitter up to 1 second
-                const delay = backoff + jitter;
+            // Handle network errors (poor connectivity)
+            if (!error.response) {
+                console.warn('Network error during token refresh, possibly poor connectivity:', error.message);
 
-                console.log(`Token refresh failed, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+                // For Remember Me sessions, we might want to be more tolerant of temporary network issues
+                if (isRememberMeChecked) {
+                    console.log('Remember Me session detected, applying more tolerant retry logic for network issues');
 
-                retryCount++;
+                    // Increase max retries for Remember Me sessions to handle temporary connectivity issues
+                    const maxRetriesForRememberMe = maxRetries * 2; // Double the retry attempts
 
-                // Wait for the calculated delay before retrying
-                await new Promise(resolve => setTimeout(resolve, delay));
+                    if (retryCount < maxRetriesForRememberMe) {
+                        // Calculate delay with exponential backoff and jitter
+                        const backoff = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+                        const jitter = Math.random() * 1000; // Random jitter up to 1 second
+                        const delay = backoff + jitter;
 
-                // Retry the refresh
-                return await executeRefresh();
+                        console.log(`Token refresh failed due to network issue, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetriesForRememberMe})`);
+
+                        retryCount++;
+
+                        // Wait for the calculated delay before retrying
+                        await new Promise(resolve => setTimeout(resolve, delay));
+
+                        // Retry the refresh
+                        return await executeRefresh();
+                    } else {
+                        console.error('Max retry attempts reached for token refresh with poor connectivity. Initiating logout.');
+                        retryCount = 0; // Reset retry count
+                        logoutAndRedirect();
+                    }
+                } else {
+                    // For standard sessions, use the original retry logic
+                    if (retryCount < maxRetries) {
+                        // Calculate delay with exponential backoff and jitter
+                        const backoff = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+                        const jitter = Math.random() * 1000; // Random jitter up to 1 second
+                        const delay = backoff + jitter;
+
+                        console.log(`Token refresh failed, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+
+                        retryCount++;
+
+                        // Wait for the calculated delay before retrying
+                        await new Promise(resolve => setTimeout(resolve, delay));
+
+                        // Retry the refresh
+                        return await executeRefresh();
+                    } else {
+                        console.error('Max retry attempts reached for token refresh. Initiating logout.');
+                        retryCount = 0; // Reset retry count
+                        logoutAndRedirect();
+                    }
+                }
             } else {
-                console.error('Max retry attempts reached for token refresh. Initiating logout.');
-                retryCount = 0; // Reset retry count
-                logoutAndRedirect();
+                // For other types of errors, use the original logic
+                if (retryCount < maxRetries) {
+                    // Calculate delay with exponential backoff and jitter
+                    const backoff = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+                    const jitter = Math.random() * 1000; // Random jitter up to 1 second
+                    const delay = backoff + jitter;
+
+                    console.log(`Token refresh failed, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+
+                    retryCount++;
+
+                    // Wait for the calculated delay before retrying
+                    await new Promise(resolve => setTimeout(resolve, delay));
+
+                    // Retry the refresh
+                    return await executeRefresh();
+                } else {
+                    console.error('Max retry attempts reached for token refresh. Initiating logout.');
+                    retryCount = 0; // Reset retry count
+                    logoutAndRedirect();
+                }
             }
         } finally {
             // Clear the refresh promise when the operation completes (either success or failure)

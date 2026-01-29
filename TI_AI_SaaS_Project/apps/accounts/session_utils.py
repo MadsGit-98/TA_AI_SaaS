@@ -4,52 +4,13 @@ Session management utilities for handling user inactivity and session timeouts
 from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta
-import redis
 import logging
 from typing import Union, Optional
-import time
-import random
-       
+import json
+
+from .redis_utils import get_redis_client, RedisConnectionError
+
 logger = logging.getLogger(__name__)
-
-# Create a dummy Redis client class for fallback
-class DummyRedisClient:
-    """A dummy Redis client that provides no-op implementations for Redis operations"""
-    def setex(self, key, time: Union[int, timedelta], value):
-        # No-op
-        pass
-
-    def get(self, key):
-        # Always return None
-        return None
-
-    def delete(self, key):
-        # Always return 0 (indicating no keys were deleted)
-        return 0
-
-def get_redis_client():
-    """
-    Lazy-initialize Redis client with retry/backoff and graceful degradation.
-    Returns a real Redis client if connection succeeds, otherwise returns a dummy client.
-    """
-    max_retries = 3
-    base_delay = 0.5  # seconds
-
-    for attempt in range(max_retries):
-        try:
-            return redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {str(e)}")
-            if attempt < max_retries - 1:  # Don't sleep on the last attempt
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff with jitter
-                time.sleep(delay)
-
-    # If all retries fail, log a final warning and return a dummy client
-    logger.warning("All Redis connection attempts failed. Using dummy Redis client for graceful degradation.")
-    return DummyRedisClient()
-
-# Initialize Redis client with lazy loading
-redis_client = get_redis_client()
 
 
 def update_user_activity(user_id: Union[int, str]) -> bool:
@@ -65,6 +26,12 @@ def update_user_activity(user_id: Union[int, str]) -> bool:
 
     key = f"user_activity:{user_id}"
     current_time = timezone.now().timestamp()
+
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
 
     try:
         # Store the current activity time and set expiration to 26 minutes
@@ -90,6 +57,12 @@ def get_last_user_activity(user_id: Union[int, str]) -> Optional[float]:
         Optional[float]: The timestamp of last activity if found, None otherwise
     """
     key = f"user_activity:{user_id}"
+
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return None
 
     try:
         activity_timestamp = redis_client.get(key)
@@ -138,6 +111,12 @@ def clear_user_activity(user_id: Union[str, int]) -> bool:
         bool: True if the operation succeeded, False otherwise
     """
     try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
+
+    try:
         key = f"user_activity:{str(user_id)}"
         result = redis_client.delete(key)
         # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
@@ -157,10 +136,104 @@ def clear_expiry_token(user_id: Union[str, int]) -> bool:
         bool: True if the operation succeeded, False otherwise
     """
     try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
+
+    try:
         key = f"token_expires:{str(user_id)}"
         result = redis_client.delete(key)
         # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
         return result > 0
     except Exception as e:
         logger.error(f"Failed to clear expiry for user {user_id}: {str(e)}")
+        return False
+
+
+def has_active_remember_me_session(user_id: Union[str, int]) -> bool:
+    """
+    Check if a user has an active Remember Me session
+
+    Args:
+        user_id: The ID of the user to check (int or str)
+
+    Returns:
+        bool: True if the user has an active Remember Me session, False otherwise
+    """
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
+
+    try:
+        key = f"auto_refresh:{str(user_id)}"
+        return redis_client.exists(key) > 0
+    except Exception as e:
+        logger.error(f"Failed to check Remember Me session for user {user_id}: {str(e)}")
+        return False
+
+
+def create_remember_me_session(user_id: Union[str, int]) -> bool:
+    """
+    Create a Remember Me session for a user.
+    If a Remember Me session already exists for the user, it will be replaced.
+
+    Args:
+        user_id: The ID of the user to create a Remember Me session for (int or str)
+
+    Returns:
+        bool: True if the operation succeeded, False otherwise
+    """
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
+
+    try:
+        # First, terminate any existing Remember Me session for this user
+        terminate_all_remember_me_sessions(user_id)
+
+        key = f"auto_refresh:{str(user_id)}"
+        auto_refresh_data = {
+            'session_token': str(user_id),  # Use user_id as session token
+            'expires_at': (timezone.now() + timedelta(minutes=30)).timestamp(),  # 30 min lifetime
+            'last_refresh': timezone.now().timestamp()
+        }
+        redis_client.setex(
+            key,
+            timedelta(minutes=30),  # 30-minute expiration
+            json.dumps(auto_refresh_data, default=str)  # Store as JSON string
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create Remember Me session for user {user_id}: {str(e)}")
+        return False
+
+
+def terminate_all_remember_me_sessions(user_id: Union[str, int]) -> bool:
+    """
+    Terminate all Remember Me sessions for a user (e.g., on logout)
+
+    Args:
+        user_id: The ID of the user whose Remember Me sessions should be terminated (int or str)
+
+    Returns:
+        bool: True if the operation succeeded, False otherwise
+    """
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        return False
+
+    try:
+        key = f"auto_refresh:{str(user_id)}"
+        result = redis_client.delete(key)
+        # redis_client.delete returns the number of keys deleted (0 or 1 in this case)
+        return result > 0
+    except Exception as e:
+        logger.error(f"Failed to terminate Remember Me sessions for user {user_id}: {str(e)}")
         return False
