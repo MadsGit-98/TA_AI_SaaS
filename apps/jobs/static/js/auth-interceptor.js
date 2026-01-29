@@ -19,6 +19,12 @@ if (localStorage.getItem('lastActivity') === null) {
 }
 // Initialize isRememberMeChecked from localStorage, default to false if not present
 let isRememberMeChecked = localStorage.getItem('isRememberMeChecked') === 'true'; // Track if user logged in with "Remember Me"
+
+// If remember me was previously checked, start the refresh interval on page load
+if (isRememberMeChecked) {
+    startRememberMeRefreshInterval();
+}
+
 const ACTIVITY_TIMEOUT = 18 * 60 * 1000;
 const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
 const REMEMBER_ME_REFRESH_INTERVAL = 20 * 60 * 1000; // 20 minutes for remember me sessions
