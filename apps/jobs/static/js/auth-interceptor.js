@@ -9,8 +9,16 @@ const baseDelay = 1000; // 1 second base delay
 let retryTimer = null;
 
 // Track user activity to trigger token refresh
-let lastActivity = Date.now();
-let isRememberMeChecked = false; // Track if user logged in with "Remember Me"
+// Initialize lastActivity only if not present in localStorage (first visit)
+let lastActivity;
+if (localStorage.getItem('lastActivity') === null) {
+    lastActivity = Date.now();
+    localStorage.setItem('lastActivity', lastActivity.toString());
+} else {
+    lastActivity = parseInt(localStorage.getItem('lastActivity'));
+}
+// Initialize isRememberMeChecked from localStorage, default to false if not present
+let isRememberMeChecked = localStorage.getItem('isRememberMeChecked') === 'true'; // Track if user logged in with "Remember Me"
 const ACTIVITY_TIMEOUT = 18 * 60 * 1000;
 const accessTokenExpiry =  25 * 60 * 1000; // 25 minutes in milliseconds
 const REMEMBER_ME_REFRESH_INTERVAL = 20 * 60 * 1000; // 20 minutes for remember me sessions
@@ -73,6 +81,7 @@ async function checkAndRefreshToken() {
 // Function to set remember me status
 function setRememberMeStatus(rememberMe) {
     isRememberMeChecked = rememberMe;
+    localStorage.setItem('isRememberMeChecked', rememberMe.toString());
     console.log('Remember Me status set to:', rememberMe);
 
     // If remember me is checked, start the interval-based refresh
@@ -101,6 +110,10 @@ function startRememberMeRefreshInterval() {
     window.rememberMeInterval = setInterval(async () => {
         console.log('Executing interval-based token refresh for remember me session');
         await checkAndRefreshToken();
+        // Update last activity when refresh happens
+        const now = Date.now();
+        lastActivity = now;
+        localStorage.setItem('lastActivity', now.toString());
     }, REMEMBER_ME_REFRESH_INTERVAL);
 
     console.log('Started interval-based token refresh for remember me sessions');
@@ -114,6 +127,7 @@ async function handleUserActivity() {
         // Activity-based refresh is not needed for remember me sessions
         // The interval-based refresh will handle token refresh
         lastActivity = now;
+        localStorage.setItem('lastActivity', now.toString());
         return;
     }
 
@@ -126,6 +140,7 @@ async function handleUserActivity() {
             if(refreshretVal)
             {
                 lastActivity = now;
+                localStorage.setItem('lastActivity', now.toString());
             }
         } catch (error) {
             console.error('Error during token refresh in handleUserActivity:', error);
@@ -248,6 +263,10 @@ async function logoutAndRedirect(logoutReason = 'inactive') {
 
     // Close the WebSocket connection before logging out
     closeWebSocket();
+
+    // Clear the local storage values
+    localStorage.removeItem('lastActivity');
+    localStorage.removeItem('isRememberMeChecked');
 
     try {
         // Call the server-side logout endpoint to properly log out the user
