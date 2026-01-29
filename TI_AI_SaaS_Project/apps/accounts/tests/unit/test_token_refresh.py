@@ -46,7 +46,9 @@ class TestTokenRefreshFunctionality(TestCase):
     
     def setUp(self):
         """
-        Set up test user
+        Create a test user and assign it to self.user for use by tests.
+        
+        The user is created with username 'testuser', email 'test@example.com', and password 'testpass123'.
         """
         self.user = CustomUser.objects.create_user(
             username='testuser',

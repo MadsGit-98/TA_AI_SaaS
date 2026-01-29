@@ -113,7 +113,11 @@ class TestCeleryTasksIntegration(TestCase):
 
     @patch('apps.accounts.tasks.get_redis_client')
     def test_get_tokens_by_reference_success(self, mock_get_redis_client):
-        """Test the get_tokens_by_reference function with valid tokens."""
+        """
+        Verify that get_tokens_by_reference retrieves stored token data for a user and removes the temporary Redis entry.
+        
+        Asserts the returned payload contains `user_id`, `access_token`, `refresh_token`, and `expires_at`, and that Redis `get` and `delete` were called for the expected "temp_tokens:<user_id>" key.
+        """
         # Setup mock Redis client to return token data
         mock_redis = MagicMock()
         mock_get_redis_client.return_value = mock_redis
