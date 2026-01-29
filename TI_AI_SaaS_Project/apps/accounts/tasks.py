@@ -10,14 +10,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import CustomUser
 from .session_utils import get_last_user_activity, create_remember_me_session, has_active_remember_me_session
 from .consumers import TokenNotificationConsumer
+from .redis_utils import get_redis_client, RedisConnectionError
 import logging
-import redis
 import json
 
 logger = logging.getLogger(__name__)
-
-# Connect to Redis for storing token expiration information
-redis_client = redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
 
 
 @app.task
@@ -29,6 +26,13 @@ def monitor_and_refresh_tokens():
     """
 
     logger.info("Starting token monitoring task")
+
+    # Get Redis client and check if it's available
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed in monitor_and_refresh_tokens: {str(e)}")
+        raise  # Re-raise the exception to indicate failure
 
     try:
         # Get the time thresholds
@@ -158,6 +162,13 @@ def refresh_user_token(user_id, remember_me=False):
     """
     logger.info(f"Refreshing token for user ID: {user_id}, remember_me: {remember_me}")
 
+    # Get Redis client and check if it's available
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed in refresh_user_token: {str(e)}")
+        raise  # Re-raise the exception to indicate failure
+
     try:
         # Get the user - convert user_id to appropriate type if needed
         user = CustomUser.objects.get(id=user_id, is_active=True)
@@ -225,6 +236,13 @@ def get_tokens_by_reference(user_id):
     This provides a secure way to access the tokens that were generated in the background.
     """
     logger.info(f"Retrieving tokens for user ID: {user_id}")
+
+    # Get Redis client and check if it's available
+    try:
+        redis_client = get_redis_client()
+    except RedisConnectionError as e:
+        logger.error(f"Redis connection failed in get_tokens_by_reference: {str(e)}")
+        raise  # Re-raise the exception to indicate failure
 
     try:
         # Retrieve the token data from Redis using user ID as key
