@@ -14,19 +14,19 @@ logger = logging.getLogger(__name__)
 
 class DummyRedisClient:
     """A dummy Redis client that provides no-op implementations for Redis operations"""
-    def setex(self, key, time, value):
+    def setex(self, _key, _time, _value):
         # No-op
         pass
 
-    def get(self, key):
+    def get(self, _key):
         # Always return None
         return None
 
-    def delete(self, key):
+    def delete(self, _key):
         # Always return 0 (indicating no keys were deleted)
         return 0
 
-    def exists(self, *keys):
+    def exists(self, *_keys):
         # Always return 0 (indicating no keys exist)
         return 0
 
