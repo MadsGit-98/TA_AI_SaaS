@@ -49,11 +49,15 @@ def cleanup_expired_jobs():
         status='Active'
     )
 
-    logger.info(f"Found {expired_jobs.count()} jobs that may need cleanup.")
+    # Materialize the queryset once to avoid multiple DB queries
+    expired_jobs_list = list(expired_jobs)
+    expired_count = len(expired_jobs_list)
+
+    logger.info(f"Found {expired_count} jobs that may need cleanup.")
 
     # Additional cleanup logic can be added here if needed
     # For now, we just log the jobs that have expired
-    for job in expired_jobs:
+    for job in expired_jobs_list:
         logger.info(f"Job {job.id} ({job.title}) has expired and may need cleanup.")
 
-    return {'expired_jobs_count': expired_jobs.count()}
+    return {'expired_jobs_count': expired_count}

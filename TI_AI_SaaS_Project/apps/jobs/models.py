@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxLengthValidator
 from django.utils import timezone
 
@@ -26,7 +27,7 @@ class JobListing(models.Model):
     job_level = models.CharField(max_length=10, choices=JOB_LEVEL_CHOICES)
     start_date = models.DateTimeField()
     expiration_date = models.DateTimeField()
-    modification_date = models.DateTimeField(auto_now=True)  # Updated when edited
+    modification_date = models.DateTimeField(null=True, blank=True)  # Updated when edited
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Inactive')
     application_link = models.UUIDField(default=uuid.uuid4, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -37,6 +38,8 @@ class JobListing(models.Model):
         # Ensure modification date equals start date when first created
         if not self.pk:  # If this is a new object
             self.modification_date = self.start_date
+        else:  # On update, set modification date to current time
+            self.modification_date = timezone.now()
         # Call full_clean to enforce field constraints like max_length
         self.full_clean()
         super().save(*args, **kwargs)
@@ -44,7 +47,7 @@ class JobListing(models.Model):
     def clean(self):
         # Validate that expiration date is after start date
         if self.start_date and self.expiration_date and self.expiration_date <= self.start_date:
-            raise ValueError("Expiration date must be after start date.")
+            raise ValidationError("Expiration date must be after start date.")
 
     def __str__(self):
         return self.title
@@ -89,9 +92,9 @@ class ScreeningQuestion(models.Model):
     def clean(self):
         # Validate that choices are provided when question type requires them
         if self.question_type in ['CHOICE', 'MULTIPLE_CHOICE'] and not self.choices:
-            raise ValueError("Choices are required for choice-based questions.")
+            raise ValidationError("Choices are required for choice-based questions.")
         if self.question_type not in ['CHOICE', 'MULTIPLE_CHOICE'] and self.choices:
-            raise ValueError("Choices should only be provided for choice-based questions.")
+            raise ValidationError("Choices should only be provided for choice-based questions.")
 
     def save(self, *args, **kwargs):
         # Call clean method to validate before saving

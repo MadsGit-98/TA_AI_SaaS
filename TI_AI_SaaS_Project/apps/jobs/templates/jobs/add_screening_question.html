@@ -18,11 +18,12 @@
         
         <form id="screeningQuestionForm" class="space-y-6">
             {% csrf_token %}
+            <input type="hidden" id="job_id" name="job_id" value="" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="md:col-span-2">
                     <label for="question_text" class="block text-sm font-medium text-gray-700 mb-1">Question Text *</label>
-                    <textarea 
-                        id="question_text" 
+                    <textarea
+                        id="question_text"
                         name="question_text"
                         required
                         rows="3"
@@ -128,19 +129,40 @@
                     questions.forEach(question => {
                         const questionDiv = document.createElement('div');
                         questionDiv.className = 'border border-gray-200 rounded-lg p-4 bg-white';
-                        questionDiv.innerHTML = `
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <h3 class="font-medium">${question.question_text}</h3>
-                                    <p class="text-sm text-gray-500">Type: ${question.question_type} | Category: ${question.category}</p>
-                                </div>
-                                <button 
-                                    onclick="useSuggestedQuestion('${question.question_text}', '${question.question_type}')" 
-                                    class="px-3 py-1 bg-[#080707] text-[#FFFFFF] text-sm rounded hover:bg-black">
-                                    Use Question
-                                </button>
-                            </div>
-                        `;
+
+                        // Create the content container
+                        const contentWrapper = document.createElement('div');
+                        contentWrapper.className = 'flex justify-between items-start';
+
+                        // Create the left side content
+                        const leftSide = document.createElement('div');
+
+                        const questionTitle = document.createElement('h3');
+                        questionTitle.className = 'font-medium';
+                        questionTitle.textContent = question.question_text;
+
+                        const questionInfo = document.createElement('p');
+                        questionInfo.className = 'text-sm text-gray-500';
+                        questionInfo.textContent = `Type: ${question.question_type} | Category: ${question.category}`;
+
+                        leftSide.appendChild(questionTitle);
+                        leftSide.appendChild(questionInfo);
+
+                        // Create the right side button
+                        const useButton = document.createElement('button');
+                        useButton.className = 'px-3 py-1 bg-[#080707] text-[#FFFFFF] text-sm rounded hover:bg-black';
+                        useButton.textContent = 'Use Question';
+
+                        // Attach click handler safely instead of using onclick attribute
+                        useButton.addEventListener('click', () => {
+                            useSuggestedQuestion(question.question_text, question.question_type);
+                        });
+
+                        // Assemble the content
+                        contentWrapper.appendChild(leftSide);
+                        contentWrapper.appendChild(useButton);
+                        questionDiv.appendChild(contentWrapper);
+
                         container.appendChild(questionDiv);
                     });
                 } else {
@@ -184,10 +206,18 @@
                 }
             }
             
-            // Get job ID from URL or a hidden field
-            // For this example, we'll use a placeholder job ID
-            // In a real implementation, this would come from the URL or a hidden field
-            const jobId = localStorage.getItem('currentJobId') || 'PLACEHOLDER_JOB_ID';
+            // Get job ID from URL parameters or hidden form field
+            const urlParams = new URLSearchParams(window.location.search);
+            const jobIdFromUrl = urlParams.get('job_id');
+            const jobIdFromHiddenField = document.getElementById('job_id').value;
+
+            const jobId = jobIdFromUrl || jobIdFromHiddenField;
+
+            if (!jobId) {
+                console.error('Error: No job ID found. Cannot submit screening question.');
+                alert('Error: Job ID is missing. Please go back and try again.');
+                return;
+            }
             
             try {
                 const response = await fetch(`/api/jobs/jobs/${jobId}/screening-questions/`, {
@@ -208,8 +238,16 @@
                     // Hide choices section if it was visible
                     document.getElementById('choicesSection').classList.add('hidden');
                 } else {
-                    const errorData = await response.json();
-                    alert(`Error adding screening question: ${JSON.stringify(errorData)}`);
+                    let errorData;
+                    try {
+                        errorData = await response.json();
+                    } catch (e) {
+                        // If response is not JSON, try to get text
+                        errorData = await response.text();
+                    }
+
+                    console.error('Error adding screening question:', errorData);
+                    alert('Failed to add screening question. Please try again.');
                 }
             } catch (error) {
                 console.error('Error:', error);
