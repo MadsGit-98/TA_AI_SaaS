@@ -4,75 +4,300 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | X-Crewter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        header {
-            background-color: #fff;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            padding: 15px 0;
-        }
-        .dashboard-content {
-            margin-top: 30px;
-            background: white;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .nav-links {
-            margin-top: 20px;
-        }
-        .nav-links a {
-            display: inline-block;
-            margin-right: 15px;
-            padding: 8px 16px;
-            background-color: #007cba;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-        }
-        .nav-links a:hover {
-            background-color: #005a87;
-        }
-    </style>
-    <!-- Axios library for HTTP requests -->
-    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
-    <!-- Authentication interceptor with user activity tracking -->
-    <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    <title>Job Listings Dashboard - X-Crewter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
-<body>
-    <header>
-        <div class="container">
-            <h2>Job Dashboard</h2>
+<body class="bg-[#FFFFFF] text-[#000000]">
+    <!-- AI Disclaimer -->
+    {% include 'components/ai_disclaimer.html' %}
+
+    <!-- Main Content -->
+    <div class="container mx-auto px-4 py-8 mt-10">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Job Listings Dashboard</h1>
+            <a href="/dashboard/jobs/create/" class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black">
+                Create New Job
+            </a>
         </div>
-    </header>
 
-    <div class="container">
-        <div class="dashboard-content">
-            <h1>Welcome to Your Job Dashboard</h1>
-            <p>This is the placeholder page for the job dashboard. Subscribed users are redirected here after logging in.</p>
-            <p>Here you will be able to manage and view all your job listings and applications.</p>
-
-            <div class="nav-links">
-                <a href="/jobs/">View Jobs</a>
-                <a href="/applications/">View Applications</a>
-                <a href="/settings/">Settings</a>
+        <!-- Filters -->
+        <div class="mb-6 p-4 bg-[#E0E0E0] rounded-lg">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label for="statusFilter" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Statuses</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="dateRangeFilter" class="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+                    <select id="dateRangeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="jobLevelFilter" class="block text-sm font-medium text-gray-700 mb-1">Job Level</label>
+                    <select id="jobLevelFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Levels</option>
+                        <option value="Intern">Intern</option>
+                        <option value="Entry">Entry</option>
+                        <option value="Junior">Junior</option>
+                        <option value="Senior">Senior</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="searchFilter" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                    <input
+                        type="text"
+                        id="searchFilter"
+                        placeholder="Search titles..."
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                </div>
             </div>
         </div>
+
+        <!-- Job Listings Container -->
+        <div id="jobListingsContainer" class="space-y-4">
+            <!-- Job listings will be loaded here -->
+        </div>
+
+        <!-- Pagination -->
+        <div id="paginationContainer" class="mt-6 flex justify-center">
+            <!-- Pagination controls will be loaded here -->
+        </div>
     </div>
+
+    <!-- Legal Footer -->
+    {% include 'components/legal_footer.html' %}
+
+    <script>
+        // Load job listings
+        async function loadJobListings(page = 1) {
+            try {
+                // Get filter values
+                const statusFilter = document.getElementById('statusFilter').value;
+                const searchFilter = document.getElementById('searchFilter').value;
+
+                // Build query string
+                let queryString = `?page=${page}`;
+                if (statusFilter) queryString += `&status=${statusFilter}`;
+                if (searchFilter) queryString += `&search=${encodeURIComponent(searchFilter)}`;
+
+                const response = await fetch(`/api/jobs/jobs/${queryString}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const container = document.getElementById('jobListingsContainer');
+
+                    if (data.results.length === 0) {
+                        container.innerHTML = '<p class="text-center text-gray-500">No job listings found.</p>';
+                        document.getElementById('paginationContainer').innerHTML = '';
+                        return;
+                    }
+
+                    container.innerHTML = '';
+                    data.results.forEach(job => {
+                        const jobElement = document.createElement('div');
+                        jobElement.className = 'border border-gray-200 rounded-lg p-4 bg-white';
+
+                        // Format dates
+                        const startDate = new Date(job.start_date).toLocaleDateString();
+                        const expirationDate = new Date(job.expiration_date).toLocaleDateString();
+
+                        jobElement.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h2 class="text-xl font-semibold">${job.title}</h2>
+                                    <p class="text-gray-600">${job.description.substring(0, 100)}${job.description.length > 100 ? '...' : ''}</p>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                                            ${job.job_level}
+                                        </span>
+                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                                            ${job.required_experience} yrs exp
+                                        </span>
+                                        <span class="inline-block ${job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'} rounded-full px-3 py-1 text-sm font-semibold">
+                                            ${job.status}
+                                        </span>
+                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                                            Starts: ${startDate}
+                                        </span>
+                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                                            Expires: ${expirationDate}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col space-y-2">
+                                    <button onclick="editJob('${job.id}')" class="text-blue-600 hover:text-blue-800 text-sm">Edit</button>
+                                    <button onclick="copyApplicationLink('${job.application_link}')" class="text-blue-600 hover:text-blue-800 text-sm">Copy Link</button>
+                                    ${job.status === 'Active'
+                                        ? `<button onclick="deactivateJob('${job.id}')" class="text-red-600 hover:text-red-800 text-sm">Deactivate</button>`
+                                        : `<button onclick="activateJob('${job.id}')" class="text-green-600 hover:text-green-800 text-sm">Activate</button>`
+                                    }
+                                    <button onclick="duplicateJob('${job.id}')" class="text-purple-600 hover:text-purple-800 text-sm">Duplicate</button>
+                                </div>
+                            </div>
+                        `;
+                        container.appendChild(jobElement);
+                    });
+
+                    // Handle pagination
+                    renderPagination(data);
+                } else {
+                    console.error('Failed to load job listings');
+                }
+            } catch (error) {
+                console.error('Error loading job listings:', error);
+            }
+        }
+
+        // Render pagination controls
+        function renderPagination(data) {
+            const container = document.getElementById('paginationContainer');
+            container.innerHTML = '';
+
+            if (!data.next && !data.previous) return; // No pagination needed
+
+            const paginationDiv = document.createElement('div');
+            paginationDiv.className = 'flex items-center space-x-2';
+
+            // Previous button
+            if (data.previous) {
+                const prevButton = document.createElement('button');
+                prevButton.textContent = 'Previous';
+                prevButton.className = 'px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50';
+                prevButton.onclick = () => loadJobListings(getPageNumberFromUrl(data.previous));
+                paginationDiv.appendChild(prevButton);
+            }
+
+            // Next button
+            if (data.next) {
+                const nextButton = document.createElement('button');
+                nextButton.textContent = 'Next';
+                nextButton.className = 'px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 ml-2';
+                nextButton.onclick = () => loadJobListings(getPageNumberFromUrl(data.next));
+                paginationDiv.appendChild(nextButton);
+            }
+
+            container.appendChild(paginationDiv);
+        }
+
+        // Helper to extract page number from URL
+        function getPageNumberFromUrl(url) {
+            const urlParams = new URLSearchParams(url.split('?')[1]);
+            return urlParams.get('page') || 1;
+        }
+
+        // Job management functions
+        function editJob(jobId) {
+            window.location.href = `/dashboard/jobs/${jobId}/edit/`;
+        }
+
+        async function activateJob(jobId) {
+            if (!confirm('Are you sure you want to activate this job?')) return;
+
+            try {
+                const response = await fetch(`/api/jobs/jobs/${jobId}/activate/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    alert('Job activated successfully!');
+                    loadJobListings(); // Refresh the list
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error activating job: ${JSON.stringify(errorData)}`);
+                }
+            } catch (error) {
+                console.error('Error activating job:', error);
+                alert('An error occurred while activating the job.');
+            }
+        }
+
+        async function deactivateJob(jobId) {
+            if (!confirm('Are you sure you want to deactivate this job?')) return;
+
+            try {
+                const response = await fetch(`/api/jobs/jobs/${jobId}/deactivate/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    alert('Job deactivated successfully!');
+                    loadJobListings(); // Refresh the list
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error deactivating job: ${JSON.stringify(errorData)}`);
+                }
+            } catch (error) {
+                console.error('Error deactivating job:', error);
+                alert('An error occurred while deactivating the job.');
+            }
+        }
+
+        async function duplicateJob(jobId) {
+            if (!confirm('Are you sure you want to duplicate this job?')) return;
+
+            try {
+                const response = await fetch(`/api/jobs/jobs/${jobId}/duplicate/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert('Job duplicated successfully!');
+                    window.location.href = `/dashboard/jobs/${result.id}/edit/`; // Redirect to edit the new job
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error duplicating job: ${JSON.stringify(errorData)}`);
+                }
+            } catch (error) {
+                console.error('Error duplicating job:', error);
+                alert('An error occurred while duplicating the job.');
+            }
+        }
+
+        function copyApplicationLink(link) {
+            const fullLink = `${window.location.origin}/apply/${link}`;
+            navigator.clipboard.writeText(fullLink)
+                .then(() => {
+                    alert('Application link copied to clipboard!');
+                })
+                .catch(err => {
+                    console.error('Failed to copy link: ', err);
+                    alert('Failed to copy link to clipboard.');
+                });
+        }
+
+        // Set up filter event listeners
+        document.getElementById('statusFilter').addEventListener('change', () => loadJobListings());
+        document.getElementById('searchFilter').addEventListener('input', () => {
+            // Debounce the search
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => loadJobListings(), 500);
+        });
+
+        // Load job listings when page loads
+        document.addEventListener('DOMContentLoaded', () => loadJobListings());
+    </script>
 </body>
 </html>
