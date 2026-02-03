@@ -27,12 +27,21 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
         expiration_date: formData.get('expiration_date')
     };
 
+    // Validate access token before making the request
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        console.error('Access token not found. Redirecting to login.');
+        alert('Session expired. Please log in again.');
+        window.location.href = '/login/'; // Redirect to login page
+        return;
+    }
+
     try {
         const response = await fetch('/api/jobs/jobs/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,  // Assuming JWT token is stored
+                'Authorization': `Bearer ${token}`,  // Using validated token
                 'X-CSRFToken': formData.get('csrfmiddlewaretoken')
             },
             body: JSON.stringify(jobData)
@@ -73,13 +82,18 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
 });
 
 // Show/hide choices section based on question type
-document.getElementById('question_type').addEventListener('change', function() {
+const questionTypeElement = document.getElementById('question_type');
+if (questionTypeElement) {
+  questionTypeElement.addEventListener('change', function() {
     const choicesSection = document.getElementById('choicesSection');
     const selectedType = this.value;
 
-    if (selectedType === 'CHOICE' || selectedType === 'MULTIPLE_CHOICE') {
-        choicesSection.classList.remove('hidden');
-    } else {
-        choicesSection.classList.add('hidden');
+    if (choicesSection) {
+      if (selectedType === 'CHOICE' || selectedType === 'MULTIPLE_CHOICE') {
+          choicesSection.classList.remove('hidden');
+      } else {
+          choicesSection.classList.add('hidden');
+      }
     }
-});
+  });
+}

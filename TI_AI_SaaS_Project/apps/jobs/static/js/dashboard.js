@@ -1,8 +1,9 @@
+
 // Helper function to escape HTML
 function escapeHtml(text) {
-    if (typeof text !== 'string') {
-        return String(text);
-    }
+    // Coerce input to string, handling null/undefined safely
+    text = String(text == null ? '' : text);
+
     const map = {
         '&': '&amp;',
         '<': '&lt;',
@@ -24,9 +25,9 @@ async function loadJobListings(page = 1) {
 
         // Build query string
         let queryString = `?page=${page}`;
-        if (statusFilter) queryString += `&status=${statusFilter}`;
-        if (dateRangeFilter) queryString += `&date_range=${dateRangeFilter}`;
-        if (jobLevelFilter) queryString += `&job_level=${jobLevelFilter}`;
+        if (statusFilter) queryString += `&status=${encodeURIComponent(statusFilter)}`;
+        if (dateRangeFilter) queryString += `&date_range=${encodeURIComponent(dateRangeFilter)}`;
+        if (jobLevelFilter) queryString += `&job_level=${encodeURIComponent(jobLevelFilter)}`;
         if (searchFilter) queryString += `&search=${encodeURIComponent(searchFilter)}`;
 
         const response = await fetch(`/api/jobs/jobs/${queryString}`, {
@@ -68,9 +69,10 @@ async function loadJobListings(page = 1) {
 
                 const descElement = document.createElement('p');
                 descElement.className = 'text-gray-600';
-                const descText = job.description.length > 100 ?
-                    escapeHtml(job.description.substring(0, 100)) + '...' :
-                    escapeHtml(job.description);
+                const desc = job.description || '';
+                const descText = desc.length > 100 ?
+                    escapeHtml(desc.substring(0, 100)) + '...' :
+                    escapeHtml(desc);
                 descElement.textContent = descText;
                 leftSide.appendChild(descElement);
 
@@ -204,8 +206,39 @@ function renderPagination(data) {
 
 // Helper to extract page number from URL
 function getPageNumberFromUrl(url) {
-    const urlParams = new URLSearchParams(url.split('?')[1]);
-    return urlParams.get('page') || 1;
+    // Check if URL is a non-empty string
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+        return 1;
+    }
+
+    // Extract query string part after '?'
+    const urlParts = url.split('?');
+    if (urlParts.length < 2) {
+        return 1;
+    }
+
+    const urlParams = new URLSearchParams(urlParts[1]);
+    const pageParam = urlParams.get('page');
+
+    // Parse the page parameter to number, fallback to 1 if parsing fails
+    const pageNumber = parseInt(pageParam, 10);
+    return isNaN(pageNumber) ? 1 : pageNumber;
+}
+
+// Helper function to get cookie value
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
 }
 
 // Job management functions
@@ -220,7 +253,8 @@ async function activateJob(jobId) {
         const response = await fetch(`/api/jobs/jobs/${jobId}/activate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'X-CSRFToken': getCookie('csrftoken')
             }
         });
 
@@ -244,7 +278,8 @@ async function deactivateJob(jobId) {
         const response = await fetch(`/api/jobs/jobs/${jobId}/deactivate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'X-CSRFToken': getCookie('csrftoken')
             }
         });
 
@@ -268,7 +303,8 @@ async function duplicateJob(jobId) {
         const response = await fetch(`/api/jobs/jobs/${jobId}/duplicate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'X-CSRFToken': getCookie('csrftoken')
             }
         });
 
@@ -298,15 +334,17 @@ function copyApplicationLink(link) {
         });
 }
 
-// Set up filter event listeners
-document.getElementById('statusFilter').addEventListener('change', () => loadJobListings());
-document.getElementById('dateRangeFilter').addEventListener('change', () => loadJobListings());
-document.getElementById('jobLevelFilter').addEventListener('change', () => loadJobListings());
-document.getElementById('searchFilter').addEventListener('input', () => {
-    // Debounce the search
-    clearTimeout(window.searchTimeout);
-    window.searchTimeout = setTimeout(() => loadJobListings(), 500);
-});
+// Set up filter event listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('statusFilter').addEventListener('change', () => loadJobListings());
+    document.getElementById('dateRangeFilter').addEventListener('change', () => loadJobListings());
+    document.getElementById('jobLevelFilter').addEventListener('change', () => loadJobListings());
+    document.getElementById('searchFilter').addEventListener('input', () => {
+        // Debounce the search
+        clearTimeout(window.searchTimeout);
+        window.searchTimeout = setTimeout(() => loadJobListings(), 500);
+    });
 
-// Load job listings when page loads
-document.addEventListener('DOMContentLoaded', () => loadJobListings());
+    // Load job listings when page loads
+    loadJobListings();
+});

@@ -15,7 +15,14 @@ function getCookie(name) {
 }
 
 // Get job ID from URL
-const jobId = window.location.pathname.split('/').pop();
+const pathSegments = window.location.pathname.split('/').filter(segment => segment !== '');
+const jobsIndex = pathSegments.indexOf('jobs');
+const jobId = jobsIndex !== -1 && pathSegments[jobsIndex + 1] ? pathSegments[jobsIndex + 1] : null;
+
+// Guard against missing jobId
+if (!jobId) {
+    console.error('Job ID not found in URL');
+}
 
 // Load job data
 async function loadJobData() {
@@ -30,14 +37,23 @@ async function loadJobData() {
             const job = await response.json();
 
             // Populate form fields
-            document.getElementById('title').value = job.title;
-            document.getElementById('description').value = job.description;
-            document.getElementById('required_skills').value = job.required_skills.join(', ');
-            document.getElementById('required_experience').value = job.required_experience;
-            document.getElementById('job_level').value = job.job_level;
-            document.getElementById('start_date').value = new Date(job.start_date).toISOString().slice(0, 16);
-            document.getElementById('expiration_date').value = new Date(job.expiration_date).toISOString().slice(0, 16);
-            document.getElementById('status').value = job.status;
+            const setFieldValue = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.value = value ?? '';
+            };
+            const formatDate = (dateStr) => {
+                const d = new Date(dateStr);
+                return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
+            };
+
+            setFieldValue('title', job.title);
+            setFieldValue('description', job.description);
+            setFieldValue('required_skills', Array.isArray(job.required_skills) ? job.required_skills.join(', ') : '');
+            setFieldValue('required_experience', job.required_experience);
+            setFieldValue('job_level', job.job_level);
+            setFieldValue('start_date', formatDate(job.start_date));
+            setFieldValue('expiration_date', formatDate(job.expiration_date));
+            setFieldValue('status', job.status);
         } else {
             alert('Failed to load job data');
         }
@@ -48,45 +64,52 @@ async function loadJobData() {
 }
 
 // Update job listing
-document.getElementById('jobEditForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
+const jobEditForm = document.getElementById('jobEditForm');
+if (jobEditForm) {
+    jobEditForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
 
-    const formData = new FormData(e.target);
-    const jobData = {
-        title: formData.get('title'),
-        description: formData.get('description'),
-        required_skills: formData.get('required_skills').split(',').map(skill => skill.trim()).filter(skill => skill !== ''),
-        required_experience: parseInt(formData.get('required_experience'), 10) || 0,
-        job_level: formData.get('job_level'),
-        start_date: formData.get('start_date'),
-        expiration_date: formData.get('expiration_date'),
-        status: formData.get('status')
-    };
+        const formData = new FormData(e.target);
+        const jobData = {
+            title: formData.get('title'),
+            description: formData.get('description'),
+            required_skills: formData.get('required_skills').split(',').map(skill => skill.trim()).filter(skill => skill !== ''),
+            required_experience: parseInt(formData.get('required_experience'), 10) || 0,
+            job_level: formData.get('job_level'),
+            start_date: formData.get('start_date'),
+            expiration_date: formData.get('expiration_date'),
+            status: formData.get('status')
+        };
 
-    try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
-            },
-            body: JSON.stringify(jobData)
-        });
+        try {
+            const response = await fetch(`/api/jobs/jobs/${jobId}/`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                },
+                body: JSON.stringify(jobData)
+            });
 
-        if (response.ok) {
-            const result = await response.json();
-            alert('Job listing updated successfully!');
-            window.location.href = `/dashboard/jobs/${result.id}/`;
-        } else {
-            const errorData = await response.json();
-            alert(`Error updating job listing: ${JSON.stringify(errorData)}`);
+            if (response.ok) {
+                const result = await response.json();
+                alert('Job listing updated successfully!');
+                window.location.href = `/dashboard/jobs/${result.id}/`;
+            } else {
+                let errorMessage = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = JSON.stringify(errorData);
+                } catch { /* Response not JSON */ }
+                alert(`Error updating job listing: ${errorMessage}`);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while updating the job listing.');
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while updating the job listing.');
-    }
-});
+    });
+}
 
 // Activate job
 document.getElementById('activateButton').addEventListener('click', async function() {
@@ -176,7 +199,7 @@ document.getElementById('deleteButton').addEventListener('click', async function
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                'X-CSRFToken': getCookie('csrftoken')
             }
         });
 

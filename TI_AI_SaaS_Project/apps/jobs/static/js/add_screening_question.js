@@ -112,10 +112,11 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
     // Get job ID from URL parameters or hidden form field
     const urlParams = new URLSearchParams(window.location.search);
     const jobIdFromUrl = urlParams.get('job_id');
-    const jobIdFromHiddenField = document.getElementById('job_id').value;
-    
+    const jobIdEl = document.getElementById('job_id');
+    const jobIdFromHiddenField = jobIdEl ? jobIdEl.value : '';
+
     const jobId = jobIdFromUrl || jobIdFromHiddenField;
-    
+
     if (!jobId) {
         console.error('Error: No job ID found. Cannot submit screening question.');
         alert('Error: Job ID is missing. Please go back and try again.');
@@ -141,14 +142,15 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
             // Hide choices section if it was visible
             document.getElementById('choicesSection').classList.add('hidden');
         } else {
+            const rawBody = await response.text();
             let errorData;
             try {
-                errorData = await response.json();
+                errorData = JSON.parse(rawBody);
             } catch (e) {
-                // If response is not JSON, try to get text
-                errorData = await response.text();
+                // If response is not JSON, use the raw text
+                errorData = rawBody;
             }
-            
+
             console.error('Error adding screening question:', errorData);
             alert('Failed to add screening question. Please try again.');
         }
