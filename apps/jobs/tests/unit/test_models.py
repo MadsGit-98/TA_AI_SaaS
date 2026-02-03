@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.core.exceptions import ValidationError
 from apps.accounts.models import CustomUser
 from apps.jobs.models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from datetime import datetime, timedelta
@@ -29,7 +30,7 @@ class JobListingModelTest(TestCase):
     
     def test_expiration_date_must_be_after_start_date(self):
         """Test that validation prevents expiration date before start date"""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             JobListing.objects.create(
                 title="Test Job",
                 description="Test Description",
@@ -101,7 +102,7 @@ class ScreeningQuestionModelTest(TestCase):
     
     def test_choice_question_requires_choices(self):
         """Test that choice questions require choices field"""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             ScreeningQuestion.objects.create(
                 job_listing=self.job,
                 question_text="Choose your preferred shift",
@@ -110,7 +111,7 @@ class ScreeningQuestionModelTest(TestCase):
     
     def test_non_choice_question_should_not_have_choices(self):
         """Test that non-choice questions shouldn't have choices"""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             ScreeningQuestion.objects.create(
                 job_listing=self.job,
                 question_text="Tell us about yourself",

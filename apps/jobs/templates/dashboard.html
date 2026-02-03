@@ -77,16 +77,35 @@
     {% include 'components/legal_footer.html' %}
 
     <script>
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            if (typeof text !== 'string') {
+                return String(text);
+            }
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
         // Load job listings
         async function loadJobListings(page = 1) {
             try {
                 // Get filter values
                 const statusFilter = document.getElementById('statusFilter').value;
+                const dateRangeFilter = document.getElementById('dateRangeFilter').value;
+                const jobLevelFilter = document.getElementById('jobLevelFilter').value;
                 const searchFilter = document.getElementById('searchFilter').value;
 
                 // Build query string
                 let queryString = `?page=${page}`;
                 if (statusFilter) queryString += `&status=${statusFilter}`;
+                if (dateRangeFilter) queryString += `&date_range=${dateRangeFilter}`;
+                if (jobLevelFilter) queryString += `&job_level=${jobLevelFilter}`;
                 if (searchFilter) queryString += `&search=${encodeURIComponent(searchFilter)}`;
 
                 const response = await fetch(`/api/jobs/jobs/${queryString}`, {
@@ -111,43 +130,111 @@
                         jobElement.className = 'border border-gray-200 rounded-lg p-4 bg-white';
 
                         // Format dates
-                        const startDate = new Date(job.start_date).toLocaleDateString();
-                        const expirationDate = new Date(job.expiration_date).toLocaleDateString();
+                        const startDate = job.start_date ? new Date(job.start_date).toLocaleDateString() : 'Not set';
+                        const expirationDate = job.expiration_date ? new Date(job.expiration_date).toLocaleDateString() : 'Not set';
 
-                        jobElement.innerHTML = `
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <h2 class="text-xl font-semibold">${job.title}</h2>
-                                    <p class="text-gray-600">${job.description.substring(0, 100)}${job.description.length > 100 ? '...' : ''}</p>
-                                    <div class="mt-2 flex flex-wrap gap-2">
-                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
-                                            ${job.job_level}
-                                        </span>
-                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
-                                            ${job.required_experience} yrs exp
-                                        </span>
-                                        <span class="inline-block ${job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'} rounded-full px-3 py-1 text-sm font-semibold">
-                                            ${job.status}
-                                        </span>
-                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
-                                            Starts: ${startDate}
-                                        </span>
-                                        <span class="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
-                                            Expires: ${expirationDate}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="flex flex-col space-y-2">
-                                    <button onclick="editJob('${job.id}')" class="text-blue-600 hover:text-blue-800 text-sm">Edit</button>
-                                    <button onclick="copyApplicationLink('${job.application_link}')" class="text-blue-600 hover:text-blue-800 text-sm">Copy Link</button>
-                                    ${job.status === 'Active'
-                                        ? `<button onclick="deactivateJob('${job.id}')" class="text-red-600 hover:text-red-800 text-sm">Deactivate</button>`
-                                        : `<button onclick="activateJob('${job.id}')" class="text-green-600 hover:text-green-800 text-sm">Activate</button>`
-                                    }
-                                    <button onclick="duplicateJob('${job.id}')" class="text-purple-600 hover:text-purple-800 text-sm">Duplicate</button>
-                                </div>
-                            </div>
-                        `;
+                        // Create the content using safe DOM manipulation
+                        const contentWrapper = document.createElement('div');
+                        contentWrapper.className = 'flex justify-between items-start';
+
+                        // Left side content
+                        const leftSide = document.createElement('div');
+
+                        const titleElement = document.createElement('h2');
+                        titleElement.className = 'text-xl font-semibold';
+                        titleElement.textContent = escapeHtml(job.title);
+                        leftSide.appendChild(titleElement);
+
+                        const descElement = document.createElement('p');
+                        descElement.className = 'text-gray-600';
+                        const descText = job.description.length > 100 ?
+                            escapeHtml(job.description.substring(0, 100)) + '...' :
+                            escapeHtml(job.description);
+                        descElement.textContent = descText;
+                        leftSide.appendChild(descElement);
+
+                        // Tags container
+                        const tagsContainer = document.createElement('div');
+                        tagsContainer.className = 'mt-2 flex flex-wrap gap-2';
+
+                        // Job level tag
+                        const levelTag = document.createElement('span');
+                        levelTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+                        levelTag.textContent = escapeHtml(job.job_level);
+                        tagsContainer.appendChild(levelTag);
+
+                        // Experience tag
+                        const expTag = document.createElement('span');
+                        expTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+                        expTag.textContent = escapeHtml(job.required_experience) + ' yrs exp';
+                        tagsContainer.appendChild(expTag);
+
+                        // Status tag
+                        const statusTag = document.createElement('span');
+                        const statusClass = job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
+                        statusTag.className = `inline-block ${statusClass} rounded-full px-3 py-1 text-sm font-semibold`;
+                        statusTag.textContent = escapeHtml(job.status);
+                        tagsContainer.appendChild(statusTag);
+
+                        // Start date tag
+                        const startTag = document.createElement('span');
+                        startTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+                        startTag.textContent = 'Starts: ' + escapeHtml(startDate);
+                        tagsContainer.appendChild(startTag);
+
+                        // Expiration date tag
+                        const expDateTag = document.createElement('span');
+                        expDateTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+                        expDateTag.textContent = 'Expires: ' + escapeHtml(expirationDate);
+                        tagsContainer.appendChild(expDateTag);
+
+                        leftSide.appendChild(tagsContainer);
+
+                        // Right side buttons
+                        const rightSide = document.createElement('div');
+                        rightSide.className = 'flex flex-col space-y-2';
+
+                        // Edit button
+                        const editButton = document.createElement('button');
+                        editButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
+                        editButton.textContent = 'Edit';
+                        editButton.addEventListener('click', () => editJob(job.id));
+                        rightSide.appendChild(editButton);
+
+                        // Copy link button
+                        const copyButton = document.createElement('button');
+                        copyButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
+                        copyButton.textContent = 'Copy Link';
+                        copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+                        rightSide.appendChild(copyButton);
+
+                        // Conditional status button
+                        let statusButton;
+                        if (job.status === 'Active') {
+                            statusButton = document.createElement('button');
+                            statusButton.className = 'text-red-600 hover:text-red-800 text-sm';
+                            statusButton.textContent = 'Deactivate';
+                            statusButton.addEventListener('click', () => deactivateJob(job.id));
+                        } else {
+                            statusButton = document.createElement('button');
+                            statusButton.className = 'text-green-600 hover:text-green-800 text-sm';
+                            statusButton.textContent = 'Activate';
+                            statusButton.addEventListener('click', () => activateJob(job.id));
+                        }
+                        rightSide.appendChild(statusButton);
+
+                        // Duplicate button
+                        const duplicateButton = document.createElement('button');
+                        duplicateButton.className = 'text-purple-600 hover:text-purple-800 text-sm';
+                        duplicateButton.textContent = 'Duplicate';
+                        duplicateButton.addEventListener('click', () => duplicateJob(job.id));
+                        rightSide.appendChild(duplicateButton);
+
+                        // Assemble the content
+                        contentWrapper.appendChild(leftSide);
+                        contentWrapper.appendChild(rightSide);
+                        jobElement.appendChild(contentWrapper);
+
                         container.appendChild(jobElement);
                     });
 
@@ -155,6 +242,8 @@
                     renderPagination(data);
                 } else {
                     console.error('Failed to load job listings');
+                    const container = document.getElementById('jobListingsContainer');
+                    container.innerHTML = '<p class="text-center text-red-500">Failed to load job listings. Please try again.</p>';
                 }
             } catch (error) {
                 console.error('Error loading job listings:', error);
@@ -290,6 +379,8 @@
 
         // Set up filter event listeners
         document.getElementById('statusFilter').addEventListener('change', () => loadJobListings());
+        document.getElementById('dateRangeFilter').addEventListener('change', () => loadJobListings());
+        document.getElementById('jobLevelFilter').addEventListener('change', () => loadJobListings());
         document.getElementById('searchFilter').addEventListener('input', () => {
             // Debounce the search
             clearTimeout(window.searchTimeout);
