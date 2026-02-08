@@ -54,7 +54,7 @@ def fallback_view(request, *args, **kwargs):
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
     # Updated to explicitly exclude activation paths, static/media files, and WebSocket URLs
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-).*$', fallback_view, name='fallback'),
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 

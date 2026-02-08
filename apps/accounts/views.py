@@ -1,6 +1,4 @@
 from django.shortcuts import render
-from django.http import HttpResponse
-from django.template.response import TemplateResponse
 from django.db import DatabaseError
 from django.db.utils import OperationalError
 from .models import HomePageContent, LegalPage, CardLogo, SiteSetting

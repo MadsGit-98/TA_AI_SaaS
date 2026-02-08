@@ -16,7 +16,7 @@
     <div class="container mx-auto px-4 py-8 mt-10">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-3xl font-bold">Job Listings Dashboard</h1>
-            <a href="/dashboard/jobs/create/" class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black">
+            <a href="/dashboard/create/" class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black">
                 Create New Job
             </a>
         </div>
@@ -75,7 +75,8 @@
 
     <!-- Legal Footer -->
     {% include 'components/legal_footer.html' %}
-
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>
     <script src="{% static 'js/dashboard.js' %}"></script>
 </body>
 </html>

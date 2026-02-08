@@ -14,6 +14,121 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
+// Helper function to create job element
+function createJobElement(job, container) {
+    const jobElement = document.createElement('div');
+    jobElement.className = 'border border-gray-200 rounded-lg p-4 bg-white';
+
+    // Format dates
+    const startDate = job.start_date ? new Date(job.start_date).toLocaleDateString() : 'Not set';
+    const expirationDate = job.expiration_date ? new Date(job.expiration_date).toLocaleDateString() : 'Not set';
+
+    // Create the content using safe DOM manipulation
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'flex justify-between items-start';
+
+    // Left side content
+    const leftSide = document.createElement('div');
+
+    const titleElement = document.createElement('h2');
+    titleElement.className = 'text-xl font-semibold';
+    titleElement.textContent = escapeHtml(job.title);
+    leftSide.appendChild(titleElement);
+
+    const descElement = document.createElement('p');
+    descElement.className = 'text-gray-600';
+    const desc = job.description || '';
+    const descText = desc.length > 100 ?
+        escapeHtml(desc.substring(0, 100)) + '...' :
+        escapeHtml(desc);
+    descElement.textContent = descText;
+    leftSide.appendChild(descElement);
+
+    // Tags container
+    const tagsContainer = document.createElement('div');
+    tagsContainer.className = 'mt-2 flex flex-wrap gap-2';
+
+    // Job level tag
+    const levelTag = document.createElement('span');
+    levelTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+    levelTag.textContent = escapeHtml(job.job_level);
+    tagsContainer.appendChild(levelTag);
+
+    // Experience tag
+    const expTag = document.createElement('span');
+    expTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+    expTag.textContent = escapeHtml(job.required_experience) + ' yrs exp';
+    tagsContainer.appendChild(expTag);
+
+    // Status tag
+    const statusTag = document.createElement('span');
+    const statusClass = job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
+    statusTag.className = `inline-block ${statusClass} rounded-full px-3 py-1 text-sm font-semibold`;
+    statusTag.textContent = escapeHtml(job.status);
+    tagsContainer.appendChild(statusTag);
+
+    // Start date tag
+    const startTag = document.createElement('span');
+    startTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+    startTag.textContent = 'Starts: ' + escapeHtml(startDate);
+    tagsContainer.appendChild(startTag);
+
+    // Expiration date tag
+    const expDateTag = document.createElement('span');
+    expDateTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
+    expDateTag.textContent = 'Expires: ' + escapeHtml(expirationDate);
+    tagsContainer.appendChild(expDateTag);
+
+    leftSide.appendChild(tagsContainer);
+
+    // Right side buttons
+    const rightSide = document.createElement('div');
+    rightSide.className = 'flex flex-col space-y-2';
+
+    // Edit button
+    const editButton = document.createElement('button');
+    editButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
+    editButton.textContent = 'Edit';
+    editButton.addEventListener('click', () => editJob(job.id));
+    rightSide.appendChild(editButton);
+
+    // Copy link button
+    const copyButton = document.createElement('button');
+    copyButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
+    copyButton.textContent = 'Copy Link';
+    copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+    rightSide.appendChild(copyButton);
+
+    // Conditional status button
+    let statusButton;
+    if (job.status === 'Active') {
+        statusButton = document.createElement('button');
+        statusButton.className = 'text-red-600 hover:text-red-800 text-sm';
+        statusButton.textContent = 'Deactivate';
+        statusButton.addEventListener('click', () => deactivateJob(job.id));
+    } else {
+        statusButton = document.createElement('button');
+        statusButton.className = 'text-green-600 hover:text-green-800 text-sm';
+        statusButton.textContent = 'Activate';
+        statusButton.addEventListener('click', () => activateJob(job.id));
+    }
+    rightSide.appendChild(statusButton);
+
+    // Duplicate button
+    const duplicateButton = document.createElement('button');
+    duplicateButton.className = 'text-purple-600 hover:text-purple-800 text-sm';
+    duplicateButton.textContent = 'Duplicate';
+    duplicateButton.addEventListener('click', () => duplicateJob(job.id));
+    rightSide.appendChild(duplicateButton);
+
+    // Assemble the content
+    contentWrapper.appendChild(leftSide);
+    contentWrapper.appendChild(rightSide);
+    jobElement.appendChild(contentWrapper);
+
+    container.appendChild(jobElement);
+}
+
 // Load job listings
 async function loadJobListings(page = 1) {
     try {
@@ -30,16 +145,49 @@ async function loadJobListings(page = 1) {
         if (jobLevelFilter) queryString += `&job_level=${encodeURIComponent(jobLevelFilter)}`;
         if (searchFilter) queryString += `&search=${encodeURIComponent(searchFilter)}`;
 
-        const response = await fetch(`/api/jobs/jobs/${queryString}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+        const response = await fetch(`/dashboard/jobs/${queryString}`, {
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
             const data = await response.json();
             const container = document.getElementById('jobListingsContainer');
 
+            // Check if data has the expected structure with results array
+            if (!data.hasOwnProperty('results')) {
+                // If there's no 'results' property, check if it's a direct array or an error
+                if (data.error || data.detail) {
+                    // It's an error response
+                    container.innerHTML = `<p class="text-center text-red-500">Error: ${data.error || data.detail}</p>`;
+                    document.getElementById('paginationContainer').innerHTML = '';
+                    return;
+                } else if (Array.isArray(data)) {
+                    // It's a direct array of jobs (not paginated)
+                    if (data.length === 0) {
+                        container.innerHTML = '<p class="text-center text-gray-500">No job listings found.</p>';
+                        document.getElementById('paginationContainer').innerHTML = '';
+                        return;
+                    }
+                    
+                    // Process the direct array
+                    container.innerHTML = '';
+                    data.forEach(job => {
+                        createJobElement(job, container);
+                    });
+                    
+                    // No pagination for non-paginated response
+                    document.getElementById('paginationContainer').innerHTML = '';
+                    return;
+                } else {
+                    // Unexpected response structure
+                    console.error('Unexpected API response structure:', data);
+                    container.innerHTML = '<p class="text-center text-red-500">Unexpected API response structure.</p>';
+                    document.getElementById('paginationContainer').innerHTML = '';
+                    return;
+                }
+            }
+
+            // Process paginated response
             if (data.results.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-500">No job listings found.</p>';
                 document.getElementById('paginationContainer').innerHTML = '';
@@ -48,117 +196,7 @@ async function loadJobListings(page = 1) {
 
             container.innerHTML = '';
             data.results.forEach(job => {
-                const jobElement = document.createElement('div');
-                jobElement.className = 'border border-gray-200 rounded-lg p-4 bg-white';
-
-                // Format dates
-                const startDate = job.start_date ? new Date(job.start_date).toLocaleDateString() : 'Not set';
-                const expirationDate = job.expiration_date ? new Date(job.expiration_date).toLocaleDateString() : 'Not set';
-
-                // Create the content using safe DOM manipulation
-                const contentWrapper = document.createElement('div');
-                contentWrapper.className = 'flex justify-between items-start';
-
-                // Left side content
-                const leftSide = document.createElement('div');
-
-                const titleElement = document.createElement('h2');
-                titleElement.className = 'text-xl font-semibold';
-                titleElement.textContent = escapeHtml(job.title);
-                leftSide.appendChild(titleElement);
-
-                const descElement = document.createElement('p');
-                descElement.className = 'text-gray-600';
-                const desc = job.description || '';
-                const descText = desc.length > 100 ?
-                    escapeHtml(desc.substring(0, 100)) + '...' :
-                    escapeHtml(desc);
-                descElement.textContent = descText;
-                leftSide.appendChild(descElement);
-
-                // Tags container
-                const tagsContainer = document.createElement('div');
-                tagsContainer.className = 'mt-2 flex flex-wrap gap-2';
-
-                // Job level tag
-                const levelTag = document.createElement('span');
-                levelTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-                levelTag.textContent = escapeHtml(job.job_level);
-                tagsContainer.appendChild(levelTag);
-
-                // Experience tag
-                const expTag = document.createElement('span');
-                expTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-                expTag.textContent = escapeHtml(job.required_experience) + ' yrs exp';
-                tagsContainer.appendChild(expTag);
-
-                // Status tag
-                const statusTag = document.createElement('span');
-                const statusClass = job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
-                statusTag.className = `inline-block ${statusClass} rounded-full px-3 py-1 text-sm font-semibold`;
-                statusTag.textContent = escapeHtml(job.status);
-                tagsContainer.appendChild(statusTag);
-
-                // Start date tag
-                const startTag = document.createElement('span');
-                startTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-                startTag.textContent = 'Starts: ' + escapeHtml(startDate);
-                tagsContainer.appendChild(startTag);
-
-                // Expiration date tag
-                const expDateTag = document.createElement('span');
-                expDateTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-                expDateTag.textContent = 'Expires: ' + escapeHtml(expirationDate);
-                tagsContainer.appendChild(expDateTag);
-
-                leftSide.appendChild(tagsContainer);
-
-                // Right side buttons
-                const rightSide = document.createElement('div');
-                rightSide.className = 'flex flex-col space-y-2';
-
-                // Edit button
-                const editButton = document.createElement('button');
-                editButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
-                editButton.textContent = 'Edit';
-                editButton.addEventListener('click', () => editJob(job.id));
-                rightSide.appendChild(editButton);
-
-                // Copy link button
-                const copyButton = document.createElement('button');
-                copyButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
-                copyButton.textContent = 'Copy Link';
-                copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
-                rightSide.appendChild(copyButton);
-
-                // Conditional status button
-                let statusButton;
-                if (job.status === 'Active') {
-                    statusButton = document.createElement('button');
-                    statusButton.className = 'text-red-600 hover:text-red-800 text-sm';
-                    statusButton.textContent = 'Deactivate';
-                    statusButton.addEventListener('click', () => deactivateJob(job.id));
-                } else {
-                    statusButton = document.createElement('button');
-                    statusButton.className = 'text-green-600 hover:text-green-800 text-sm';
-                    statusButton.textContent = 'Activate';
-                    statusButton.addEventListener('click', () => activateJob(job.id));
-                }
-                rightSide.appendChild(statusButton);
-
-                // Duplicate button
-                const duplicateButton = document.createElement('button');
-                duplicateButton.className = 'text-purple-600 hover:text-purple-800 text-sm';
-                duplicateButton.textContent = 'Duplicate';
-                duplicateButton.addEventListener('click', () => duplicateJob(job.id));
-                rightSide.appendChild(duplicateButton);
-
-                // Assemble the content
-                contentWrapper.appendChild(leftSide);
-                contentWrapper.appendChild(rightSide);
-                jobElement.appendChild(contentWrapper);
-
-                container.appendChild(jobElement);
+                createJobElement(job, container);
             });
 
             // Handle pagination
@@ -243,19 +281,19 @@ function getCookie(name) {
 
 // Job management functions
 function editJob(jobId) {
-    window.location.href = `/dashboard/jobs/${jobId}/edit/`;
+    window.location.href = `/dashboard/${jobId}/edit/`;
 }
 
 async function activateJob(jobId) {
     if (!confirm('Are you sure you want to activate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/activate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/activate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -275,12 +313,12 @@ async function deactivateJob(jobId) {
     if (!confirm('Are you sure you want to deactivate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/deactivate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -300,18 +338,18 @@ async function duplicateJob(jobId) {
     if (!confirm('Are you sure you want to duplicate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/duplicate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/duplicate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
             const result = await response.json();
             alert('Job duplicated successfully!');
-            window.location.href = `/dashboard/jobs/${result.id}/edit/`; // Redirect to edit the new job
+            window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
         } else {
             const errorData = await response.json();
             alert(`Error duplicating job: ${JSON.stringify(errorData)}`);

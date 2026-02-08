@@ -15,22 +15,35 @@ function getCookie(name) {
 }
 
 // Get job ID from URL
+// The URL pattern is /dashboard/{job_id}/edit/
 const pathSegments = window.location.pathname.split('/').filter(segment => segment !== '');
-const jobsIndex = pathSegments.indexOf('jobs');
-const jobId = jobsIndex !== -1 && pathSegments[jobsIndex + 1] ? pathSegments[jobsIndex + 1] : null;
+const editIndex = pathSegments.indexOf('edit');
+let jobId = null;
+
+if (editIndex > 0) {
+    // The job ID is the segment before 'edit'
+    jobId = pathSegments[editIndex - 1];
+}
 
 // Guard against missing jobId
 if (!jobId) {
     console.error('Job ID not found in URL');
+    // Try alternative method: extract from the pathname using regex
+    const match = window.location.pathname.match(/\/dashboard\/([^\/]+)\/edit\//);
+    if (match && match[1]) {
+        jobId = match[1];
+    }
+}
+
+if (!jobId) {
+    console.error('Job ID still not found in URL after alternative method');
 }
 
 // Load job data
 async function loadJobData() {
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+        const response = await fetch(`/dashboard/jobs/${jobId}/`, {
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -82,20 +95,20 @@ if (jobEditForm) {
         };
 
         try {
-            const response = await fetch(`/api/jobs/jobs/${jobId}/`, {
+            const response = await fetch(`/dashboard/jobs/${jobId}/`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                     'X-CSRFToken': formData.get('csrfmiddlewaretoken')
                 },
+                credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
                 body: JSON.stringify(jobData)
             });
 
             if (response.ok) {
                 const result = await response.json();
                 alert('Job listing updated successfully!');
-                window.location.href = `/dashboard/jobs/${result.id}/`;
+                window.location.href = '/dashboard/';
             } else {
                 let errorMessage = `HTTP ${response.status}`;
                 try {
@@ -116,12 +129,12 @@ document.getElementById('activateButton').addEventListener('click', async functi
     if (!confirm('Are you sure you want to activate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/activate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/activate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -142,12 +155,12 @@ document.getElementById('deactivateButton').addEventListener('click', async func
     if (!confirm('Are you sure you want to deactivate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/deactivate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -168,18 +181,18 @@ document.getElementById('duplicateButton').addEventListener('click', async funct
     if (!confirm('Are you sure you want to duplicate this job?')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/duplicate/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/duplicate/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
             const result = await response.json();
             alert('Job duplicated successfully!');
-            window.location.href = `/dashboard/jobs/${result.id}/edit/`; // Redirect to edit the new job
+            window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
         } else {
             const errorData = await response.json();
             alert(`Error duplicating job: ${JSON.stringify(errorData)}`);
@@ -195,12 +208,12 @@ document.getElementById('deleteButton').addEventListener('click', async function
     if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': getCookie('csrftoken')
-            }
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
