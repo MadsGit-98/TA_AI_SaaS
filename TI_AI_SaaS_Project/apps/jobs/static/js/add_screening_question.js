@@ -13,10 +13,8 @@ document.getElementById('question_type').addEventListener('change', function() {
 // Load suggested questions
 async function loadSuggestedQuestions() {
     try {
-        const response = await fetch('/api/jobs/common-screening-questions/', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+        const response = await fetch('/dashboard/common-screening-questions/', {
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
 
         if (response.ok) {
@@ -124,13 +122,13 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
     }
 
     try {
-        const response = await fetch(`/api/jobs/jobs/${jobId}/screening-questions/`, {
+        const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 'X-CSRFToken': formData.get('csrfmiddlewaretoken')
             },
+            credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
             body: JSON.stringify(questionData)
         });
 

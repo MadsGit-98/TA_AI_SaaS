@@ -30,7 +30,7 @@ https://api.x-crewter.com/v1
 - **Response**: 200 OK with list of job listings
 - **Example Request**:
 ```
-GET /api/jobs/?status=active&page=1&limit=10
+GET /dashboard/jobs/?status=active&page=1&limit=10
 Authorization: Bearer <jwt_token>
 ```
 
@@ -52,7 +52,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 201 Created with created job listing
 - **Example Request**:
 ```
-POST /api/jobs/
+POST /dashboard/jobs/
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -74,7 +74,7 @@ Content-Type: application/json
 - **Response**: 200 OK with job listing details
 - **Example Request**:
 ```
-GET /api/jobs/123e4567-e89b-12d3-a456-426614174000/
+GET /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -86,7 +86,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with updated job listing
 - **Example Request**:
 ```
-PUT /api/jobs/123e4567-e89b-12d3-a456-426614174000/
+PUT /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -110,7 +110,7 @@ Content-Type: application/json
 - **Response**: 200 OK with partially updated job listing
 - **Example Request**:
 ```
-PATCH /api/jobs/123e4567-e89b-12d3-a456-426614174000/
+PATCH /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -127,7 +127,7 @@ Content-Type: application/json
 - **Response**: 204 No Content
 - **Example Request**:
 ```
-DELETE /api/jobs/123e4567-e89b-12d3-a456-426614174000/
+DELETE /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -140,7 +140,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with activated job listing
 - **Example Request**:
 ```
-POST /api/jobs/123e4567-e89b-12d3-a456-426614174000/activate/
+POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/activate/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -151,7 +151,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with deactivated job listing
 - **Example Request**:
 ```
-POST /api/jobs/123e4567-e89b-12d3-a456-426614174000/deactivate/
+POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/deactivate/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -162,7 +162,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 201 Created with duplicated job listing
 - **Example Request**:
 ```
-POST /api/jobs/123e4567-e89b-12d3-a456-426614174000/duplicate/
+POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/duplicate/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -175,7 +175,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with list of screening questions
 - **Example Request**:
 ```
-GET /api/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/
+GET /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -195,7 +195,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 201 Created with created screening question
 - **Example Request**:
 ```
-POST /api/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/
+POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -216,7 +216,7 @@ Content-Type: application/json
 - **Response**: 200 OK with screening question details
 - **Example Request**:
 ```
-GET /api/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
+GET /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -230,7 +230,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with updated screening question
 - **Example Request**:
 ```
-PUT /api/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
+PUT /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -251,7 +251,7 @@ Content-Type: application/json
 - **Response**: 204 No Content
 - **Example Request**:
 ```
-DELETE /api/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
+DELETE /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/screening-questions/123e4567-e89b-12d3-a456-426614174001/
 Authorization: Bearer <jwt_token>
 ```
 
@@ -263,7 +263,7 @@ Authorization: Bearer <jwt_token>
 - **Response**: 200 OK with list of common screening questions
 - **Example Request**:
 ```
-GET /api/jobs/common-screening-questions/
+GET /dashboard/common-screening-questions/
 Authorization: Bearer <jwt_token>
 ```
 

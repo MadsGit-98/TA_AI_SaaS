@@ -16,7 +16,7 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
         activity_tracking_paths = [
             '/api/accounts/auth/users/me/',  # User profile endpoint
             '/api/analysis/',  # Analysis endpoints
-            '/api/jobs/',  # Job-related endpoints
+            '/dashboard/jobs/',  # Job-related endpoints
             '/dashboard/',  # Dashboard pages
         ]
         # Check if the user is authenticated and the path requires activity tracking

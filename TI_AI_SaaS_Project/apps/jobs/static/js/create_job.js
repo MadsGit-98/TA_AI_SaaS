@@ -27,23 +27,14 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
         expiration_date: formData.get('expiration_date')
     };
 
-    // Validate access token before making the request
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-        console.error('Access token not found. Redirecting to login.');
-        alert('Session expired. Please log in again.');
-        window.location.href = '/login/'; // Redirect to login page
-        return;
-    }
-
     try {
-        const response = await fetch('/api/jobs/jobs/', {
+        const response = await fetch('/dashboard/jobs/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,  // Using validated token
                 'X-CSRFToken': formData.get('csrfmiddlewaretoken')
             },
+            credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
             body: JSON.stringify(jobData)
         });
 
@@ -51,7 +42,7 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
             const result = await response.json();
             if (result && result.id) {
                 alert('Job listing created successfully!');
-                window.location.href = `/dashboard/jobs/${result.id}/`;
+                window.location.href = '/dashboard/';
             } else {
                 console.error('Unexpected response format:', result);
                 alert('Job listing created successfully but ID not returned. Redirecting to dashboard.');

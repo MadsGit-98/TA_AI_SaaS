@@ -94,10 +94,7 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
         self.assertEqual(login_response.status_code, 200)
 
         # Navigate to the dashboard
-        response = self.client.get('/dashboard/jobs/')
-        # If that doesn't work, try the main dashboard
-        if response.status_code == 404:
-            response = self.client.get('/dashboard/')
+        response = self.client.get('/dashboard/')
 
         # Get the page content and verify both jobs are present
         self.assertContains(response, self.job.title)
@@ -179,11 +176,8 @@ class ApplicationLinkSharingE2ETest(StaticLiveServerTestCase):
         # Verify login was successful
         self.assertEqual(login_response.status_code, 200)
 
-        # Get the dashboard page - try different possible URL patterns
-        response = self.client.get('/dashboard/jobs/')
-        # If that doesn't work, try the main dashboard
-        if response.status_code == 404:
-            response = self.client.get('/dashboard/')
+        # Get the dashboard page
+        response = self.client.get('/dashboard/')
 
         # Allow for 200 (success), 302 (redirect), or 403 (forbidden due to permissions)
         # but not 404 (not found) or 401 (unauthorized) which would mean the URL is wrong or auth issue
