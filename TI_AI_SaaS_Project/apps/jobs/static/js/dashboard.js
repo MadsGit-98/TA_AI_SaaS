@@ -291,6 +291,12 @@ function getPageNumberFromUrl(url) {
     return isNaN(pageNumber) ? 1 : pageNumber;
 }
 
+// Helper function to get CSRF token from meta tag
+function getCsrfToken() {
+    const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+    return tokenMeta ? tokenMeta.getAttribute('content') : null;
+}
+
 // Helper function to get cookie value
 function getCookie(name) {
     let cookieValue = null;
@@ -319,7 +325,7 @@ async function activateJob(jobId) {
         const response = await fetch(`/dashboard/jobs/${jobId}/activate/`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': getCookie('csrftoken')
+                'X-CSRFToken': getCsrfToken()
             },
             credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
@@ -344,7 +350,7 @@ async function deactivateJob(jobId) {
         const response = await fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': getCookie('csrftoken')
+                'X-CSRFToken': getCsrfToken()
             },
             credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
@@ -369,7 +375,7 @@ async function duplicateJob(jobId) {
         const response = await fetch(`/dashboard/jobs/${jobId}/duplicate/`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': getCookie('csrftoken')
+                'X-CSRFToken': getCsrfToken()
             },
             credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
         });
@@ -415,6 +421,38 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(window.searchTimeout);
         window.searchTimeout = setTimeout(() => loadJobListings(), 500);
     });
+
+    // Set up logout event listener
+    const logoutLink = document.getElementById('logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            try {
+                const response = await fetch('/api/accounts/auth/logout/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken(),
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'  // Include cookies in request
+                });
+                
+                if (response.status === 204) {
+                    // Redirect to home page after successful logout
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Even if there's an error, redirect to home page
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error during logout:', error);
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+            }
+        });
+    }
 
     // Load job listings when page loads
     loadJobListings();

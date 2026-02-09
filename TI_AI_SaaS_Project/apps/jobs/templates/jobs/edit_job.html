@@ -1,24 +1,58 @@
-{% extends 'accounts/base.html' %}
 {% load static %}
-
-{% block title %}Edit Job Listing - X-Crewter{% endblock %}
-
-{% block extra_head %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <style>
-        /* Hide the login and register links in the header on the edit job page */
-        header a[href="{% url 'accounts:login' %}"],
-        header a[href="{% url 'accounts:register' %}"] {
-            display: none !important;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Job Listing - X-Crewter</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
+                        'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
         }
-    </style>
-{% endblock %}
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <!-- Logo on the left -->
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Logout anchor -->
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    <!-- Dashboard anchor -->
+                    <a href="/dashboard/" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </header>
 
-{% block content %}
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 class="text-3xl font-bold mb-6">Edit Job Listing</h1>
-
+    <main class="flex-grow">
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <form id="jobEditForm" class="space-y-6">
             {% csrf_token %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -120,46 +154,27 @@
                 <a href="/dashboard/" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                 </a>
+                <!-- Update Button -->
                 <button
                     type="submit"
                     class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#080707]">
                     Update Job Listing
                 </button>
+                <!-- Delete Button -->
+                <button
+                    id="deleteButton"
+                    class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    Delete Job Listing
+                </button>
             </div>
         </form>
-
-        <!-- Action Buttons -->
-        <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button
-                id="activateButton"
-                class="px-4 py-2 bg-green-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                Activate Job
-            </button>
-            <button
-                id="deactivateButton"
-                class="px-4 py-2 bg-yellow-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                Deactivate Job
-            </button>
-            <button
-                id="duplicateButton"
-                class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                Duplicate Job
-            </button>
-        </div>
-
-        <!-- Delete Button -->
-        <div class="mt-4 flex justify-end">
-            <button
-                id="deleteButton"
-                class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                Delete Job Listing
-            </button>
-        </div>
     </div>
-{% endblock %}
+</main>
 
-{% block extra_js %}
+    {% include 'components/legal_footer.html' %}
+
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
-    <script src="{% static 'js/auth-interceptor.js' %}"></script>    
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>
     <script src="{% static 'js/edit_job.js' %}"></script>
-{% endblock %}
+</body>
+</html>

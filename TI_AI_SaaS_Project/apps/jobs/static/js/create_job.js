@@ -88,3 +88,37 @@ if (questionTypeElement) {
     }
   });
 }
+
+// Set up logout event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const logoutLink = document.getElementById('logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', async function(e) {
+            e.preventDefault();
+
+            try {
+                const response = await fetch('/api/accounts/auth/logout/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'  // Include cookies in request
+                });
+
+                if (response.status === 204) {
+                    // Redirect to home page after successful logout
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Even if there's an error, redirect to home page
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error during logout:', error);
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+            }
+        });
+    }
+});

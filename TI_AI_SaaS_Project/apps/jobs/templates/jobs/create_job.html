@@ -1,22 +1,58 @@
-{% extends 'accounts/base.html' %}
 {% load static %}
-
-{% block title %}Create Job Listing - X-Crewter{% endblock %}
-
-{% block extra_head %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <style>
-        /* Hide the login and register links in the header on the create job page */
-        header a[href="{% url 'accounts:login' %}"],
-        header a[href="{% url 'accounts:register' %}"] {
-            display: none !important;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Job Listing - X-Crewter</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
+                        'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
         }
-    </style>
-{% endblock %}
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <!-- Logo on the left -->
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Logout anchor -->
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    <!-- Dashboard anchor -->
+                    <a href="/dashboard/" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </header>
 
-{% block content %}
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <main class="flex-grow">
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <h1 class="text-3xl font-bold mb-6">Create New Job Listing</h1>
 
         <form id="jobCreationForm" class="space-y-6">
@@ -118,10 +154,12 @@
             </div>
         </form>
     </div>
-{% endblock %}
+</main>
 
-{% block extra_js %}
+    {% include 'components/legal_footer.html' %}
+
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
     <script src="{% static 'js/auth-interceptor.js' %}"></script>
     <script src="{% static 'js/create_job.js' %}"></script>
-{% endblock %}
+</body>
+</html>
