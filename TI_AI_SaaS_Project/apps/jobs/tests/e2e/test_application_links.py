@@ -83,7 +83,7 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
             expiration_date=datetime.now() + timedelta(days=20),
             created_by=self.user
         )
-        
+
         # Log in to the system using the API to set JWT tokens in cookies
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'testuser',
@@ -93,12 +93,17 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
         # Verify login was successful
         self.assertEqual(login_response.status_code, 200)
 
-        # Navigate to the dashboard
-        response = self.client.get('/dashboard/')
-
-        # Get the page content and verify both jobs are present
-        self.assertContains(response, self.job.title)
-        self.assertContains(response, second_job.title)
+        # Get the job listings from the API endpoint that the dashboard uses
+        api_response = self.client.get('/dashboard/jobs/')
+        
+        # Verify the API response contains both jobs
+        self.assertEqual(api_response.status_code, 200)
+        api_data = api_response.json()
+        
+        # Check that both jobs are in the response
+        job_titles_in_response = [job['title'] for job in api_data.get('results', [])]
+        self.assertIn(self.job.title, job_titles_in_response)
+        self.assertIn(second_job.title, job_titles_in_response)
 
         # Verify that the jobs have different application links
         self.assertNotEqual(self.job.application_link, second_job.application_link)
@@ -176,16 +181,18 @@ class ApplicationLinkSharingE2ETest(StaticLiveServerTestCase):
         # Verify login was successful
         self.assertEqual(login_response.status_code, 200)
 
-        # Get the dashboard page
-        response = self.client.get('/dashboard/')
-
+        # Get the job listings from the API endpoint that the dashboard uses
+        api_response = self.client.get('/dashboard/jobs/')
+        
         # Allow for 200 (success), 302 (redirect), or 403 (forbidden due to permissions)
         # but not 404 (not found) or 401 (unauthorized) which would mean the URL is wrong or auth issue
-        self.assertIn(response.status_code, [200, 302, 403])
+        self.assertIn(api_response.status_code, [200, 302, 403])
 
-        # Verify the job is listed if the page loads successfully
-        if response.status_code == 200:
-            self.assertContains(response, self.job.title)
+        # Verify the job is listed if the API returns successfully
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+            job_titles_in_response = [job['title'] for job in api_data.get('results', [])]
+            self.assertIn(self.job.title, job_titles_in_response)
 
         # The application link should be accessible and unique to this job
         application_link = self.job.application_link
