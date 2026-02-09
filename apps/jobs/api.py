@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -27,7 +28,7 @@ class JobListingListView(generics.ListCreateAPIView):
         return self.serializer_class
 
     def get_queryset(self):
-        queryset = JobListing.objects.all()
+        queryset = JobListing.objects.filter(created_by=self.request.user)
         status_param = self.request.query_params.get('status', None)
         if status_param:
             queryset = queryset.filter(status=status_param)
@@ -109,7 +110,7 @@ def duplicate_job(request, pk):
         job_level=original_job.job_level,
         start_date=original_job.start_date,
         expiration_date=original_job.expiration_date,
-        modification_date=original_job.modification_date,
+        modification_date=timezone.now(),
         status='Inactive',  # New copies start as inactive
         application_link=new_application_link,
         created_by=request.user

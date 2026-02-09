@@ -32,15 +32,15 @@ function createJobElement(job, container) {
 
     const titleElement = document.createElement('h2');
     titleElement.className = 'text-xl font-semibold';
-    titleElement.textContent = escapeHtml(job.title);
+    titleElement.textContent = job.title;
     leftSide.appendChild(titleElement);
 
     const descElement = document.createElement('p');
     descElement.className = 'text-gray-600';
     const desc = job.description || '';
     const descText = desc.length > 100 ?
-        escapeHtml(desc.substring(0, 100)) + '...' :
-        escapeHtml(desc);
+        desc.substring(0, 100) + '...' :
+        desc;
     descElement.textContent = descText;
     leftSide.appendChild(descElement);
 
@@ -51,32 +51,32 @@ function createJobElement(job, container) {
     // Job level tag
     const levelTag = document.createElement('span');
     levelTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-    levelTag.textContent = escapeHtml(job.job_level);
+    levelTag.textContent = job.job_level;
     tagsContainer.appendChild(levelTag);
 
     // Experience tag
     const expTag = document.createElement('span');
     expTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-    expTag.textContent = escapeHtml(job.required_experience) + ' yrs exp';
+    expTag.textContent = job.required_experience + ' yrs exp';
     tagsContainer.appendChild(expTag);
 
     // Status tag
     const statusTag = document.createElement('span');
     const statusClass = job.status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
     statusTag.className = `inline-block ${statusClass} rounded-full px-3 py-1 text-sm font-semibold`;
-    statusTag.textContent = escapeHtml(job.status);
+    statusTag.textContent = job.status;
     tagsContainer.appendChild(statusTag);
 
     // Start date tag
     const startTag = document.createElement('span');
     startTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-    startTag.textContent = 'Starts: ' + escapeHtml(startDate);
+    startTag.textContent = 'Starts: ' + startDate;
     tagsContainer.appendChild(startTag);
 
     // Expiration date tag
     const expDateTag = document.createElement('span');
     expDateTag.className = 'inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700';
-    expDateTag.textContent = 'Expires: ' + escapeHtml(expirationDate);
+    expDateTag.textContent = 'Expires: ' + expirationDate;
     tagsContainer.appendChild(expDateTag);
 
     leftSide.appendChild(tagsContainer);
@@ -95,8 +95,16 @@ function createJobElement(job, container) {
     // Copy link button
     const copyButton = document.createElement('button');
     copyButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
-    copyButton.textContent = 'Copy Link';
-    copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+    
+    // Check if application link exists and is valid
+    if (job.application_link && typeof job.application_link === 'string' && job.application_link.trim() !== '') {
+        copyButton.textContent = 'Copy Link';
+        copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+    } else {
+        copyButton.textContent = 'No Link Available';
+        copyButton.disabled = true;
+        copyButton.classList.add('opacity-50', 'cursor-not-allowed');
+    }
     rightSide.appendChild(copyButton);
 
     // Conditional status button
@@ -158,13 +166,21 @@ async function loadJobListings(page = 1) {
                 // If there's no 'results' property, check if it's a direct array or an error
                 if (data.error || data.detail) {
                     // It's an error response
-                    container.innerHTML = `<p class="text-center text-red-500">Error: ${data.error || data.detail}</p>`;
+                    const errorElement = document.createElement('p');
+                    errorElement.className = 'text-center text-red-500';
+                    errorElement.textContent = `Error: ${data.error || data.detail}`;
+                    container.innerHTML = ''; // Clear the container first
+                    container.appendChild(errorElement);
                     document.getElementById('paginationContainer').innerHTML = '';
                     return;
                 } else if (Array.isArray(data)) {
                     // It's a direct array of jobs (not paginated)
                     if (data.length === 0) {
-                        container.innerHTML = '<p class="text-center text-gray-500">No job listings found.</p>';
+                        const noJobsElement = document.createElement('p');
+                        noJobsElement.className = 'text-center text-gray-500';
+                        noJobsElement.textContent = 'No job listings found.';
+                        container.innerHTML = ''; // Clear the container first
+                        container.appendChild(noJobsElement);
                         document.getElementById('paginationContainer').innerHTML = '';
                         return;
                     }
@@ -181,7 +197,11 @@ async function loadJobListings(page = 1) {
                 } else {
                     // Unexpected response structure
                     console.error('Unexpected API response structure:', data);
-                    container.innerHTML = '<p class="text-center text-red-500">Unexpected API response structure.</p>';
+                    const errorElement = document.createElement('p');
+                    errorElement.className = 'text-center text-red-500';
+                    errorElement.textContent = 'Unexpected API response structure.';
+                    container.innerHTML = ''; // Clear the container first
+                    container.appendChild(errorElement);
                     document.getElementById('paginationContainer').innerHTML = '';
                     return;
                 }
@@ -189,7 +209,11 @@ async function loadJobListings(page = 1) {
 
             // Process paginated response
             if (data.results.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500">No job listings found.</p>';
+                const noJobsElement = document.createElement('p');
+                noJobsElement.className = 'text-center text-gray-500';
+                noJobsElement.textContent = 'No job listings found.';
+                container.innerHTML = ''; // Clear the container first
+                container.appendChild(noJobsElement);
                 document.getElementById('paginationContainer').innerHTML = '';
                 return;
             }
@@ -204,7 +228,11 @@ async function loadJobListings(page = 1) {
         } else {
             console.error('Failed to load job listings');
             const container = document.getElementById('jobListingsContainer');
-            container.innerHTML = '<p class="text-center text-red-500">Failed to load job listings. Please try again.</p>';
+            const errorElement = document.createElement('p');
+            errorElement.className = 'text-center text-red-500';
+            errorElement.textContent = 'Failed to load job listings. Please try again.';
+            container.innerHTML = ''; // Clear the container first
+            container.appendChild(errorElement);
         }
     } catch (error) {
         console.error('Error loading job listings:', error);
@@ -348,8 +376,13 @@ async function duplicateJob(jobId) {
 
         if (response.ok) {
             const result = await response.json();
-            alert('Job duplicated successfully!');
-            window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
+            if (result && (typeof result.id === 'number' || (typeof result.id === 'string' && result.id.trim() !== ''))) {
+                alert('Job duplicated successfully!');
+                window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
+            } else {
+                console.error('Invalid or missing ID in duplication response:', result);
+                alert('Job duplicated successfully but failed to redirect. Please refresh the page to see the new job.');
+            }
         } else {
             const errorData = await response.json();
             alert(`Error duplicating job: ${JSON.stringify(errorData)}`);

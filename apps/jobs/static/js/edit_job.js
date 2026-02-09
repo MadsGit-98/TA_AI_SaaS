@@ -37,10 +37,19 @@ if (!jobId) {
 
 if (!jobId) {
     console.error('Job ID still not found in URL after alternative method');
+    alert('Error: Unable to determine job ID from URL. Please navigate to this page from the dashboard.');
+    // Set a flag to indicate that initialization should not proceed
+    window.jobIdMissing = true;
 }
 
 // Load job data
 async function loadJobData() {
+    // Check if jobId is missing before proceeding
+    if (window.jobIdMissing) {
+        console.error('Cannot load job data: Job ID is missing');
+        return;
+    }
+    
     try {
         const response = await fetch(`/dashboard/jobs/${jobId}/`, {
             credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
@@ -81,6 +90,12 @@ const jobEditForm = document.getElementById('jobEditForm');
 if (jobEditForm) {
     jobEditForm.addEventListener('submit', async function(e) {
         e.preventDefault();
+        
+        // Check if jobId is missing before proceeding
+        if (window.jobIdMissing) {
+            alert('Error: Cannot update job. Job ID is missing.');
+            return;
+        }
 
         const formData = new FormData(e.target);
         const jobData = {
@@ -125,7 +140,14 @@ if (jobEditForm) {
 }
 
 // Activate job
-document.getElementById('activateButton').addEventListener('click', async function() {
+const activateButton = document.getElementById('activateButton');
+activateButton?.addEventListener('click', async function() {
+    // Check if jobId is missing before proceeding
+    if (window.jobIdMissing) {
+        alert('Error: Cannot activate job. Job ID is missing.');
+        return;
+    }
+    
     if (!confirm('Are you sure you want to activate this job?')) return;
 
     try {
@@ -152,6 +174,12 @@ document.getElementById('activateButton').addEventListener('click', async functi
 
 // Deactivate job
 document.getElementById('deactivateButton').addEventListener('click', async function() {
+    // Check if jobId is missing before proceeding
+    if (window.jobIdMissing) {
+        alert('Error: Cannot deactivate job. Job ID is missing.');
+        return;
+    }
+    
     if (!confirm('Are you sure you want to deactivate this job?')) return;
 
     try {
@@ -178,6 +206,12 @@ document.getElementById('deactivateButton').addEventListener('click', async func
 
 // Duplicate job
 document.getElementById('duplicateButton').addEventListener('click', async function() {
+    // Check if jobId is missing before proceeding
+    if (window.jobIdMissing) {
+        alert('Error: Cannot duplicate job. Job ID is missing.');
+        return;
+    }
+    
     if (!confirm('Are you sure you want to duplicate this job?')) return;
 
     try {
@@ -205,6 +239,12 @@ document.getElementById('duplicateButton').addEventListener('click', async funct
 
 // Delete job
 document.getElementById('deleteButton').addEventListener('click', async function() {
+    // Check if jobId is missing before proceeding
+    if (window.jobIdMissing) {
+        alert('Error: Cannot delete job. Job ID is missing.');
+        return;
+    }
+    
     if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
 
     try {
