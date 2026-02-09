@@ -1,41 +1,44 @@
+{% extends 'accounts/base.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Job Listing - X-Crewter</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-</head>
-<body class="bg-[#FFFFFF] text-[#000000]">
-    <!-- AI Disclaimer -->
-    {% include 'components/ai_disclaimer.html' %}
 
+{% block title %}Edit Job Listing - X-Crewter{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        /* Hide the login and register links in the header on the edit job page */
+        header a[href="{% url 'accounts:login' %}"],
+        header a[href="{% url 'accounts:register' %}"] {
+            display: none !important;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
     <!-- Main Content -->
-    <div class="container mx-auto px-4 py-8 mt-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <h1 class="text-3xl font-bold mb-6">Edit Job Listing</h1>
-        
+
         <form id="jobEditForm" class="space-y-6">
             {% csrf_token %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
-                    <input 
-                        type="text" 
-                        id="title" 
-                        name="title" 
+                    <input
+                        type="text"
+                        id="title"
+                        name="title"
                         required
                         maxlength="200"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
                         placeholder="e.g., Senior Software Engineer">
                 </div>
-                
+
                 <div>
                     <label for="job_level" class="block text-sm font-medium text-gray-700 mb-1">Job Level *</label>
-                    <select 
-                        id="job_level" 
-                        name="job_level" 
+                    <select
+                        id="job_level"
+                        name="job_level"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
                         <option value="Intern">Intern</option>
@@ -44,54 +47,54 @@
                         <option value="Senior">Senior</option>
                     </select>
                 </div>
-                
+
                 <div>
                     <label for="required_experience" class="block text-sm font-medium text-gray-700 mb-1">Required Experience (Years) *</label>
-                    <input 
-                        type="number" 
-                        id="required_experience" 
-                        name="required_experience" 
+                    <input
+                        type="number"
+                        id="required_experience"
+                        name="required_experience"
                         min="0"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
                         placeholder="e.g., 3">
                 </div>
-                
+
                 <div>
                     <label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
-                    <input 
-                        type="datetime-local" 
-                        id="start_date" 
-                        name="start_date" 
+                    <input
+                        type="datetime-local"
+                        id="start_date"
+                        name="start_date"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
                 </div>
-                
+
                 <div>
                     <label for="expiration_date" class="block text-sm font-medium text-gray-700 mb-1">Expiration Date *</label>
-                    <input 
-                        type="datetime-local" 
-                        id="expiration_date" 
-                        name="expiration_date" 
+                    <input
+                        type="datetime-local"
+                        id="expiration_date"
+                        name="expiration_date"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
                 </div>
-                
+
                 <div>
                     <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select 
-                        id="status" 
-                        name="status" 
+                    <select
+                        id="status"
+                        name="status"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
                     </select>
                 </div>
-                
+
                 <div>
                     <label for="required_skills" class="block text-sm font-medium text-gray-700 mb-1">Required Skills *</label>
-                    <textarea 
-                        id="required_skills" 
+                    <textarea
+                        id="required_skills"
                         name="required_skills"
                         required
                         rows="3"
@@ -100,11 +103,11 @@
                     <p class="mt-1 text-sm text-gray-500">Separate skills with commas</p>
                 </div>
             </div>
-            
+
             <div>
                 <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Job Description *</label>
-                <textarea 
-                    id="description" 
+                <textarea
+                    id="description"
                     name="description"
                     required
                     rows="6"
@@ -112,51 +115,51 @@
                     class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
                     placeholder="Provide a detailed description of the job responsibilities, requirements, and company culture..."></textarea>
             </div>
-            
+
             <div class="flex justify-end space-x-3 pt-4">
                 <a href="/dashboard/" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                 </a>
-                <button 
-                    type="submit" 
+                <button
+                    type="submit"
                     class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#080707]">
                     Update Job Listing
                 </button>
             </div>
         </form>
-        
+
         <!-- Action Buttons -->
         <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button 
+            <button
                 id="activateButton"
                 class="px-4 py-2 bg-green-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                 Activate Job
             </button>
-            <button 
+            <button
                 id="deactivateButton"
                 class="px-4 py-2 bg-yellow-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
                 Deactivate Job
             </button>
-            <button 
+            <button
                 id="duplicateButton"
-                class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                 Duplicate Job
             </button>
         </div>
-        
+
         <!-- Delete Button -->
         <div class="mt-4 flex justify-end">
-            <button 
+            <button
                 id="deleteButton"
                 class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
                 Delete Job Listing
             </button>
         </div>
     </div>
+{% endblock %}
 
-    <!-- Legal Footer -->
-    {% include 'components/legal_footer.html' %}
-
+{% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>    
     <script src="{% static 'js/edit_job.js' %}"></script>
-</body>
-</html>
+{% endblock %}
