@@ -139,104 +139,6 @@ if (jobEditForm) {
     });
 }
 
-// Activate job
-const activateButton = document.getElementById('activateButton');
-activateButton?.addEventListener('click', async function() {
-    // Check if jobId is missing before proceeding
-    if (window.jobIdMissing) {
-        alert('Error: Cannot activate job. Job ID is missing.');
-        return;
-    }
-    
-    if (!confirm('Are you sure you want to activate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/activate/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
-        });
-
-        if (response.ok) {
-            alert('Job activated successfully!');
-            location.reload(); // Reload to update status
-        } else {
-            const errorData = await response.json();
-            alert(`Error activating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while activating the job.');
-    }
-});
-
-// Deactivate job
-document.getElementById('deactivateButton').addEventListener('click', async function() {
-    // Check if jobId is missing before proceeding
-    if (window.jobIdMissing) {
-        alert('Error: Cannot deactivate job. Job ID is missing.');
-        return;
-    }
-    
-    if (!confirm('Are you sure you want to deactivate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
-        });
-
-        if (response.ok) {
-            alert('Job deactivated successfully!');
-            location.reload(); // Reload to update status
-        } else {
-            const errorData = await response.json();
-            alert(`Error deactivating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while deactivating the job.');
-    }
-});
-
-// Duplicate job
-document.getElementById('duplicateButton').addEventListener('click', async function() {
-    // Check if jobId is missing before proceeding
-    if (window.jobIdMissing) {
-        alert('Error: Cannot duplicate job. Job ID is missing.');
-        return;
-    }
-    
-    if (!confirm('Are you sure you want to duplicate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/duplicate/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            alert('Job duplicated successfully!');
-            window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
-        } else {
-            const errorData = await response.json();
-            alert(`Error duplicating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while duplicating the job.');
-    }
-});
-
 // Delete job
 document.getElementById('deleteButton').addEventListener('click', async function() {
     // Check if jobId is missing before proceeding
@@ -271,3 +173,37 @@ document.getElementById('deleteButton').addEventListener('click', async function
 
 // Load job data when page loads
 document.addEventListener('DOMContentLoaded', loadJobData);
+
+// Set up logout event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const logoutLink = document.getElementById('logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', async function(e) {
+            e.preventDefault();
+
+            try {
+                const response = await fetch('/api/accounts/auth/logout/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'  // Include cookies in request
+                });
+
+                if (response.status === 204) {
+                    // Redirect to home page after successful logout
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Even if there's an error, redirect to home page
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error during logout:', error);
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+            }
+        });
+    }
+});
