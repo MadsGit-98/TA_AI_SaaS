@@ -1,13 +1,12 @@
-from celery import shared_task
 from django.utils import timezone
-from django.conf import settings
+from x_crewter.celery import app
 from apps.jobs.models import JobListing
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task
+@app.task
 def check_job_statuses():
     """
     Task to check and update job statuses based on start and expiration dates
@@ -36,7 +35,7 @@ def check_job_statuses():
     }
 
 
-@shared_task
+@app.task
 def cleanup_expired_jobs():
     """
     Task to perform additional cleanup for expired jobs if needed

@@ -107,7 +107,7 @@ function createJobElement(job, container) {
     }
     rightSide.appendChild(copyButton);
 
-    // Conditional status button
+    // Conditional status button - Status may be overridden by automatic checks
     let statusButton;
     if (job.status === 'Active') {
         statusButton = document.createElement('button');
@@ -120,6 +120,8 @@ function createJobElement(job, container) {
         statusButton.textContent = 'Activate';
         statusButton.addEventListener('click', () => activateJob(job.id));
     }
+    // Add tooltip to indicate automatic status changes
+    statusButton.title = 'Status may change automatically based on start/expiration dates';
     rightSide.appendChild(statusButton);
 
     // Duplicate button
