@@ -298,6 +298,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.accounts.tasks.monitor_and_refresh_tokens',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
+    # Check job statuses every minute
+    'check-job-statuses': {
+        'task': 'apps.jobs.tasks.check_job_statuses',
+        'schedule': 60.0,  # Every 60 seconds
+    },
 }
 
 

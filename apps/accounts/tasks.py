@@ -3,7 +3,6 @@
 
 from x_crewter.celery import app
 from django.utils import timezone
-from django.conf import settings
 from datetime import timedelta, datetime
 import pytz
 from rest_framework_simplejwt.tokens import RefreshToken
