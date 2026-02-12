@@ -49,7 +49,7 @@ async function loadJobData() {
         console.error('Cannot load job data: Job ID is missing');
         return;
     }
-    
+
     try {
         const response = await fetch(`/dashboard/jobs/${jobId}/`, {
             credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
@@ -76,6 +76,10 @@ async function loadJobData() {
             setFieldValue('start_date', formatDate(job.start_date));
             setFieldValue('expiration_date', formatDate(job.expiration_date));
             setFieldValue('status', job.status);
+        } else if (response.status === 404) {
+            // If the job doesn't exist (e.g., it was deleted), don't show an error
+            // This prevents the error message from showing after deletion
+            console.log('Job not found, possibly deleted');
         } else {
             alert('Failed to load job data');
         }
@@ -90,7 +94,7 @@ const jobEditForm = document.getElementById('jobEditForm');
 if (jobEditForm) {
     jobEditForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         // Check if jobId is missing before proceeding
         if (window.jobIdMissing) {
             alert('Error: Cannot update job. Job ID is missing.');
