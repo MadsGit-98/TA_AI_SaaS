@@ -168,7 +168,7 @@ class JobStatusUpdateSecurityTest(TestCase):
 class JobStatusUpdateAuditTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user(username='audituser', password='auditpass')
-        
+
         # Create jobs for audit testing
         self.auditable_job = JobListing.objects.create(
             title='Auditable Job',
@@ -176,8 +176,8 @@ class JobStatusUpdateAuditTest(TestCase):
             required_skills=['Python'],
             required_experience=3,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(minutes=1),
-            expiration_date=timezone.now() + timedelta(minutes=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past to ensure activation
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',
             created_by=self.user
         )

@@ -123,45 +123,45 @@ class JobStatusCeleryTaskTest(TestCase):
     
     def test_check_job_statuses_with_real_time(self):
         """Test the task with real time - should handle current state appropriately"""
-        # Create a job that should be activated now (started in past, not expired)
+        # Create a job that should be activated now (started more than 1 day ago, not expired)
         past_start_job = JobListing.objects.create(
             title='Past Start Job',
             description='Job that started in the past',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(hours=1),
-            expiration_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',  # Currently inactive but should be active
             created_by=self.user
         )
-        
-        # Create a job that should be deactivated now (expired)
+
+        # Create a job that should be deactivated now (expired more than 1 day ago)
         expired_job = JobListing.objects.create(
             title='Expired Job',
             description='Job that has expired',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(days=2),
-            expiration_date=timezone.now() - timedelta(hours=1),  # Expired an hour ago
+            start_date=timezone.now() - timedelta(days=5),  # Started in the past
+            expiration_date=timezone.now() - timedelta(days=2),  # Expired more than 1 day ago
             status='Active',  # Currently active but should be inactive
             created_by=self.user
         )
-        
+
         # Run the task
         result = check_job_statuses()
-        
+
         # Refresh from DB
         past_start_job.refresh_from_db()
         expired_job.refresh_from_db()
-        
-        # Check that the past start job was activated
+
+        # Check that the past start job was activated (since it started more than 1 day ago)
         self.assertEqual(past_start_job.status, 'Active')
-        
-        # Check that the expired job was deactivated
+
+        # Check that the expired job was deactivated (since it expired more than 1 day ago)
         self.assertEqual(expired_job.status, 'Inactive')
-        
+
         # Check that the result reflects the changes
         self.assertGreater(result['activated_jobs'], 0)
         self.assertGreater(result['deactivated_jobs'], 0)
