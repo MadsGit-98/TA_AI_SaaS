@@ -53,8 +53,8 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(hours=1),
-            expiration_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',  # Currently inactive but should be active
             created_by=self.user
         )
@@ -65,8 +65,8 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(days=2),
-            expiration_date=timezone.now() - timedelta(hours=1),  # Expired an hour ago
+            start_date=timezone.now() - timedelta(days=5),
+            expiration_date=timezone.now() - timedelta(days=2),  # Expired more than 1 day ago
             status='Active',  # Currently active but should be inactive
             created_by=self.user
         )
@@ -77,7 +77,7 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             expiration_date=timezone.now() + timedelta(days=10),
             status='Inactive',
             created_by=self.user
@@ -218,8 +218,8 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
                 required_skills=['Python'],
                 required_experience=2,
                 job_level='Senior',
-                start_date=timezone.now() - timedelta(hours=1),
-                expiration_date=timezone.now() + timedelta(days=1),
+                start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+                expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
                 status='Inactive',
                 created_by=self.user
             )
@@ -234,7 +234,7 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
         first_result = results[0]
         self.assertGreater(first_result['activated_jobs'], 0, "First run should activate jobs")
 
-        # Subsequent runs should find no more jobs to activate
+        # Subsequent runs should find no more jobs to activate since they're already active
         for result in results[1:]:
             self.assertEqual(result['activated_jobs'], 0, "Subsequent runs should not activate more jobs")
 
@@ -341,8 +341,8 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(hours=1),
-            expiration_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',
             created_by=self.user
         )

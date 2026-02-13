@@ -40,20 +40,20 @@ class JobStatusUpdateIntegrationTest(TestCase):
 
     def create_test_jobs(self):
         """Helper to create test jobs with various statuses and dates"""
-        # Job that should be activated (past start date, future expiration)
+        # Job that should be activated (start date more than 1 day in the past, future expiration)
         self.to_activate_job = JobListing.objects.create(
             title='To Activate Job',
             description='Job that should be activated',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(minutes=5),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
             expiration_date=timezone.now() + timedelta(days=5),
             status='Inactive',  # Currently inactive but should be active
             created_by=self.user
         )
-        
-        # Job that should be deactivated (past expiration date)
+
+        # Job that should be deactivated (expiration date more than 1 day in the past)
         self.to_deactivate_job = JobListing.objects.create(
             title='To Deactivate Job',
             description='Job that should be deactivated',
@@ -61,11 +61,11 @@ class JobStatusUpdateIntegrationTest(TestCase):
             required_experience=2,
             job_level='Senior',
             start_date=timezone.now() - timedelta(days=10),
-            expiration_date=timezone.now() - timedelta(minutes=5),  # Expired 5 mins ago
+            expiration_date=timezone.now() - timedelta(days=2),  # Expired more than 1 day ago
             status='Active',  # Currently active but should be inactive
             created_by=self.user
         )
-        
+
         # Job that should remain active (both start and expiration in appropriate range)
         self.remain_active_job = JobListing.objects.create(
             title='Remain Active Job',
@@ -74,19 +74,19 @@ class JobStatusUpdateIntegrationTest(TestCase):
             required_experience=2,
             job_level='Senior',
             start_date=timezone.now() - timedelta(days=1),
-            expiration_date=timezone.now() + timedelta(days=1),
+            expiration_date=timezone.now() + timedelta(days=2),  # Expiration more than 1 day in future
             status='Active',
             created_by=self.user
         )
-        
-        # Job that should remain inactive (start date in future)
+
+        # Job that should remain inactive (start date more than 1 day in future)
         self.remain_inactive_job = JobListing.objects.create(
             title='Remain Inactive Job',
             description='Job that should remain inactive',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             expiration_date=timezone.now() + timedelta(days=10),
             status='Inactive',
             created_by=self.user
@@ -127,23 +127,48 @@ class JobStatusUpdateIntegrationTest(TestCase):
     
     def test_multiple_runs_of_task(self):
         """Test that running the task multiple times doesn't cause issues"""
-        self.create_test_jobs()
-        
+        # Create jobs that will be affected by the first run but not by subsequent runs
+        # Job that should be activated (start date more than 1 day in the past, future expiration)
+        to_activate_job = JobListing.objects.create(
+            title='To Activate Job',
+            description='Job that should be activated',
+            required_skills=['Python'],
+            required_experience=2,
+            job_level='Senior',
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=5),
+            status='Inactive',  # Currently inactive but should be active
+            created_by=self.user
+        )
+
+        # Job that should be deactivated (expiration date more than 1 day in the past)
+        to_deactivate_job = JobListing.objects.create(
+            title='To Deactivate Job',
+            description='Job that should be deactivated',
+            required_skills=['Python'],
+            required_experience=2,
+            job_level='Senior',
+            start_date=timezone.now() - timedelta(days=10),
+            expiration_date=timezone.now() - timedelta(days=2),  # Expired more than 1 day ago
+            status='Active',  # Currently active but should be inactive
+            created_by=self.user
+        )
+
         # Run the task multiple times
         results = []
         for i in range(3):
             result = check_job_statuses()
             results.append(result)
-        
+
         # All runs after the first should have no changes since statuses are already correct
         # except for the first run which should make changes
         first_result = results[0]
         subsequent_results = results[1:]
-        
+
         # The first run should have made changes
         total_expected_changes = first_result['activated_jobs'] + first_result['deactivated_jobs']
         self.assertGreater(total_expected_changes, 0, "First run should make changes")
-        
+
         # Subsequent runs should have no changes since statuses are already correct
         for result in subsequent_results:
             self.assertEqual(result['activated_jobs'], 0, "No more activations should happen")

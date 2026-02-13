@@ -61,14 +61,15 @@ class JobStatusCeleryTasksUnitTest(TestCase):
     def test_check_job_statuses_activates_past_start_date_jobs(self):
         """Test that jobs with past start dates are activated"""
         # Create a job that should be activated (past start date, not expired)
+        # Using a start date that is more than 1 day in the past to ensure it gets activated with buffer
         inactive_job = JobListing.objects.create(
             title='Inactive Job',
             description='Inactive job description',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(hours=1),
-            expiration_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',
             created_by=self.user
         )
@@ -79,7 +80,7 @@ class JobStatusCeleryTasksUnitTest(TestCase):
         # Refresh from DB
         inactive_job.refresh_from_db()
 
-        # Job should be activated
+        # Job should be activated since start date is in the past (with buffer)
         self.assertEqual(inactive_job.status, 'Active')
         self.assertGreater(result['activated_jobs'], 0)
 
@@ -110,14 +111,14 @@ class JobStatusCeleryTasksUnitTest(TestCase):
 
     def test_check_job_statuses_no_changes_for_future_jobs(self):
         """Test that jobs with future start dates remain inactive"""
-        # Create a job that should remain inactive (future start date)
+        # Create a job that should remain inactive (start date is more than 1 day in the future)
         future_job = JobListing.objects.create(
             title='Future Job',
             description='Future job description',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             expiration_date=timezone.now() + timedelta(days=10),
             status='Inactive',
             created_by=self.user
@@ -129,34 +130,49 @@ class JobStatusCeleryTasksUnitTest(TestCase):
         # Refresh from DB
         future_job.refresh_from_db()
 
-        # Job should remain inactive
+        # Job should remain inactive since start date is more than 1 day in the future
         self.assertEqual(future_job.status, 'Inactive')
         self.assertEqual(result['activated_jobs'], 0)
         self.assertEqual(result['deactivated_jobs'], 0)
 
     def test_check_job_statuses_handles_edge_cases(self):
         """Test edge cases for the check_job_statuses task"""
-        # Create jobs at exact boundary times
-        exact_start_job = JobListing.objects.create(
-            title='Exact Start Job',
-            description='Exact start job description',
+        # Create jobs at boundary times considering the 1-day buffer
+        # A job that started 2 days ago (more than 1 day ago) should be activated
+        past_start_job = JobListing.objects.create(
+            title='Past Start Job',
+            description='Past start job description',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now(),
-            expiration_date=timezone.now() + timedelta(days=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',
             created_by=self.user
         )
 
-        exact_expire_job = JobListing.objects.create(
-            title='Exact Expire Job',
-            description='Exact expire job description',
+        # A job that expires in 2 days (more than 1 day in the future) should not be deactivated
+        future_expire_job = JobListing.objects.create(
+            title='Future Expire Job',
+            description='Future expire job description',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(days=1),
-            expiration_date=timezone.now(),
+            start_date=timezone.now() - timedelta(days=5),  # Started in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # Expires in the future
+            status='Active',
+            created_by=self.user
+        )
+
+        # A job that expired 2 days ago (more than 1 day ago) should be deactivated
+        past_expire_job = JobListing.objects.create(
+            title='Past Expire Job',
+            description='Past expire job description',
+            required_skills=['Python'],
+            required_experience=2,
+            job_level='Senior',
+            start_date=timezone.now() - timedelta(days=5),  # Started in the past
+            expiration_date=timezone.now() - timedelta(days=2),  # Expired more than 1 day ago
             status='Active',
             created_by=self.user
         )
@@ -165,14 +181,18 @@ class JobStatusCeleryTasksUnitTest(TestCase):
         result = check_job_statuses()
 
         # Refresh from DB
-        exact_start_job.refresh_from_db()
-        exact_expire_job.refresh_from_db()
+        past_start_job.refresh_from_db()
+        future_expire_job.refresh_from_db()
+        past_expire_job.refresh_from_db()
 
-        # Job at exact start time should be activated
-        self.assertEqual(exact_start_job.status, 'Active')
+        # Job that started in the past (with buffer) should be activated
+        self.assertEqual(past_start_job.status, 'Active')
 
-        # Job at exact expiration time should be deactivated
-        self.assertEqual(exact_expire_job.status, 'Inactive')
+        # Job that expires in the future (with buffer) should remain active
+        self.assertEqual(future_expire_job.status, 'Active')
+
+        # Job that expired in the past (with buffer) should be deactivated
+        self.assertEqual(past_expire_job.status, 'Inactive')
 
     @patch('apps.jobs.tasks.logger')
     def test_check_job_statuses_logs_activity(self, mock_logger):
@@ -363,14 +383,15 @@ class JobStatusCeleryTasksMockingUnitTest(TestCase):
     def test_check_job_statuses_with_fixed_time(self):
         """Test check_job_statuses with fixed time for consistent testing"""
         # Create jobs with specific times
+        # Using a start date that is more than 1 day in the past to ensure it gets activated
         job = JobListing.objects.create(
             title='Fixed Time Job',
             description='Fixed time job description',
             required_skills=['Python'],
             required_experience=2,
             job_level='Senior',
-            start_date=timezone.now() - timedelta(hours=1),
-            expiration_date=timezone.now() + timedelta(hours=1),
+            start_date=timezone.now() - timedelta(days=2),  # More than 1 day in the past
+            expiration_date=timezone.now() + timedelta(days=2),  # More than 1 day in the future
             status='Inactive',
             created_by=self.user
         )
@@ -381,6 +402,6 @@ class JobStatusCeleryTasksMockingUnitTest(TestCase):
         # Refresh from DB
         job.refresh_from_db()
 
-        # Job should be activated
+        # Job should be activated since start date is in the past (with buffer)
         self.assertEqual(job.status, 'Active')
         self.assertGreater(result['activated_jobs'], 0)
