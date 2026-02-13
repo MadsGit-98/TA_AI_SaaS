@@ -1,4 +1,5 @@
 from django.utils import timezone
+from datetime import timedelta
 from x_crewter.celery import app
 from apps.jobs.models import JobListing
 import logging
@@ -11,25 +12,26 @@ def check_job_statuses():
     """
     Task to check and update job statuses based on start and expiration dates
     """
-    now = timezone.now()
+    buffered_time = timezone.now() + timedelta(days=1)
+    current_time = timezone.now()
 
     # Activate jobs whose start date has arrived and are not yet expired
     activated_count = JobListing.objects.filter(
-        start_date__lte=now,
-        expiration_date__gte=now,
+        start_date__lte=buffered_time,
+        expiration_date__gt=current_time,
         status='Inactive'
-    ).update(status='Active', updated_at=now)
+    ).update(status='Active', updated_at=current_time)
 
     # Deactivate jobs whose expiration date has passed
     deactivated_count = JobListing.objects.filter(
-        expiration_date__lt=now,
+        expiration_date__lt=buffered_time,
         status='Active'
-    ).update(status='Inactive', updated_at=now)
+    ).update(status='Inactive', updated_at=current_time)
 
-    logger.info(f"Checked job statuses at {now}. Activated {activated_count} jobs, deactivated {deactivated_count} jobs.")
+    logger.info(f"Checked job statuses at {current_time}. Activated {activated_count} jobs, deactivated {deactivated_count} jobs.")
 
     return {
-        'timestamp': now.isoformat(),
+        'timestamp': current_time.isoformat(),
         'activated_jobs': activated_count,
         'deactivated_jobs': deactivated_count
     }
