@@ -150,23 +150,50 @@
                     placeholder="Provide a detailed description of the job responsibilities, requirements, and company culture..."></textarea>
             </div>
 
-            <div class="flex justify-end space-x-3 pt-4">
-                <a href="/dashboard/" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    Cancel
-                </a>
-                <!-- Update Button -->
-                <button
-                    type="submit"
-                    class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#080707]">
-                    Update Job Listing
-                </button>
-                <!-- Delete Button -->
-                <button
-                    type="button"
-                    id="deleteButton"
-                    class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                    Delete Job Listing
-                </button>
+            <!-- Screening Questions Section -->
+            <div class="mt-8 border-t border-gray-200 pt-8">
+                <h2 class="text-xl font-semibold mb-4">Screening Questions</h2>
+                
+                <!-- Existing Screening Questions -->
+                <div id="existingScreeningQuestions" class="mb-6">
+                    <h3 class="font-medium mb-2">Existing Questions:</h3>
+                    <div id="questionsList" class="space-y-3">
+                        <!-- Existing questions will be loaded here dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Add New Screening Question Button -->
+                <div class="mb-6">
+                    <button 
+                        type="button" 
+                        id="addNewQuestionBtn"
+                        class="px-4 py-2 bg-gray-500 text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                        Add New Screening Question
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center pt-4">
+                <div>
+                    <a href="/dashboard/" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        Cancel
+                    </a>
+                </div>
+                <div class="flex space-x-3">
+                    <!-- Update Button -->
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#080707]">
+                        Update Job Listing
+                    </button>
+                    <!-- Delete Button -->
+                    <button
+                        type="button"
+                        id="deleteButton"
+                        class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        Delete Job Listing
+                    </button>
+                </div>
             </div>
         </form>
     </div>

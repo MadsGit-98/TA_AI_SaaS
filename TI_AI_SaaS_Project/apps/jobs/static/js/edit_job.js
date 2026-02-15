@@ -76,6 +76,9 @@ async function loadJobData() {
             setFieldValue('start_date', formatDate(job.start_date));
             setFieldValue('expiration_date', formatDate(job.expiration_date));
             setFieldValue('status', job.status);
+            
+            // Load screening questions after job data is loaded
+            loadScreeningQuestions(jobId);
         } else if (response.status === 404) {
             // If the job doesn't exist (e.g., it was deleted), don't show an error
             // This prevents the error message from showing after deletion
@@ -88,6 +91,135 @@ async function loadJobData() {
         alert('An error occurred while loading job data.');
     }
 }
+
+// Load screening questions for the job
+async function loadScreeningQuestions(jobId) {
+    try {
+        const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/`, {
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+        });
+
+        if (response.ok) {
+            const questions = await response.json();
+            displayScreeningQuestions(questions);
+        } else {
+            console.error('Failed to load screening questions:', response.status);
+        }
+    } catch (error) {
+        console.error('Error loading screening questions:', error);
+    }
+}
+
+// Display screening questions in the UI
+function displayScreeningQuestions(questions) {
+    const questionsList = document.getElementById('questionsList');
+    
+    if (!questions || questions.length === 0) {
+        questionsList.innerHTML = '<p class="text-gray-500 italic">No screening questions added yet.</p>';
+        return;
+    }
+    
+    questionsList.innerHTML = '';
+    
+    questions.forEach(question => {
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'border border-gray-200 p-4 rounded-md mb-3 bg-gray-50';
+        
+        // Format question type for display
+        const questionTypeMap = {
+            'TEXT': 'Text',
+            'YES_NO': 'Yes/No',
+            'CHOICE': 'Choice (Single)',
+            'MULTIPLE_CHOICE': 'Multiple Choice',
+            'FILE_UPLOAD': 'File Upload'
+        };
+        
+        const questionTypeDisplay = questionTypeMap[question.question_type] || question.question_type;
+        
+        questionDiv.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <div class="font-medium">${question.question_text}</div>
+                    <div class="text-sm text-gray-600 mt-1">
+                        Type: ${questionTypeDisplay} | 
+                        ${question.required ? 'Required' : 'Optional'}
+                    </div>
+                    ${question.choices && question.choices.length > 0 ? 
+                        `<div class="mt-2 text-sm">
+                            <strong>Choices:</strong>
+                            <ul class="list-disc pl-5 mt-1">
+                                ${question.choices.map(choice => `<li>${choice.text}</li>`).join('')}
+                            </ul>
+                        </div>` 
+                        : ''}
+                </div>
+                <div class="flex space-x-2">
+                    <button 
+                        type="button" 
+                        onclick="editScreeningQuestion('${question.id}', '${jobId}')"
+                        class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        Edit
+                    </button>
+                    <button
+                        type="button"
+                        onclick="deleteScreeningQuestion('${question.id}', '${jobId}', this)"
+                        class="text-red-600 hover:text-red-800 text-sm font-medium">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        questionsList.appendChild(questionDiv);
+    });
+}
+
+// Function to edit a screening question
+async function editScreeningQuestion(questionId, jobId) {
+    // Redirect to the add screening question page with the question ID for editing
+    window.location.href = `/dashboard/${jobId}/add-screening-question/?question_id=${questionId}`;
+}
+
+// Function to delete a screening question
+async function deleteScreeningQuestion(questionId, jobId, element) {
+    if (!confirm('Are you sure you want to delete this screening question?')) return;
+
+    try {
+        const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/${questionId}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+        });
+
+        if (response.ok) {
+            // Remove the question element from the UI
+            element.closest('.border').remove();
+            alert('Screening question deleted successfully!');
+        } else {
+            alert('Failed to delete screening question');
+        }
+    } catch (error) {
+        console.error('Error deleting screening question:', error);
+        alert('An error occurred while deleting the screening question.');
+    }
+}
+
+// Add event listener for the "Add New Screening Question" button
+document.addEventListener('DOMContentLoaded', function() {
+    const addNewQuestionBtn = document.getElementById('addNewQuestionBtn');
+    if (addNewQuestionBtn && jobId) {
+        addNewQuestionBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Redirect to the add screening questions page with the job ID
+            window.location.href = `/dashboard/${jobId}/add-screening-question/`;
+        });
+    } else {
+        console.error('Add New Question button not found or Job ID is missing');
+    }
+});
 
 // Update job listing
 const jobEditForm = document.getElementById('jobEditForm');
