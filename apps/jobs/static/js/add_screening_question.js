@@ -84,6 +84,22 @@ function useSuggestedQuestion(questionText, questionType) {
     document.getElementById('question_type').dispatchEvent(event);
 }
 
+// Helper function to get cookie value
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
 // Submit form
 document.getElementById('screeningQuestionForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -107,13 +123,42 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
         }
     }
 
-    // Get job ID from URL parameters or hidden form field
+    // Get job ID from URL parameters, URL path, or hidden form field
+    let jobId = null;
+    
+    // First, try to get from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
-    const jobIdFromUrl = urlParams.get('job_id');
-    const jobIdEl = document.getElementById('job_id');
-    const jobIdFromHiddenField = jobIdEl ? jobIdEl.value : '';
+    jobId = urlParams.get('job_id');
+    
+    // If not in URL params, try to extract from URL path
+    if (!jobId) {
+        // Extract job ID from URL path (expected format: /dashboard/{job_id}/add-screening-question/)
+        const pathSegments = window.location.pathname.split('/').filter(segment => segment !== '');
+        const dashboardIndex = pathSegments.indexOf('dashboard');
+        if (dashboardIndex !== -1 && pathSegments.length > dashboardIndex + 1) {
+            const potentialJobId = pathSegments[dashboardIndex + 1];
+            // Basic validation to check if it looks like a UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(potentialJobId)) {
+                jobId = potentialJobId;
+            }
+        }
+    }
+    
+    // If still not found, try to get from hidden field
+    if (!jobId) {
+        const jobIdEl = document.getElementById('job_id');
+        if (jobIdEl) {
+            jobId = jobIdEl.value;
+        }
+    }
 
-    const jobId = jobIdFromUrl || jobIdFromHiddenField;
+    // Get question ID for editing (if present)
+    const questionIdFromUrl = urlParams.get('question_id');
+    const questionIdEl = document.getElementById('question_id');
+    const questionIdFromHiddenField = questionIdEl ? questionIdEl.value : '';
+
+    const questionId = questionIdFromUrl || questionIdFromHiddenField;
 
     if (!jobId) {
         console.error('Error: No job ID found. Cannot submit screening question.');
@@ -122,23 +167,47 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
     }
 
     try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
-            },
-            credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
-            body: JSON.stringify(questionData)
-        });
+        let response;
+        let method;
+        let url;
+
+        if (questionId) {
+            // Editing an existing question
+            method = 'PUT';
+            url = `/dashboard/jobs/${jobId}/screening-questions/${questionId}/`;
+            response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
+                body: JSON.stringify(questionData)
+            });
+        } else {
+            // Creating a new question
+            method = 'POST';
+            url = `/dashboard/jobs/${jobId}/screening-questions/`;
+            response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                credentials: 'include',  // Include cookies in request (handles JWT tokens automatically)
+                body: JSON.stringify(questionData)
+            });
+        }
 
         if (response.ok) {
             const result = await response.json();
-            alert('Screening question added successfully!');
-            // Redirect back to job detail page or clear form
-            document.getElementById('screeningQuestionForm').reset();
-            // Hide choices section if it was visible
-            document.getElementById('choicesSection').classList.add('hidden');
+            if (questionId) {
+                alert('Screening question updated successfully!');
+            } else {
+                alert('Screening question added successfully!');
+            }
+            // Redirect back to job edit page
+            window.location.href = `/dashboard/${jobId}/edit/`;
         } else {
             const rawBody = await response.text();
             let errorData;
@@ -149,14 +218,136 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
                 errorData = rawBody;
             }
 
-            console.error('Error adding screening question:', errorData);
-            alert('Failed to add screening question. Please try again.');
+            console.error('Error processing screening question:', errorData);
+            alert('Failed to process screening question. Please try again.');
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('An error occurred while adding the screening question.');
+        alert('An error occurred while processing the screening question.');
     }
 });
 
+// Check if we're editing an existing question
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const questionId = urlParams.get('question_id');
+    
+    // Get job ID from URL parameters, URL path, or hidden form field
+    let jobId = urlParams.get('job_id');
+    
+    // If not in URL params, try to extract from URL path
+    if (!jobId) {
+        // Extract job ID from URL path (expected format: /dashboard/{job_id}/add-screening-question/)
+        const pathSegments = window.location.pathname.split('/').filter(segment => segment !== '');
+        const dashboardIndex = pathSegments.indexOf('dashboard');
+        if (dashboardIndex !== -1 && pathSegments.length > dashboardIndex + 1) {
+            const potentialJobId = pathSegments[dashboardIndex + 1];
+            // Basic validation to check if it looks like a UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(potentialJobId)) {
+                jobId = potentialJobId;
+            }
+        }
+    }
+    
+    // If still not found, try to get from hidden field
+    if (!jobId) {
+        jobId = document.getElementById('job_id').value;
+    }
+
+    if (questionId) {
+        // We're editing an existing question, load its data
+        loadQuestionData(questionId);
+    } else if (jobId) {
+        // Set the job ID in the hidden field if it's provided in the URL
+        document.getElementById('job_id').value = jobId;
+    }
+});
+
+// Function to load question data for editing
+async function loadQuestionData(questionId) {
+    // Get job ID from hidden field (should be populated by DOMContentLoaded handler)
+    const jobId = document.getElementById('job_id').value;
+
+    if (!jobId) {
+        console.error('Error: No job ID found for loading question data.');
+        alert('Error: Job ID is missing. Cannot load question data.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/${questionId}/`, {
+            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+        });
+
+        if (response.ok) {
+            const question = await response.json();
+
+            // Fill the form with the question data
+            document.getElementById('question_text').value = question.question_text;
+            document.getElementById('question_type').value = question.question_type;
+            document.getElementById('required').checked = question.required;
+
+            // Set the question ID in the hidden field
+            document.getElementById('question_id').value = question.id;
+
+            // Set the job ID in the hidden field (redundant but safe)
+            document.getElementById('job_id').value = question.job;
+
+            // Show choices section if needed and populate choices
+            if (question.question_type === 'CHOICE' || question.question_type === 'MULTIPLE_CHOICE') {
+                document.getElementById('choicesSection').classList.remove('hidden');
+                if (question.choices && question.choices.length > 0) {
+                    const choicesText = question.choices.map(choice => choice.text).join('\n');
+                    document.getElementById('choices').value = choicesText;
+                }
+            }
+
+            // Update button text to indicate editing
+            document.querySelector('button[type="submit"]').textContent = 'Update Question';
+        } else {
+            console.error('Failed to load question data:', response.status);
+            alert('Failed to load question data for editing.');
+        }
+    } catch (error) {
+        console.error('Error loading question data:', error);
+        alert('An error occurred while loading question data.');
+    }
+}
+
 // Load suggested questions when page loads
 document.addEventListener('DOMContentLoaded', loadSuggestedQuestions);
+
+// Set up logout event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const logoutLink = document.getElementById('logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', async function(e) {
+            e.preventDefault();
+
+            try {
+                const response = await fetch('/api/accounts/auth/logout/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'  // Include cookies in request
+                });
+
+                if (response.status === 204) {
+                    // Redirect to home page after successful logout
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed');
+                    // Even if there's an error, redirect to home page
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error during logout:', error);
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+            }
+        });
+    }
+});

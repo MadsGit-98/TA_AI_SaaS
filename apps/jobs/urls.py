@@ -4,12 +4,14 @@ from . import api
 
 app_name = 'jobs'
 urlpatterns = [
-    # API endpoints moved to api.py
+    # API endpoints for jobs
     path('jobs/', api.JobListingListView.as_view(), name='job-listing-list'),
     path('jobs/<uuid:pk>/', api.JobListingDetailView.as_view(), name='job-listing-detail'),
     path('jobs/<uuid:pk>/activate/', api.activate_job, name='job-activate'),
     path('jobs/<uuid:pk>/deactivate/', api.deactivate_job, name='job-deactivate'),
     path('jobs/<uuid:pk>/duplicate/', api.duplicate_job, name='job-duplicate'),
+    
+    # Screening questions API endpoints - these need to be accessible from both /api/ and /dashboard/ contexts
     path('jobs/<uuid:job_id>/screening-questions/', api.ScreeningQuestionListView.as_view(), name='screening-question-list'),
     path('jobs/<uuid:job_id>/screening-questions/<uuid:pk>/', api.ScreeningQuestionDetailView.as_view(), name='screening-question-detail'),
     path('common-screening-questions/', api.get_common_screening_questions, name='common-screening-questions'),
