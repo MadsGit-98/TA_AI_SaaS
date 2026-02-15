@@ -5,7 +5,6 @@ from apps.accounts.models import CustomUser
 from apps.jobs.models import JobListing
 from apps.jobs.tasks import check_job_statuses
 from unittest.mock import patch
-import logging
 
 
 class JobStatusUpdateSecurityTest(TestCase):
