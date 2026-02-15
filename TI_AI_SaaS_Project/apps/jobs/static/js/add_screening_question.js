@@ -156,7 +156,10 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
     // Get question ID for editing (if present)
     const questionIdFromUrl = urlParams.get('question_id');
     const questionIdEl = document.getElementById('question_id');
-    const questionIdFromHiddenField = questionIdEl ? questionIdEl.value : '';
+    let questionIdFromHiddenField = '';
+    if (questionIdEl) {
+        questionIdFromHiddenField = questionIdEl.value;
+    }
 
     const questionId = questionIdFromUrl || questionIdFromHiddenField;
 
@@ -252,7 +255,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // If still not found, try to get from hidden field
     if (!jobId) {
-        jobId = document.getElementById('job_id').value;
+        const jobIdElem = document.getElementById('job_id');
+        if (jobIdElem) {
+            jobId = jobIdElem.value;
+        }
     }
 
     if (questionId) {
@@ -267,7 +273,13 @@ document.addEventListener('DOMContentLoaded', function() {
 // Function to load question data for editing
 async function loadQuestionData(questionId) {
     // Get job ID from hidden field (should be populated by DOMContentLoaded handler)
-    const jobId = document.getElementById('job_id').value;
+    const jobIdElem = document.getElementById('job_id');
+    if (!jobIdElem) {
+        console.error('Error: Hidden job ID element not found.');
+        alert('Error: Required form element is missing. Cannot load question data.');
+        return;
+    }
+    const jobId = jobIdElem.value;
 
     if (!jobId) {
         console.error('Error: No job ID found for loading question data.');
@@ -292,19 +304,42 @@ async function loadQuestionData(questionId) {
             document.getElementById('question_id').value = question.id;
 
             // Set the job ID in the hidden field (redundant but safe)
-            document.getElementById('job_id').value = question.job;
+            const jobIdField = document.getElementById('job_id');
+            if (jobIdField) {
+                jobIdField.value = question.job;
+            } else {
+                console.warn('Warning: Hidden job ID element not found when setting value from question data.');
+            }
 
             // Show choices section if needed and populate choices
             if (question.question_type === 'CHOICE' || question.question_type === 'MULTIPLE_CHOICE') {
-                document.getElementById('choicesSection').classList.remove('hidden');
+                const choicesSection = document.getElementById('choicesSection');
+                if (choicesSection) {
+                    choicesSection.classList.remove('hidden');
+                }
+
                 if (question.choices && question.choices.length > 0) {
-                    const choicesText = question.choices.map(choice => choice.text).join('\n');
-                    document.getElementById('choices').value = choicesText;
+                    // Filter out choices with missing text and map to safe values
+                    const validChoices = question.choices
+                        .filter(choice => choice && choice.text !== undefined && choice.text !== null)
+                        .map(choice => String(choice.text).trim())
+                        .filter(text => text !== ''); // Remove empty strings after trimming
+
+                    if (validChoices.length > 0) {
+                        const choicesText = validChoices.join('\n');
+                        const choicesElement = document.getElementById('choices');
+                        if (choicesElement) {
+                            choicesElement.value = choicesText;
+                        }
+                    }
                 }
             }
 
             // Update button text to indicate editing
-            document.querySelector('button[type="submit"]').textContent = 'Update Question';
+            const submitButton = document.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.textContent = 'Update Question';
+            }
         } else {
             console.error('Failed to load question data:', response.status);
             alert('Failed to load question data for editing.');
@@ -325,11 +360,20 @@ document.addEventListener('DOMContentLoaded', function() {
         logoutLink.addEventListener('click', async function(e) {
             e.preventDefault();
 
+            // Get CSRF token using the helper function
+            const csrfToken = getCookie('csrftoken');
+            if (!csrfToken) {
+                console.error('CSRF token not found in cookies');
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+                return;
+            }
+
             try {
                 const response = await fetch('/api/accounts/auth/logout/', {
                     method: 'POST',
                     headers: {
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'X-CSRFToken': csrfToken,
                         'Content-Type': 'application/json',
                     },
                     credentials: 'same-origin'  // Include cookies in request
