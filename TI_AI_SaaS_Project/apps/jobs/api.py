@@ -29,9 +29,39 @@ class JobListingListView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = JobListing.objects.filter(created_by=self.request.user)
+        
+        # Apply status filter
         status_param = self.request.query_params.get('status', None)
         if status_param:
             queryset = queryset.filter(status=status_param)
+        
+        # Apply date range filter
+        date_range_param = self.request.query_params.get('date_range', None)
+        if date_range_param:
+            now = timezone.now()
+            if date_range_param == 'today':
+                queryset = queryset.filter(created_at__date=now.date())
+            elif date_range_param == 'week':
+                from datetime import timedelta
+                start_of_week = now - timedelta(days=now.weekday())
+                queryset = queryset.filter(created_at__gte=start_of_week)
+            elif date_range_param == 'month':
+                queryset = queryset.filter(created_at__year=now.year, created_at__month=now.month)
+        
+        # Apply job level filter
+        job_level_param = self.request.query_params.get('job_level', None)
+        if job_level_param:
+            queryset = queryset.filter(job_level=job_level_param)
+        
+        # Apply search filter
+        search_param = self.request.query_params.get('search', None)
+        if search_param:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(title__icontains=search_param) | 
+                Q(description__icontains=search_param)
+            )
+        
         return queryset
 
     def perform_create(self, serializer):
