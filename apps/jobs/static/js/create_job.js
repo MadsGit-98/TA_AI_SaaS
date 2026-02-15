@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // Validate required fields
-            if (!jobData.title || !jobData.description || !jobData.required_skills || !jobData.required_experience || 
+            if (!jobData.title || !jobData.description || !Array.isArray(jobData.required_skills) || jobData.required_skills.length === 0 || !jobData.required_experience ||
                 !jobData.job_level || !jobData.start_date || !jobData.expiration_date) {
                 alert('Please fill in all required fields before creating the job.');
                 return;
@@ -203,11 +203,15 @@ document.addEventListener('DOMContentLoaded', function() {
         logoutLink.addEventListener('click', async function(e) {
             e.preventDefault();
 
+            // Get CSRF token with null check
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+            
             try {
                 const response = await fetch('/api/accounts/auth/logout/', {
                     method: 'POST',
                     headers: {
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'X-CSRFToken': csrfToken,
                         'Content-Type': 'application/json',
                     },
                     credentials: 'same-origin'  // Include cookies in request

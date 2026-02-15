@@ -120,11 +120,11 @@ function displayScreeningQuestions(questions) {
     }
     
     questionsList.innerHTML = '';
-    
+
     questions.forEach(question => {
         const questionDiv = document.createElement('div');
         questionDiv.className = 'border border-gray-200 p-4 rounded-md mb-3 bg-gray-50';
-        
+
         // Format question type for display
         const questionTypeMap = {
             'TEXT': 'Text',
@@ -133,43 +133,91 @@ function displayScreeningQuestions(questions) {
             'MULTIPLE_CHOICE': 'Multiple Choice',
             'FILE_UPLOAD': 'File Upload'
         };
-        
+
         const questionTypeDisplay = questionTypeMap[question.question_type] || question.question_type;
+
+        // Create the main flex container
+        const flexContainer = document.createElement('div');
+        flexContainer.className = 'flex justify-between items-start';
+
+        // Create the left side content container
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'flex-1';
+
+        // Create the question text element
+        const questionTextElement = document.createElement('div');
+        questionTextElement.className = 'font-medium';
+        questionTextElement.textContent = question.question_text; // Safe assignment
+
+        // Create the meta info element
+        const metaInfoElement = document.createElement('div');
+        metaInfoElement.className = 'text-sm text-gray-600 mt-1';
+        metaInfoElement.textContent = `Type: ${questionTypeDisplay} | ${question.required ? 'Required' : 'Optional'}`;
+
+        // Add the main content to the left side
+        contentContainer.appendChild(questionTextElement);
+        contentContainer.appendChild(metaInfoElement);
+
+        // Add choices if they exist
+        if (question.choices && question.choices.length > 0) {
+            const choicesContainer = document.createElement('div');
+            choicesContainer.className = 'mt-2 text-sm';
+
+            const choicesLabel = document.createElement('strong');
+            choicesLabel.textContent = 'Choices:';
+            choicesContainer.appendChild(choicesLabel);
+
+            const choicesList = document.createElement('ul');
+            choicesList.className = 'list-disc pl-5 mt-1';
+
+            question.choices.forEach(choice => {
+                const choiceItem = document.createElement('li');
+                choiceItem.textContent = choice.text; // Safe assignment
+                choicesList.appendChild(choiceItem);
+            });
+
+            choicesContainer.appendChild(choicesList);
+            contentContainer.appendChild(choicesContainer);
+        }
+
+        // Create the right side buttons container
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'flex space-x-2';
+
+        // Create the edit button
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'text-blue-600 hover:text-blue-800 text-sm font-medium';
+        editButton.textContent = 'Edit';
         
-        questionDiv.innerHTML = `
-            <div class="flex justify-between items-start">
-                <div class="flex-1">
-                    <div class="font-medium">${question.question_text}</div>
-                    <div class="text-sm text-gray-600 mt-1">
-                        Type: ${questionTypeDisplay} | 
-                        ${question.required ? 'Required' : 'Optional'}
-                    </div>
-                    ${question.choices && question.choices.length > 0 ? 
-                        `<div class="mt-2 text-sm">
-                            <strong>Choices:</strong>
-                            <ul class="list-disc pl-5 mt-1">
-                                ${question.choices.map(choice => `<li>${choice.text}</li>`).join('')}
-                            </ul>
-                        </div>` 
-                        : ''}
-                </div>
-                <div class="flex space-x-2">
-                    <button 
-                        type="button" 
-                        onclick="editScreeningQuestion('${question.id}', '${jobId}')"
-                        class="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                        Edit
-                    </button>
-                    <button
-                        type="button"
-                        onclick="deleteScreeningQuestion('${question.id}', '${jobId}', this)"
-                        class="text-red-600 hover:text-red-800 text-sm font-medium">
-                        Delete
-                    </button>
-                </div>
-            </div>
-        `;
+        // Add click event listener for edit
+        editButton.addEventListener('click', function() {
+            editScreeningQuestion(question.id, jobId);
+        });
+
+        // Create the delete button
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'text-red-600 hover:text-red-800 text-sm font-medium';
+        deleteButton.textContent = 'Delete';
         
+        // Add click event listener for delete
+        deleteButton.addEventListener('click', function() {
+            deleteScreeningQuestion(question.id, jobId, deleteButton);
+        });
+
+        // Add buttons to the container
+        buttonsContainer.appendChild(editButton);
+        buttonsContainer.appendChild(deleteButton);
+
+        // Add content and buttons to the flex container
+        flexContainer.appendChild(contentContainer);
+        flexContainer.appendChild(buttonsContainer);
+
+        // Add the flex container to the question div
+        questionDiv.appendChild(flexContainer);
+
+        // Add the question div to the list
         questionsList.appendChild(questionDiv);
     });
 }
@@ -317,11 +365,20 @@ document.addEventListener('DOMContentLoaded', function() {
         logoutLink.addEventListener('click', async function(e) {
             e.preventDefault();
 
+            // Get CSRF token using the helper function
+            const csrfToken = getCookie('csrftoken');
+            if (!csrfToken) {
+                console.error('CSRF token not found in cookies');
+                // Even if there's an error, redirect to home page
+                window.location.href = '/';
+                return;
+            }
+
             try {
                 const response = await fetch('/api/accounts/auth/logout/', {
                     method: 'POST',
                     headers: {
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'X-CSRFToken': csrfToken,
                         'Content-Type': 'application/json',
                     },
                     credentials: 'same-origin'  // Include cookies in request
