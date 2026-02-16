@@ -130,7 +130,8 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // Validate required fields
-            if (!jobData.title || !jobData.description || !Array.isArray(jobData.required_skills) || jobData.required_skills.length === 0 || !jobData.required_experience ||
+            if (!jobData.title || !jobData.description || !Array.isArray(jobData.required_skills) || jobData.required_skills.length === 0 || 
+                jobData.required_experience === null || jobData.required_experience === undefined || jobData.required_experience === '' ||
                 !jobData.job_level || !jobData.start_date || !jobData.expiration_date) {
                 showError('Please fill in all required fields before creating the job.');
                 return;
