@@ -14,6 +14,32 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
+// Helper function to show error message
+function showError(message) {
+    const errorMessage = document.getElementById('job-error-message');
+    const errorText = document.getElementById('job-error-text');
+    if (errorMessage && errorText) {
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+        setTimeout(() => {
+            errorMessage.classList.add('hidden');
+        }, 5000);
+    }
+}
+
+// Helper function to show success message
+function showSuccess(message) {
+    const successMessage = document.getElementById('job-success-message');
+    const successText = document.getElementById('job-success-text');
+    if (successMessage && successText) {
+        successText.textContent = message;
+        successMessage.classList.remove('hidden');
+        setTimeout(() => {
+            successMessage.classList.add('hidden');
+        }, 3000);
+    }
+}
+
 // Helper function to create job element
 function createJobElement(job, container) {
     const jobElement = document.createElement('div');
@@ -333,15 +359,15 @@ async function activateJob(jobId) {
         });
 
         if (response.ok) {
-            alert('Job activated successfully!');
+            showSuccess('Job activated successfully!');
             loadJobListings(); // Refresh the list
         } else {
             const errorData = await response.json();
-            alert(`Error activating job: ${JSON.stringify(errorData)}`);
+            showError(`Error activating job: ${JSON.stringify(errorData)}`);
         }
     } catch (error) {
         console.error('Error activating job:', error);
-        alert('An error occurred while activating the job.');
+        showError('An error occurred while activating the job.');
     }
 }
 
@@ -358,15 +384,15 @@ async function deactivateJob(jobId) {
         });
 
         if (response.ok) {
-            alert('Job deactivated successfully!');
+            showSuccess('Job deactivated successfully!');
             loadJobListings(); // Refresh the list
         } else {
             const errorData = await response.json();
-            alert(`Error deactivating job: ${JSON.stringify(errorData)}`);
+            showError(`Error deactivating job: ${JSON.stringify(errorData)}`);
         }
     } catch (error) {
         console.error('Error deactivating job:', error);
-        alert('An error occurred while deactivating the job.');
+        showError('An error occurred while deactivating the job.');
     }
 }
 
@@ -385,19 +411,21 @@ async function duplicateJob(jobId) {
         if (response.ok) {
             const result = await response.json();
             if (result && (typeof result.id === 'number' || (typeof result.id === 'string' && result.id.trim() !== ''))) {
-                alert('Job duplicated successfully!');
-                window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
+                showSuccess('Job duplicated successfully!');
+                setTimeout(() => {
+                    window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
+                }, 1500);
             } else {
                 console.error('Invalid or missing ID in duplication response:', result);
-                alert('Job duplicated successfully but failed to redirect. Please refresh the page to see the new job.');
+                showSuccess('Job duplicated successfully but failed to redirect. Please refresh the page to see the new job.');
             }
         } else {
             const errorData = await response.json();
-            alert(`Error duplicating job: ${JSON.stringify(errorData)}`);
+            showError(`Error duplicating job: ${JSON.stringify(errorData)}`);
         }
     } catch (error) {
         console.error('Error duplicating job:', error);
-        alert('An error occurred while duplicating the job.');
+        showError('An error occurred while duplicating the job.');
     }
 }
 
@@ -405,11 +433,11 @@ function copyApplicationLink(link) {
     const fullLink = `${window.location.origin}/apply/${link}`;
     navigator.clipboard.writeText(fullLink)
         .then(() => {
-            alert('Application link copied to clipboard!');
+            showSuccess('Application link copied to clipboard!');
         })
         .catch(err => {
             console.error('Failed to copy link: ', err);
-            alert('Failed to copy link to clipboard.');
+            showError('Failed to copy link to clipboard.');
         });
 }
 
