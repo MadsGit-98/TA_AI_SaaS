@@ -16,13 +16,13 @@ SENSITIVE_KEYS = {
 
 def sanitize_extra_data(data):
     """
-    Sanitize sensitive data in logs by replacing values for sensitive keys with '[REDACTED]'.
-
-    Args:
-        data: Input data which can be dict, list, or other types
-
+    Recursively redacts sensitive values for safe logging and truncates overly long strings.
+    
+    Parameters:
+        data: The input to sanitize; may be a dict, list, string, or other value. Dicts and lists are processed recursively.
+    
     Returns:
-        Safe redacted representation of the input data
+        The sanitized representation of `data` where values for sensitive keys are replaced with "[REDACTED]" and strings longer than 1000 characters are truncated with "..." appended.
     """
     if isinstance(data, dict):
         sanitized_dict = {}
@@ -45,13 +45,15 @@ def sanitize_extra_data(data):
 
 def log_job_operation(operation_type, job_id, user=None, extra_data=None):
     """
-    Log job listing operations for auditing purposes.
-
-    Args:
-        operation_type (str): Type of operation (create, update, activate, deactivate, delete, duplicate)
-        job_id (UUID): ID of the job being operated on
-        user (User, optional): User performing the operation
-        extra_data (dict, optional): Additional data about the operation
+    Record a standardized audit log entry for a job listing operation.
+    
+    Logs operation type, job identifier, and the acting user; if `user` is not provided the log will indicate an unknown actor. If `extra_data` is supplied it will be sanitized (sensitive keys redacted and long strings truncated) before being included in the log entry.
+    
+    Parameters:
+        operation_type (str): The kind of operation performed (e.g., "create", "update", "activate", "deactivate", "delete", "duplicate").
+        job_id: Identifier of the affected job.
+        user (optional): The user who performed the operation; may be None.
+        extra_data (optional): Additional contextual data to include; will be sanitized for sensitive fields.
     """
     user_info = f"User: {user.username if user else 'Unknown'}"
     job_info = f"Job ID: {job_id}"
@@ -68,13 +70,15 @@ def log_job_operation(operation_type, job_id, user=None, extra_data=None):
 
 def log_job_status_change(job, old_status, new_status, user=None):
     """
-    Log job status changes specifically.
-
-    Args:
-        job (JobListing): The job instance
-        old_status (str): Previous status
-        new_status (str): New status
-        user (User, optional): User who triggered the change
+    Record a job listing's status transition in the audit log.
+    
+    Logs an informational message with the job's title and ID, the status change (old -> new), and the acting user. If `job` is None, logs a warning and returns without further action. When `user` is omitted, the entry records "System" as the actor.
+    
+    Parameters:
+        job (JobListing): The job instance whose status changed.
+        old_status (str): Previous status value.
+        new_status (str): New status value.
+        user (User, optional): User who triggered the change; logged as their `username` if provided.
     """
     if job is None:
         logger.warning("[JOB STATUS CHANGE] Called with None job object")

@@ -1,6 +1,9 @@
 // Homepage logout functionality
 
-// Function to get CSRF token from meta tag
+/**
+ * Retrieve the CSRF token from the meta tag named "csrf-token".
+ * @returns {string|undefined} The token string from the meta tag, or `undefined` if the meta tag is not present.
+ */
 function getCsrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 }

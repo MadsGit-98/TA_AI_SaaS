@@ -18,6 +18,11 @@ from apps.jobs.models import JobListing, ScreeningQuestion
 @patch('apps.accounts.api.refresh_user_token.delay')
 class JobDuplicationAPITest(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: an authenticated API client, a test user with a UserProfile flagged as a talent acquisition specialist, and an original JobListing to use in tests.
+        
+        The API client is logged in via the authentication endpoint so JWT cookies are established. An original_job is created with title, description, required skills, required experience, job level, start and expiration dates, and the test user as creator.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a profile for the user to satisfy RBAC middleware requirements
@@ -49,6 +54,13 @@ class JobDuplicationAPITest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Tears down test state by clearing the Django cache and creating two screening questions associated with the original job.
+        
+        The cache clear resets rate limiting between tests. After clearing, two ScreeningQuestion objects are created on `self.original_job`:
+        - "What is your Python experience?" (TEXT, required)
+        - "Are you available for full-time?" (YES_NO, required)
+        """
         from django.core.cache import cache
         cache.clear()
         
@@ -135,7 +147,11 @@ class JobDuplicationAPITest(TestCase):
         self.assertEqual(duplicated_job_data['status'], 'Inactive')
     
     def test_duplicate_job_dates_preservation(self, _=None):
-        """Test that job dates are preserved in the duplicate"""
+        """
+        Verify that a duplicated job preserves the original job's start_date and expiration_date in the API response.
+        
+        This test posts to the job duplication endpoint for the original job, then asserts the returned duplicate's `start_date` and `expiration_date` match the original job's dates as represented in ISO 8601 format (accounting for a trailing 'Z' UTC designator).
+        """
         response = self.client.post(reverse('dashboard_jobs:job-duplicate', kwargs={'pk': self.original_job.id}))
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
@@ -166,6 +182,11 @@ class JobDuplicationAPITest(TestCase):
 @patch('apps.accounts.api.refresh_user_token.delay')
 class JobDuplicationBusinessLogicTest(TestCase):
     def setUp(self):
+        """
+        Prepare the test environment by creating an API client, authenticating a test user, and creating an original JobListing for duplication tests.
+        
+        Creates an APIClient, a test CustomUser and associated UserProfile (marked as a talent acquisition specialist), performs an API login to establish JWT cookies and asserts the login succeeded, and creates an original JobListing instance with sample title, description, required skills, experience, level, start and expiration dates, and creator.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a profile for the user to satisfy RBAC middleware requirements
@@ -220,7 +241,16 @@ class JobDuplicationBusinessLogicTest(TestCase):
         self.assertEqual(len(all_ids), len(set(all_ids)))  # All IDs should be unique
     
     def test_duplicate_job_with_complex_requirements(self, _=None):
-        """Test duplication with complex job requirements"""
+        """
+        Verify that duplicating a job with multiple required skills and varied screening questions reproduces the job's key attributes and screening questions into a new job instance.
+        
+        The test creates a job with a complex set of required_skills, required_experience, job_level, start/expiration dates, and three screening questions (TEXT, YES_NO, MULTIPLE_CHOICE). It then calls the duplication endpoint and asserts that:
+        - the API responds with 201 Created,
+        - the duplicated job's title is suffixed with " (Copy)",
+        - required_skills, required_experience, and job_level match the original,
+        - the duplicated job contains the same number of screening questions,
+        - each screening question's text and type are preserved in the duplicate.
+        """
         complex_job = JobListing.objects.create(
             title='Complex Job',
             description='Job with complex requirements',
@@ -300,5 +330,10 @@ class JobDuplicationBusinessLogicTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset rate limiting between tests.
+        
+        Ensures cached rate-limit state and other cached data do not leak between test methods.
+        """
         from django.core.cache import cache
         cache.clear()

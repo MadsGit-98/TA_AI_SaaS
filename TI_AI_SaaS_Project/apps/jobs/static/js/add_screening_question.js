@@ -10,7 +10,11 @@ document.getElementById('question_type').addEventListener('change', function() {
     }
 });
 
-// Helper function to show error message
+/**
+ * Display the provided error text in the page's job error container.
+ * If the expected DOM elements are present, sets the container's text and makes it visible.
+ * @param {string} message - The error message to show to the user.
+ */
 function showError(message) {
     const errorMessage = document.getElementById('job-error-message');
     const errorText = document.getElementById('job-error-text');
@@ -20,7 +24,13 @@ function showError(message) {
     }
 }
 
-// Helper function to show success message
+/**
+ * Display a success message in the page UI.
+ *
+ * Sets the text of the element with id 'job-success-text' and removes the 'hidden'
+ * class from the element with id 'job-success-message' when both elements exist.
+ * @param {string} message - The message text to display.
+ */
 function showSuccess(message) {
     const successMessage = document.getElementById('job-success-message');
     const successText = document.getElementById('job-success-text');
@@ -30,7 +40,15 @@ function showSuccess(message) {
     }
 }
 
-// Load suggested questions
+/**
+ * Fetches suggested screening questions and renders them into the 'suggestedQuestionsContainer' element.
+ *
+ * On success, replaces the container content with a card for each question showing its text, type, and category,
+ * and a "Use Question" button that populates the form when clicked. If no questions are returned, displays a
+ * "No suggested questions available" message. Fetch errors and non-ok responses are logged to the console.
+ *
+ * @returns {Promise<void>} Resolves after the UI has been updated or an error has been logged.
+ */
 async function loadSuggestedQuestions() {
     try {
         const response = await fetch('/dashboard/common-screening-questions/', {
@@ -94,7 +112,11 @@ async function loadSuggestedQuestions() {
     }
 }
 
-// Function to populate form with suggested question
+/**
+ * Populate the screening question form with a suggested question and apply the corresponding question type so the form UI updates.
+ * @param {string} questionText - The suggested question text to set into the question text input.
+ * @param {string} questionType - The question type value to select in the question type control.
+ */
 function useSuggestedQuestion(questionText, questionType) {
     document.getElementById('question_text').value = questionText;
     document.getElementById('question_type').value = questionType;
@@ -104,7 +126,11 @@ function useSuggestedQuestion(questionText, questionType) {
     document.getElementById('question_type').dispatchEvent(event);
 }
 
-// Helper function to get cookie value
+/**
+ * Retrieve the value of a cookie by name from document.cookie.
+ * @param {string} name - The name of the cookie to retrieve.
+ * @returns {string|null} The cookie value if found, `null` otherwise.
+ */
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -292,7 +318,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Function to load question data for editing
+/**
+ * Populate the screening-question form with data for the given question ID.
+ *
+ * Fetches the question using the job ID stored in the hidden 'job_id' field, fills form fields
+ * (question_text, question_type, required, question_id, job_id), reveals and populates the
+ * choices textarea when the question type is CHOICE or MULTIPLE_CHOICE, and updates the submit
+ * button label to "Update Question". On missing required DOM elements or job ID, and on fetch
+ * errors or non-OK responses, logs the error and displays a user-facing error via showError().
+ *
+ * @param {string} questionId - The ID of the screening question to load.
+ */
 async function loadQuestionData(questionId) {
     // Get job ID from hidden field (should be populated by DOMContentLoaded handler)
     const jobIdElem = document.getElementById('job_id');

@@ -163,7 +163,12 @@ def activation_completed_view(request):
 
 def activation_error_view(request):
     """
-    View for activation error page
+    Render the activation error page with a user-facing message derived from a whitelist of error codes.
+    
+    Selects an error message based on the `error` query parameter (defaults to `'invalid_token'`), falls back to `'Invalid activation token.'` for unknown codes, and renders 'accounts/activation_error.html' with `error_message` in the template context.
+    
+    Returns:
+        HttpResponse: The rendered activation error page containing `error_message` in its context.
     """
     error_code = request.GET.get('error', 'invalid_token')
 

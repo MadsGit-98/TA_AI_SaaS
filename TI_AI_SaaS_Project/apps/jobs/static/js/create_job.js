@@ -1,4 +1,7 @@
-// Helper function to show error message
+/**
+ * Display an error message in the job creation UI and reveal the error container.
+ * @param {string} message - The error text to show in the element with id "job-error-text".
+ */
 function showError(message) {
     const errorMessage = document.getElementById('job-error-message');
     const errorText = document.getElementById('job-error-text');
@@ -8,7 +11,10 @@ function showError(message) {
     }
 }
 
-// Helper function to show success message
+/**
+ * Display a success message in the job creation UI.
+ * @param {string} message - The text to set in the element with id `job-success-text`; if that element and the element with id `job-success-message` exist, the function also removes the `hidden` class from `job-success-message`.
+ */
 function showSuccess(message) {
     const successMessage = document.getElementById('job-success-message');
     const successText = document.getElementById('job-success-text');

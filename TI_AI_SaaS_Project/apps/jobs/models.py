@@ -36,6 +36,11 @@ class JobListing(models.Model):
 
     def save(self, *args, **kwargs):
         # Ensure modification date equals start date when first created
+        """
+        Save the model instance to the database while updating its modification_date and validating fields.
+        
+        On creation, sets modification_date to start_date; on update, sets modification_date to the current time. Runs full_clean() to enforce field constraints before delegating to the base save implementation.
+        """
         if not self.pk:  # If this is a new object
             self.modification_date = self.start_date
         else:  # On update, set modification date to current time
@@ -46,10 +51,22 @@ class JobListing(models.Model):
 
     def clean(self):
         # Validate that expiration date is after start date
+        """
+        Validate that the job listing's expiration_date is after its start_date.
+        
+        Raises:
+            ValidationError: If both `start_date` and `expiration_date` are set and `expiration_date` is less than or equal to `start_date`.
+        """
         if self.start_date and self.expiration_date and self.expiration_date <= self.start_date:
             raise ValidationError("Expiration date must be after start date.")
 
     def __str__(self):
+        """
+        Return the job listing's title as its human-readable representation.
+        
+        Returns:
+            str: The title of the job listing.
+        """
         return self.title
 
     class Meta:
@@ -91,6 +108,13 @@ class ScreeningQuestion(models.Model):
 
     def clean(self):
         # Validate that choices are provided when question type requires them
+        """
+        Validate the screening question's choices against its question type.
+        
+        Raises:
+            ValidationError: If the question type is 'CHOICE' or 'MULTIPLE_CHOICE' and no `choices` are provided,
+            or if the question type is not one of those and `choices` is present.
+        """
         if self.question_type in ['CHOICE', 'MULTIPLE_CHOICE'] and not self.choices:
             raise ValidationError("Choices are required for choice-based questions.")
         if self.question_type not in ['CHOICE', 'MULTIPLE_CHOICE'] and self.choices:
@@ -98,10 +122,21 @@ class ScreeningQuestion(models.Model):
 
     def save(self, *args, **kwargs):
         # Call clean method to validate before saving
+        """
+        Validate the model instance and persist it to the database.
+        
+        Calls the model's `clean()` method to enforce field constraints before delegating to the superclass `save()` to perform persistence.
+        """
         self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
+        """
+        Provide a human-readable representation combining the related job listing's title and the question text.
+        
+        Returns:
+            str: A string formatted as "JOB_TITLE: question_text".
+        """
         return f"{self.job_listing.title}: {self.question_text}"
 
 
@@ -118,4 +153,10 @@ class CommonScreeningQuestion(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+        """
+        Return the text of the screening question for human-readable representations.
+        
+        Returns:
+            str: The value of the `question_text` field.
+        """
         return self.question_text

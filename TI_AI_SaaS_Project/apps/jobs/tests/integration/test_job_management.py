@@ -11,6 +11,11 @@ from apps.jobs.models import JobListing, ScreeningQuestion
 
 class JobManagementWorkflowIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Set up test fixtures: create and authenticate a test user, initialize an API client, and prepare a sample job payload.
+        
+        Creates an active CustomUser and an associated UserProfile marked as a talent acquisition specialist with an active subscription, logs in via the API to obtain authentication cookies, asserts successful login, and stores a representative `job_data` dictionary used by the tests.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -111,6 +116,11 @@ class JobManagementWorkflowIntegrationTest(TestCase):
 
 class JobDuplicationWorkflowIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures for job duplication tests.
+        
+        Creates an APIClient, an active test user with a talent acquisition specialist profile and active subscription, authenticates via the API (setting JWT cookies and asserting successful login), and creates an original JobListing with an associated ScreeningQuestion for use by the tests.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -212,5 +222,8 @@ class JobDuplicationWorkflowIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset rate limiting and shared state between tests.
+        """
         from django.core.cache import cache
         cache.clear()

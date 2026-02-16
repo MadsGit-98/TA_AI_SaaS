@@ -23,11 +23,29 @@ class JobListingListView(generics.ListCreateAPIView):
     pagination_class = JobListingListPagination
 
     def get_serializer_class(self):
+        """
+        Select the serializer class for the current request method.
+        
+        Returns:
+            The serializer class to use: `JobListingCreateSerializer` for POST requests, otherwise the view's configured `serializer_class`.
+        """
         if self.request.method == 'POST':
             return JobListingCreateSerializer
         return self.serializer_class
 
     def get_queryset(self):
+        """
+        Return the queryset of JobListing objects owned by the requesting user, optionally filtered by query parameters.
+        
+        Filters supported via query parameters:
+        - status: exact match on the job's status.
+        - date_range: restricts by creation date; accepted values are "today", "week", and "month".
+        - job_level: exact match on the job_level field.
+        - search: case-insensitive substring search applied to title and description.
+        
+        Returns:
+            QuerySet: JobListing queryset filtered by ownership and any provided query parameters.
+        """
         queryset = JobListing.objects.filter(created_by=self.request.user)
         
         # Apply status filter
@@ -65,6 +83,12 @@ class JobListingListView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
+        """
+        Persist a new instance from the provided serializer while assigning the current request user as its `created_by`.
+        
+        Parameters:
+            serializer: A serializer instance containing validated data for the object to be created.
+        """
         serializer.save(created_by=self.request.user)
 
 
@@ -75,6 +99,14 @@ class JobListingDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         # For update/delete, restrict to owned jobs; allow retrieve for all
+        """
+        Return the queryset for this detail view, restricting write operations to the requesting user's job listings.
+        
+        When the request method is PUT, PATCH, or DELETE, returns JobListing objects created by the requesting user; for other methods (e.g., GET) returns all JobListing objects.
+        
+        Returns:
+            django.db.models.QuerySet: A queryset of JobListing instances filtered as described above.
+        """
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
             return JobListing.objects.filter(created_by=self.request.user)
         return JobListing.objects.all()
@@ -83,6 +115,18 @@ class JobListingDetailView(generics.RetrieveUpdateDestroyAPIView):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def activate_job(request, pk):
+    """
+    Activate a job listing owned by the requesting user.
+    
+    Attempts to set the JobListing identified by `pk` to status 'Active' if the requesting user is the listing's owner; otherwise returns a 403 response.
+    
+    Parameters:
+    	request (HttpRequest): The incoming HTTP request; used to identify the authenticated user.
+    	pk (int | str): Primary key of the JobListing to activate.
+    
+    Returns:
+    	Response: Serialized job listing data on success; a 403 Forbidden response with an error message if the requester does not own the job.
+    """
     job = get_object_or_404(JobListing, pk=pk)
 
     # Check if the requesting user is the owner of the job
@@ -101,6 +145,15 @@ def activate_job(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def deactivate_job(request, pk):
+    """
+    Deactivate a JobListing identified by primary key if the requesting user is the job's owner.
+    
+    Parameters:
+        pk (int): Primary key of the JobListing to deactivate.
+    
+    Returns:
+        Response: Serialized JobListing data after setting its status to 'Inactive'. If the requesting user does not own the job, returns a 403 Response with an error message.
+    """
     job = get_object_or_404(JobListing, pk=pk)
 
     # Check if the requesting user is the owner of the job
@@ -119,6 +172,16 @@ def deactivate_job(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def duplicate_job(request, pk):
+    """
+    Create a duplicate of an existing job listing owned by the requesting user, including its screening questions.
+    
+    Parameters:
+        request (rest_framework.request.Request): The incoming HTTP request; the request user becomes the owner of the duplicated job.
+        pk (int): Primary key of the job listing to duplicate.
+    
+    Returns:
+        rest_framework.response.Response: On success, a response with the serialized duplicated JobListing and HTTP 201 Created. If the requester is not the job owner, returns a 403 Forbidden response with an error message.
+    """
     original_job = get_object_or_404(JobListing, pk=pk)
 
     # Check if the requesting user is the owner of the job
@@ -169,6 +232,12 @@ class ScreeningQuestionListView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Retrieve screening questions for the job specified by the URL that are owned by the requesting user.
+        
+        Returns:
+            QuerySet[ScreeningQuestion]: ScreeningQuestion objects filtered by `job_id` from URL kwargs and by `created_by` matching the requesting user.
+        """
         job_id = self.kwargs['job_id']
         # Only return questions for job listings owned by the current user
         return ScreeningQuestion.objects.filter(
@@ -177,6 +246,15 @@ class ScreeningQuestionListView(generics.ListCreateAPIView):
         )
 
     def perform_create(self, serializer):
+        """
+        Ensure a new ScreeningQuestion is saved for the specified job if the requesting user owns that job.
+        
+        Parameters:
+            serializer: The serializer instance containing validated ScreeningQuestion data to persist.
+        
+        Raises:
+            PermissionDenied: If the authenticated user is not the creator/owner of the target JobListing.
+        """
         job_id = self.kwargs['job_id']
         job = get_object_or_404(JobListing, pk=job_id)
 
@@ -193,6 +271,12 @@ class ScreeningQuestionDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         # Only allow access to questions belonging to job listings owned by the current user
+        """
+        Return screening questions that belong to job listings owned by the requesting user.
+        
+        Returns:
+            QuerySet[ScreeningQuestion]: ScreeningQuestion objects whose related job_listing was created by the current user.
+        """
         return ScreeningQuestion.objects.filter(job_listing__created_by=self.request.user)
 
 
@@ -200,7 +284,10 @@ class ScreeningQuestionDetailView(generics.RetrieveUpdateDestroyAPIView):
 @permission_classes([IsAuthenticated])
 def get_common_screening_questions(request):
     """
-    Return a list of common screening questions that can be suggested to users
+    Retrieve active common screening questions available for suggestion.
+    
+    Returns:
+        A list of serialized common screening question objects containing only questions where `is_active` is True.
     """
     questions = CommonScreeningQuestion.objects.filter(is_active=True)
     serializer = CommonScreeningQuestionSerializer(questions, many=True)

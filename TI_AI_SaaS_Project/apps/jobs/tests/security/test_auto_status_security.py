@@ -9,6 +9,11 @@ from unittest.mock import patch
 
 class JobStatusUpdateSecurityTest(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: create a test user and a JobListing used by tests that validate job status updates.
+        
+        The created JobListing has a title, description, minimal required skills and experience, a senior job level, a start date in the past, an expiration date in the future, an initial status of 'Inactive', and is owned by the test user.
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         
         # Create a job for testing
@@ -166,6 +171,11 @@ class JobStatusUpdateSecurityTest(TestCase):
 
 class JobStatusUpdateAuditTest(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures: create a test user and a JobListing positioned to be auditable by the status-checking task.
+        
+        The created job has a start_date more than one day in the past and an expiration_date more than one day in the future, with initial status 'Inactive' and populated fields necessary for audit tests.
+        """
         self.user = CustomUser.objects.create_user(username='audituser', password='auditpass')
 
         # Create jobs for audit testing
