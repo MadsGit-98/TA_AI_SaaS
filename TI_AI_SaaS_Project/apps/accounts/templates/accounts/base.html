@@ -24,7 +24,7 @@
         }
     </script>
     <!-- Security Headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <meta name="csrf-token" content="{{ csrf_token }}">
@@ -41,9 +41,15 @@
                     </a>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <!-- Login and Register anchors on the right -->
+                    {% if user.is_authenticated %}
+                    <!-- Logout and Dashboard anchors for authenticated users -->
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    <a href="/dashboard/" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Dashboard</a>
+                    {% else %}
+                    <!-- Login and Register anchors for non-authenticated users -->
                     <a href="{% url 'accounts:login' %}" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Login</a>
                     <a href="{% url 'accounts:register' %}" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Register</a>
+                    {% endif %}
                 </div>
             </div>
         </div>
