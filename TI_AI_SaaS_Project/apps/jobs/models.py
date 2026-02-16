@@ -36,7 +36,7 @@ class JobListing(models.Model):
 
     def save(self, *args, **kwargs):
         # Ensure modification date equals start date when first created
-        if not self.pk:  # If this is a new object
+        if self._state.adding:  # If this is a new object
             self.modification_date = self.start_date
         else:  # On update, set modification date to current time
             self.modification_date = timezone.now()

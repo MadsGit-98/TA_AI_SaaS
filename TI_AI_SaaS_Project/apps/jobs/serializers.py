@@ -20,7 +20,7 @@ class DateValidationMixin:
         if not expiration_date and self.instance:
             expiration_date = getattr(self.instance, 'expiration_date', None)
 
-        if start_date and expiration_date and start_date > expiration_date:
+        if start_date and expiration_date and expiration_date <= start_date:
             raise serializers.ValidationError("Expiration date must be after start date.")
 
         return data

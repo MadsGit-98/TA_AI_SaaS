@@ -354,38 +354,41 @@ if (jobEditForm) {
 }
 
 // Delete job
-document.getElementById('deleteButton').addEventListener('click', async function() {
-    // Check if jobId is missing before proceeding
-    if (window.jobIdMissing) {
-        showError('Error: Cannot delete job. Job ID is missing.');
-        return;
-    }
-
-    if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
-        });
-
-        if (response.ok) {
-            showSuccess('Job deleted successfully!');
-            setTimeout(() => {
-                window.location.href = '/dashboard/'; // Redirect to dashboard
-            }, 1500);
-        } else {
-            const errorData = await response.json();
-            showError(`Error deleting job: ${JSON.stringify(errorData)}`);
+const deleteButton = document.getElementById('deleteButton');
+if (deleteButton) {
+    deleteButton.addEventListener('click', async function() {
+        // Check if jobId is missing before proceeding
+        if (window.jobIdMissing) {
+            showError('Error: Cannot delete job. Job ID is missing.');
+            return;
         }
-    } catch (error) {
-        console.error('Error:', error);
-        showError('An error occurred while deleting the job.');
-    }
-});
+
+        if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
+
+        try {
+            const response = await fetch(`/dashboard/jobs/${jobId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+            });
+
+            if (response.ok) {
+                showSuccess('Job deleted successfully!');
+                setTimeout(() => {
+                    window.location.href = '/dashboard/'; // Redirect to dashboard
+                }, 1500);
+            } else {
+                const errorData = await response.json();
+                showError(`Error deleting job: ${JSON.stringify(errorData)}`);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showError('An error occurred while deleting the job.');
+        }
+    });
+}
 
 // Load job data when page loads
 document.addEventListener('DOMContentLoaded', loadJobData);
