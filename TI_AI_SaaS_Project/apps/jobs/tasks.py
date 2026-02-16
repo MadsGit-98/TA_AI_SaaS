@@ -10,7 +10,15 @@ logger = logging.getLogger(__name__)
 @app.task
 def check_job_statuses():
     """
-    Task to check and update job statuses based on start and expiration dates
+    Update job listings' statuses based on their start and expiration dates.
+    
+    Evaluates listings against the current time and a one-day buffer: jobs with start_date within the buffer and not expired are marked Active; jobs with expiration_date within the buffer are marked Inactive. Logs counts of activated and deactivated records.
+    
+    Returns:
+        result (dict): Dictionary with keys:
+            - 'timestamp' (str): ISO-formatted current time when the check ran.
+            - 'activated_jobs' (int): Number of listings set to Active.
+            - 'deactivated_jobs' (int): Number of listings set to Inactive.
     """
     buffered_time = timezone.now() + timedelta(days=1)
     current_time = timezone.now()
@@ -40,7 +48,12 @@ def check_job_statuses():
 @app.task
 def cleanup_expired_jobs():
     """
-    Task to perform additional cleanup for expired jobs if needed
+    Identify active job listings whose expiration_date is earlier than the current time and perform optional cleanup actions.
+    
+    Materializes the matching queryset and logs each expired job. The function is intended for additional cleanup (archiving, notifications, etc.) but currently only logs expired entries.
+    
+    Returns:
+        dict: {'expired_jobs_count': int} — the number of active job listings with expiration_date before the current time.
     """
     now = timezone.now()
 

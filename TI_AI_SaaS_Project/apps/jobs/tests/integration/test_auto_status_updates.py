@@ -13,6 +13,11 @@ import time
 
 class JobStatusUpdateIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare a test API client, an authenticated test user, and a corresponding UserProfile for use in test cases.
+        
+        Creates an APIClient instance, a CustomUser with a preset password, and a UserProfile marking the user as a talent acquisition specialist with an active subscription that expires one year from now. Authenticates the user via the application's login endpoint to establish JWT cookies and asserts the login succeeded (HTTP 200).
+        """
         self.client = APIClient()  # Add client for potential API calls
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a user profile to make the user a talent acquisition specialist
@@ -35,11 +40,24 @@ class JobStatusUpdateIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset any rate-limiting state between tests.
+        
+        This ensures subsequent tests run with a fresh cache and are not affected by cached rate-limit data.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def create_test_jobs(self):
-        """Helper to create test jobs with various statuses and dates"""
+        """
+        Create four JobListing instances on self covering activation and deactivation scenarios.
+        
+        Creates the following attributes on self:
+        - to_activate_job: an Inactive job with a start_date 2 days ago and a future expiration (expected to become Active).
+        - to_deactivate_job: an Active job with an expiration 2 days ago (expected to become Inactive).
+        - remain_active_job: an Active job with start and expiration dates placing it within the active window (expected to remain Active).
+        - remain_inactive_job: an Inactive job with a start_date 2 days in the future (expected to remain Inactive).
+        """
         # Job that should be activated (start date more than 1 day in the past, future expiration)
         self.to_activate_job = JobListing.objects.create(
             title='To Activate Job',
@@ -175,7 +193,11 @@ class JobStatusUpdateIntegrationTest(TestCase):
             self.assertEqual(result['deactivated_jobs'], 0, "No more deactivations should happen")
     
     def test_edge_cases_with_mocked_time(self):
-        """Test edge cases with mocked time"""
+        """
+        Verify activation/deactivation behavior at time boundaries.
+        
+        Patches the current time to a fixed value, creates one JobListing with start_date exactly equal to the mocked now and another with expiration_date just before the mocked now, runs check_job_statuses, and asserts that the first job becomes Active, the second becomes Inactive, and that the task reports positive counts for activated and deactivated jobs.
+        """
         from django.utils import timezone as tz
         from unittest.mock import patch
 
@@ -228,6 +250,11 @@ class JobStatusUpdateIntegrationTest(TestCase):
 
 class JobStatusUpdatePerformanceTest(TestCase):
     def setUp(self):
+        """
+        Prepare a test API client, an authenticated test user, and a corresponding UserProfile for use in test cases.
+        
+        Creates an APIClient instance, a CustomUser with a preset password, and a UserProfile marking the user as a talent acquisition specialist with an active subscription that expires one year from now. Authenticates the user via the application's login endpoint to establish JWT cookies and asserts the login succeeded (HTTP 200).
+        """
         self.client = APIClient()  # Add client for potential API calls
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a user profile to make the user a talent acquisition specialist
@@ -250,11 +277,20 @@ class JobStatusUpdatePerformanceTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset any rate-limiting state between tests.
+        
+        This ensures subsequent tests run with a fresh cache and are not affected by cached rate-limit data.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def test_performance_with_many_jobs(self):
-        """Test performance when there are many jobs to process"""
+        """
+        Ensure check_job_statuses completes quickly and produces status changes when processing many job listings.
+        
+        Creates 100 job listings with varying start/expiration dates and alternating initial statuses, measures execution time of check_job_statuses, asserts the task finishes within 5 seconds, and verifies the result reports at least some activated or deactivated jobs.
+        """
         # Create many jobs
         jobs_to_create = 100
         for i in range(jobs_to_create):

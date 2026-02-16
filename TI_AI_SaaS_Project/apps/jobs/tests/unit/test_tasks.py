@@ -10,6 +10,16 @@ from unittest.mock import patch
 
 class JobStatusCeleryTaskTest(TestCase):
     def setUp(self):
+        """
+        Create test fixtures: a test user and four JobListing instances covering activation/deactivation scenarios.
+        
+        Sets up:
+        - user: a CustomUser created for ownership of test job listings.
+        - active_job: started in the past, expires in the future, status 'Active' (should remain active).
+        - future_active_job: start_date slightly in the future, expires later, status 'Inactive' (should become 'Active' when start_date passes).
+        - expiring_job: started in the past, expired just before setup, status 'Active' (should become 'Inactive' because expiration_date has passed).
+        - future_inactive_job: start_date and expiration_date both in the future, status 'Inactive' (should remain 'Inactive').
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         
         # Create some test jobs with different statuses and dates

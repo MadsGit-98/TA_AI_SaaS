@@ -11,6 +11,11 @@ from apps.jobs.models import JobListing, ScreeningQuestion
 
 class JobDuplicationWorkflowIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare an authenticated test context and a sample JobListing with associated screening questions.
+        
+        Creates an API client, an active CustomUser and a UserProfile marked as a talent acquisition specialist with an active subscription, and authenticates the client (sets JWT cookies). Creates an original JobListing populated with title, description, required skills, required experience, job level, start and expiration dates, and attaches four ScreeningQuestion instances covering TEXT, YES_NO, CHOICE (with choices), and MULTIPLE_CHOICE (with choices).
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -208,12 +213,22 @@ class JobDuplicationWorkflowIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset any rate limiting state between tests.
+        
+        This ensures each test runs with a fresh cache so rate-limit counters do not carry over.
+        """
         from django.core.cache import cache
         cache.clear()
 
 
 class JobDuplicationEdgeCasesIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare an authenticated API client and a test user configured as an active talent acquisition specialist.
+        
+        Creates an APIClient, a CustomUser with an active account, and a corresponding UserProfile marked as a talent acquisition specialist with an active subscription and future end date. Authenticates via the API login endpoint to establish JWT cookies and asserts the login succeeded.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='testuser',
@@ -240,7 +255,11 @@ class JobDuplicationEdgeCasesIntegrationTest(TestCase):
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
     
     def test_duplication_of_job_with_special_characters(self):
-        """Test duplication of a job with special characters in fields"""
+        """
+        Ensure duplicating a job preserves special characters in job fields and associated screening questions.
+        
+        Asserts that the duplication endpoint returns HTTP 201 Created, the duplicated job's title is suffixed with " (Copy)", job description, required_skills, required_experience, and job_level retain their original values (including special characters and emojis), and that screening questions containing special characters are copied and linked to the duplicated job.
+        """
         special_job = JobListing.objects.create(
             title='Job with Special Chars: !@#$%^&*()',
             description='Description with special characters: \'<>"{}[] and emojis: 😀🎉',
@@ -287,7 +306,11 @@ class JobDuplicationEdgeCasesIntegrationTest(TestCase):
         self.assertEqual(special_question.question_text, 'How do you handle "difficult" situations?')
     
     def test_duplication_preserves_relationships_integrity(self):
-        """Test that duplication preserves data integrity and relationships"""
+        """
+        Ensure duplicating a job preserves relationship integrity between a job listing and its screening questions.
+        
+        Verifies that duplicating a JobListing produces a new JobListing with the same number of ScreeningQuestion instances, that each duplicated question is linked to the duplicated job, and that the original job and its questions remain unchanged.
+        """
         # Create a job with multiple related entities
         original_job = JobListing.objects.create(
             title='Relationship Test Job',
@@ -390,5 +413,10 @@ class JobDuplicationEdgeCasesIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache to reset any rate limiting state between tests.
+        
+        This ensures each test runs with a fresh cache so rate-limit counters do not carry over.
+        """
         from django.core.cache import cache
         cache.clear()

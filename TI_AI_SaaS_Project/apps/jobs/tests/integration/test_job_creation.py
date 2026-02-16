@@ -11,6 +11,11 @@ from apps.jobs.models import JobListing, ScreeningQuestion
 
 class JobListingWorkflowIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare an authenticated API client, a test user with a talent acquisition specialist profile and active subscription, and a default job payload for the integration tests.
+        
+        Creates an APIClient, a CustomUser, and a UserProfile marked as a talent acquisition specialist with an active subscription that ends in the future. Authenticates the client by posting credentials to the login endpoint and asserts successful login. Initializes `self.job_data` with a valid job listing payload (title, description, required_skills, required_experience, job_level, start_date, expiration_date) for use by test methods.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a user profile to make the user a talent acquisition specialist
@@ -42,6 +47,11 @@ class JobListingWorkflowIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache used for rate limiting between tests.
+        
+        This resets stored rate-limit counters and any cached data so tests run in isolation.
+        """
         cache.clear()
     
     def test_full_job_creation_workflow(self):

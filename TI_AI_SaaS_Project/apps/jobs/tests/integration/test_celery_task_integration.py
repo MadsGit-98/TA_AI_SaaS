@@ -15,6 +15,11 @@ import time
 class JobStatusCeleryTasksIntegrationTest(TestCase):
     def setUp(self):
         # Clear cache to prevent rate limiting issues
+        """
+        Prepare the test environment by clearing cache, creating a test user with a talent acquisition specialist profile, and authenticating that user on the API client.
+        
+        This setup clears Django's cache to avoid rate-limiting side effects, creates a CustomUser and a corresponding UserProfile marked as a talent acquisition specialist with an active subscription, and performs an API login to place authentication tokens in the test client. The setup asserts the login returned HTTP 200 OK.
+        """
         from django.core.cache import cache
         cache.clear()
         
@@ -41,6 +46,11 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache after each test to reset rate limiting and shared state.
+        
+        This ensures subsequent tests run with a clean cache (e.g., rate-limit counters) by invoking cache.clear().
+        """
         from django.core.cache import cache
         cache.clear()
 
@@ -239,7 +249,11 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             self.assertEqual(result['activated_jobs'], 0, "Subsequent runs should not activate more jobs")
 
     def test_cleanup_expired_jobs_integration(self):
-        """Test the cleanup_expired_jobs task integration"""
+        """
+        Verify cleanup_expired_jobs reports the correct number of expired JobListing records without modifying their statuses.
+        
+        Creates two expired jobs and one non-expired job, runs cleanup_expired_jobs(), asserts that the returned `expired_jobs_count` equals 2, and confirms that the statuses of the created jobs remain unchanged.
+        """
         # Create expired jobs
         expired_job1 = JobListing.objects.create(
             title='Expired Job 1',
@@ -333,7 +347,11 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
             self.assertIsNotNone(refreshed_job.updated_at)
 
     def test_task_error_handling(self):
-        """Test that the task handles errors gracefully"""
+        """
+        Verify check_job_statuses runs without raising exceptions and correctly processes a valid job.
+        
+        Creates a valid JobListing, invokes check_job_statuses(), asserts the task result includes 'timestamp', 'activated_jobs', and 'deactivated_jobs', and verifies the created job's status is updated to 'Active'.
+        """
         # Create a job with valid data
         valid_job = JobListing.objects.create(
             title='Valid Job',
@@ -365,6 +383,11 @@ class JobStatusCeleryTasksIntegrationTest(TestCase):
 class JobStatusCeleryTasksRealWorldScenarioTest(TestCase):
     def setUp(self):
         # Clear cache to prevent rate limiting issues
+        """
+        Prepare the test environment by clearing cache, creating a test user with a talent acquisition specialist profile, and authenticating that user on the API client.
+        
+        This setup clears Django's cache to avoid rate-limiting side effects, creates a CustomUser and a corresponding UserProfile marked as a talent acquisition specialist with an active subscription, and performs an API login to place authentication tokens in the test client. The setup asserts the login returned HTTP 200 OK.
+        """
         from django.core.cache import cache
         cache.clear()
         
@@ -391,6 +414,11 @@ class JobStatusCeleryTasksRealWorldScenarioTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear the Django cache after each test to reset rate limiting and shared state.
+        
+        This ensures subsequent tests run with a clean cache (e.g., rate-limit counters) by invoking cache.clear().
+        """
         from django.core.cache import cache
         cache.clear()
 

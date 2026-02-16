@@ -26,6 +26,16 @@ class JobListingUserIsolationTest(TestCase):
     """Test that users cannot access or modify other users' job listings."""
 
     def setUp(self):
+        """
+        Prepare test fixtures: create an API client, two users with profiles, and one job listing for each user.
+        
+        The created objects are assigned to instance attributes for use in tests:
+        - self.client: an APIClient configured for cookie support
+        - self.user1, self.user2: created CustomUser instances
+        - self.user1_job, self.user2_job: JobListing instances owned by the corresponding users
+        
+        Profiles for each user are created with an active subscription and talent acquisition specialist flag set.
+        """
         from apps.accounts.models import UserProfile
 
         # Create API client with cookie support
@@ -84,11 +94,20 @@ class JobListingUserIsolationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear Django's cache to reset rate limiting and other cached state between tests.
+        
+        This teardown step ensures tests do not share cached data (such as rate limit counters) across runs.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def _login_user1(self):
-        """Helper to login as user1"""
+        """
+        Log in the test client as the predefined user "user1" and assert authentication succeeds.
+        
+        Performs a login with 'user1' credentials and asserts the response status is HTTP 200 OK.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'user1',
             'password': 'testpass123'
@@ -96,7 +115,11 @@ class JobListingUserIsolationTest(TestCase):
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
 
     def _login_user2(self):
-        """Helper to login as user2"""
+        """
+        Log in the test client as the second test user ('user2') and assert the login succeeded.
+        
+        Performs a POST to the authentication endpoint with user2's credentials and verifies the response status is 200 OK.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'user2',
             'password': 'testpass123'
@@ -257,6 +280,15 @@ class ScreeningQuestionUserIsolationTest(TestCase):
     """Test that users cannot access or modify other users' screening questions."""
 
     def setUp(self):
+        """
+        Prepare test fixtures used by screening-question isolation tests.
+        
+        Creates an APIClient, two users with UserProfile records (active subscriptions), a JobListing owned by each user, and a ScreeningQuestion attached to each job. These objects are assigned to instance attributes:
+        - client
+        - user1, user2
+        - user1_job, user2_job
+        - user1_question, user2_question
+        """
         from apps.accounts.models import UserProfile
 
         # Create API client
@@ -332,11 +364,20 @@ class ScreeningQuestionUserIsolationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear Django's cache to reset rate limiting and other cached state between tests.
+        
+        This teardown step ensures tests do not share cached data (such as rate limit counters) across runs.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def _login_user1(self):
-        """Helper to login as user1"""
+        """
+        Authenticate the test client as the predefined test user "sq_user1" and assert that login succeeds.
+        
+        This helper sets the test client's credentials to those of user1 so subsequent API requests are made as that authenticated user. It asserts a successful login (HTTP 200).
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'sq_user1',
             'password': 'testpass123'
@@ -344,7 +385,11 @@ class ScreeningQuestionUserIsolationTest(TestCase):
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
 
     def _login_user2(self):
-        """Helper to login as user2"""
+        """
+        Authenticate the test client as the second test user (sq_user2).
+        
+        Posts the user's credentials to the accounts login endpoint and asserts a successful (200 OK) response. After this call the test client is authenticated as user2 for subsequent requests.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'sq_user2',
             'password': 'testpass123'
@@ -476,6 +521,11 @@ class DashboardAccessSecurityTest(TestCase):
     """Test that users cannot access other users' dashboard data."""
 
     def setUp(self):
+        """
+        Prepare test fixtures: initialize an API client, create two users with active UserProfile records, and create one job listing owned by each user.
+        
+        Each UserProfile is marked as a talent acquisition specialist with an active subscription expiring one year from setup. Each JobListing is created with distinct attributes (title, description, required skills/experience, level, start/expiration dates, status) and associated to its creating user.
+        """
         from apps.accounts.models import UserProfile
 
         # Create API client
@@ -533,11 +583,20 @@ class DashboardAccessSecurityTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear Django's cache to reset rate limiting and other cached state between tests.
+        
+        This teardown step ensures tests do not share cached data (such as rate limit counters) across runs.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def _login_user1(self):
-        """Helper to login as user1"""
+        """
+        Log in the test client as the first test user and assert the login succeeds.
+        
+        Performs a POST to the login endpoint using the credentials for user1 and asserts the response status code is 200 OK.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'dash_user1',
             'password': 'testpass123'
@@ -545,7 +604,11 @@ class DashboardAccessSecurityTest(TestCase):
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
 
     def _login_user2(self):
-        """Helper to login as user2"""
+        """
+        Log in the test client as the second test user.
+        
+        Performs a POST to the authentication login endpoint with user2's credentials and asserts that the response status is 200 OK.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'dash_user2',
             'password': 'testpass123'
@@ -639,6 +702,16 @@ class CrossUserTamperingTest(TestCase):
     """Test various cross-user tampering scenarios."""
 
     def setUp(self):
+        """
+        Prepare test fixtures: instantiate an API client, create three test users with active Talent Acquisition Specialist profiles, and create job listings for user1 and user2.
+        
+        Creates:
+        - self.client: DRF APIClient instance.
+        - self.user1, self.user2, self.user3: test users with associated UserProfile entries (active subscription, talent acquisition specialist).
+        - self.user1_job, self.user2_job: JobListing instances owned by user1 and user2 respectively.
+        
+        No return value.
+        """
         from apps.accounts.models import UserProfile
 
         # Create API client
@@ -708,11 +781,20 @@ class CrossUserTamperingTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Clear Django's cache to reset rate limiting and other cached state between tests.
+        
+        This teardown step ensures tests do not share cached data (such as rate limit counters) across runs.
+        """
         from django.core.cache import cache
         cache.clear()
 
     def _login_user1(self):
-        """Helper to login as user1"""
+        """
+        Log in the test client as the first test user and assert the login succeeded.
+        
+        Asserts that authenticating with credentials for 'tamper_user1' returns HTTP 200 OK.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'tamper_user1',
             'password': 'testpass123'
@@ -720,7 +802,11 @@ class CrossUserTamperingTest(TestCase):
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
 
     def _login_user2(self):
-        """Helper to login as user2"""
+        """
+        Authenticate the test client as the second test user and assert the login succeeded.
+        
+        Posts credentials for the test user 'tamper_user2' to the authentication endpoint and verifies a 200 OK response.
+        """
         login_response = self.client.post('/api/accounts/auth/login/', {
             'username': 'tamper_user2',
             'password': 'testpass123'
@@ -745,7 +831,11 @@ class CrossUserTamperingTest(TestCase):
         self.assertEqual(self.user2_job.created_by, self.user2)
 
     def test_user_cannot_transfer_ownership_via_create(self):
-        """Test that a user cannot create a job owned by another user."""
+        """
+        Ensure an authenticated user cannot create a job owned by a different user.
+        
+        If the POST succeeds, the created job's `created_by` must be the authenticated user and not the supplied other user's ID.
+        """
         self._login_user1()
 
         # Try to create a job with user2 as the owner
@@ -768,7 +858,11 @@ class CrossUserTamperingTest(TestCase):
             self.assertEqual(created_job.created_by, self.user1)
 
     def test_multiple_users_cannot_access_each_others_inactive_jobs(self):
-        """Test that users cannot modify each other's inactive jobs (viewing is allowed)."""
+        """
+        Verify that an inactive job owned by another user can be retrieved but cannot be modified by the authenticated user.
+        
+        A GET request for the other user's inactive job should succeed (HTTP 200). A PATCH request attempting to change the job (e.g., activate it) should be rejected with HTTP 403 Forbidden or HTTP 404 Not Found.
+        """
         # Set user2's job to inactive
         self.user2_job.status = 'Inactive'
         self.user2_job.save()

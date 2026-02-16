@@ -11,6 +11,11 @@ import logging
 
 class JobStatusCeleryTasksUnitTest(TestCase):
     def setUp(self):
+        """
+        Create a test user and store it on self for use by test cases.
+        
+        The created user has username "testuser" and password "testpass" and is available as self.user.
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
 
     def test_check_job_statuses_task_basic_functionality(self):
@@ -332,6 +337,11 @@ class JobStatusCeleryTasksUnitTest(TestCase):
 
 class JobStatusCeleryTasksMockingUnitTest(TestCase):
     def setUp(self):
+        """
+        Create a test user and store it on self for use by test cases.
+        
+        The created user has username "testuser" and password "testpass" and is available as self.user.
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
 
     @patch('apps.jobs.tasks.JobListing')

@@ -14,6 +14,11 @@ from datetime import datetime, timedelta
 class ApplicationLinkE2ETest(StaticLiveServerTestCase):
     def setUp(self):
         # Set up a test user
+        """
+        Prepare test fixtures and browser for end-to-end application link tests.
+        
+        Creates a test user and associated UserProfile marked as a talent acquisition specialist with an active subscription, creates a JobListing used by tests, and configures a headless Selenium Chrome WebDriver with a 10-second implicit wait.
+        """
         self.user = CustomUser.objects.create_user(
             username='testuser',
             password='testpass123',
@@ -50,6 +55,11 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
     
     def tearDown(self):
         # Close the browser after tests
+        """
+        Close the Selenium WebDriver and associated browser session for the test.
+        
+        This quits the driver process and releases related resources.
+        """
         self.driver.quit()
     
     def test_application_link_accessibility(self):
@@ -109,7 +119,11 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
         self.assertNotEqual(self.job.application_link, second_job.application_link)
     
     def test_application_link_format_consistency(self):
-        """Test that application links maintain consistent format"""
+        """
+        Verify that application_link values for newly created JobListing instances are valid version 4 UUID strings.
+        
+        Creates multiple JobListing objects, collects their application_link values, asserts each value is a syntactically valid UUID, and asserts each UUID's version equals 4.
+        """
         # Create multiple jobs and verify their links follow the same format
         jobs = []
         links = []
@@ -144,6 +158,14 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
 
 class ApplicationLinkSharingE2ETest(StaticLiveServerTestCase):
     def setUp(self):
+        """
+        Prepare test data for sharing tests by creating a user, an associated talent acquisition specialist profile with an active subscription, and a JobListing tied to that user.
+        
+        Creates:
+        - a CustomUser with username 'sharetestuser' and password 'testpass123';
+        - a UserProfile marking the user as a talent acquisition specialist with an active subscription and a future subscription_end_date;
+        - a JobListing titled 'Share Test Job' associated with the created user, populated with sample fields for description, required skills, experience, level, start_date, and expiration_date.
+        """
         self.user = CustomUser.objects.create_user(
             username='sharetestuser',
             password='testpass123',

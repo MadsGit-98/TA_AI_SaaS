@@ -1,5 +1,8 @@
-
-// Helper function to escape HTML
+/**
+ * Escape HTML special characters in a value for safe insertion into the DOM.
+ * @param {*} text - Value to escape; null or undefined is treated as an empty string and all inputs are coerced to a string.
+ * @returns {string} The input converted to a string with `&`, `<`, `>`, `"` and `'` replaced by their corresponding HTML entities.
+ */
 function escapeHtml(text) {
     // Coerce input to string, handling null/undefined safely
     text = String(text == null ? '' : text);
@@ -14,7 +17,10 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-// Helper function to show error message
+/**
+ * Display an error message in the dashboard UI by setting the text of the element with id "job-error-text" and revealing the "job-error-message" element for 5 seconds.
+ * @param {string} message - The message to show to the user.
+ */
 function showError(message) {
     const errorMessage = document.getElementById('job-error-message');
     const errorText = document.getElementById('job-error-text');
@@ -27,7 +33,14 @@ function showError(message) {
     }
 }
 
-// Helper function to show success message
+/**
+ * Displays a transient success message in the dashboard UI.
+ *
+ * Sets the text of the element with id "job-success-text", reveals the container
+ * with id "job-success-message", and hides it again after 3 seconds.
+ *
+ * @param {string} message - The message text to show to the user.
+ */
 function showSuccess(message) {
     const successMessage = document.getElementById('job-success-message');
     const successText = document.getElementById('job-success-text');
@@ -40,7 +53,16 @@ function showSuccess(message) {
     }
 }
 
-// Helper function to create job element
+/**
+ * Create and append a job listing card into the provided container element.
+ *
+ * The card displays the job title, a description truncated to 100 characters, tags for job level,
+ * required experience, status, start/expiration dates, and action buttons for edit, copy application link,
+ * activate/deactivate, and duplicate.
+ *
+ * @param {Object} job - Job data used to populate the card. Expected properties: `id`, `title`, `description`, `job_level`, `required_experience`, `status`, `start_date`, `expiration_date`, `application_link`.
+ * @param {HTMLElement} container - DOM element to which the constructed job card will be appended.
+ */
 function createJobElement(job, container) {
     const jobElement = document.createElement('div');
     jobElement.className = 'border border-gray-200 rounded-lg p-4 bg-white';
@@ -165,7 +187,14 @@ function createJobElement(job, container) {
     container.appendChild(jobElement);
 }
 
-// Load job listings
+/**
+ * Fetch and render job listings using current UI filters and pagination.
+ *
+ * Reads filter values from the page, requests the corresponding job data from the server, and updates the DOM
+ * by populating the job listings container and pagination controls or showing an appropriate message on error or
+ * empty results.
+ * @param {number} [page=1] - Page number of job listings to load (1-based).
+ */
 async function loadJobListings(page = 1) {
     try {
         // Get filter values
@@ -267,7 +296,17 @@ async function loadJobListings(page = 1) {
     }
 }
 
-// Render pagination controls
+/**
+ * Render previous/next pagination controls into the element with id "paginationContainer".
+ *
+ * Renders "Previous" and/or "Next" buttons when the provided pagination object contains
+ * `previous` and/or `next` URL values, clears existing pagination content before rendering,
+ * and wires each button to load the corresponding page using getPageNumberFromUrl and loadJobListings.
+ *
+ * @param {Object} data - Pagination metadata from the API response.
+ * @param {string|null} data.next - URL for the next page, or null if none.
+ * @param {string|null} data.previous - URL for the previous page, or null if none.
+ */
 function renderPagination(data) {
     const container = document.getElementById('paginationContainer');
     container.innerHTML = '';
@@ -298,7 +337,11 @@ function renderPagination(data) {
     container.appendChild(paginationDiv);
 }
 
-// Helper to extract page number from URL
+/**
+ * Extract the numeric `page` query parameter from a URL string, returning 1 if missing or invalid.
+ * @param {string} url - URL or query-containing string to read the `page` parameter from.
+ * @returns {number} The page number parsed from `page` query parameter, or `1` when not present or not a valid number.
+ */
 function getPageNumberFromUrl(url) {
     // Check if URL is a non-empty string
     if (!url || typeof url !== 'string' || url.trim() === '') {
@@ -319,13 +362,20 @@ function getPageNumberFromUrl(url) {
     return isNaN(pageNumber) ? 1 : pageNumber;
 }
 
-// Helper function to get CSRF token from meta tag
+/**
+ * Retrieve the CSRF token value from the page's meta[name="csrf-token"] tag.
+ * @returns {string|null} The CSRF token string, or `null` if the meta tag is not present.
+ */
 function getCsrfToken() {
     const tokenMeta = document.querySelector('meta[name="csrf-token"]');
     return tokenMeta ? tokenMeta.getAttribute('content') : null;
 }
 
-// Helper function to get cookie value
+/**
+ * Retrieve the value of a named cookie from document.cookie.
+ * @param {string} name - The cookie name to look up.
+ * @returns {string|null} The decoded cookie value if found, or `null` if not present.
+ */
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -341,11 +391,21 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// Job management functions
+/**
+ * Navigate the browser to the edit page for the specified job.
+ * @param {string|number} jobId - Job identifier used to construct the edit URL.
+ */
 function editJob(jobId) {
     window.location.href = `/dashboard/${jobId}/edit/`;
 }
 
+/**
+ * Activate a job via the dashboard API after confirming with the user.
+ *
+ * Prompts the user for confirmation, sends a POST request to activate the specified job,
+ * displays a success or error message based on the response, and refreshes the job listings on success.
+ * @param {string|number} jobId - The identifier of the job to activate.
+ */
 async function activateJob(jobId) {
     if (!confirm('Are you sure you want to activate this job?')) return;
 
@@ -371,6 +431,10 @@ async function activateJob(jobId) {
     }
 }
 
+/**
+ * Deactivate a job after user confirmation by calling the dashboard deactivate endpoint; shows UI feedback and refreshes the job listings on success.
+ * @param {number|string} jobId - ID of the job to deactivate.
+ */
 async function deactivateJob(jobId) {
     if (!confirm('Are you sure you want to deactivate this job?')) return;
 
@@ -396,6 +460,15 @@ async function deactivateJob(jobId) {
     }
 }
 
+/**
+ * Duplicate an existing job; on success shows a confirmation and navigates to the new job's edit page.
+ *
+ * Prompts the user for confirmation, attempts to create a duplicate via the server, displays success or error feedback,
+ * and when the server returns a valid new job id, redirects to that job's edit screen. If duplication succeeds but
+ * the response lacks a usable id, a success message is shown without redirection.
+ * 
+ * @param {number|string} jobId - The id of the job to duplicate.
+ */
 async function duplicateJob(jobId) {
     if (!confirm('Are you sure you want to duplicate this job?')) return;
 
@@ -429,6 +502,10 @@ async function duplicateJob(jobId) {
     }
 }
 
+/**
+ * Copy the full application URL (current origin + `/apply/` + provided link) to the clipboard and show a success or error message.
+ * @param {string} link - Application path segment or identifier to append to `/apply/` (e.g., job slug or id).
+ */
 function copyApplicationLink(link) {
     const fullLink = `${window.location.origin}/apply/${link}`;
     navigator.clipboard.writeText(fullLink)

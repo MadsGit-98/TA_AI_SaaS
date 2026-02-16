@@ -8,6 +8,11 @@ import uuid
 
 class JobListingModelTest(TestCase):
     def setUp(self):
+        """
+        Create a test user and attach it to the test case as `self.user`.
+        
+        This user is intended for use as the `created_by` or related user in model tests.
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
     
     def test_create_job_listing(self):
@@ -75,6 +80,13 @@ class JobListingModelTest(TestCase):
 
 class ScreeningQuestionModelTest(TestCase):
     def setUp(self):
+        """
+        Prepare test fixtures by creating a test user and an associated JobListing.
+        
+        Creates and assigns:
+        - self.user: a CustomUser created with username 'testuser'.
+        - self.job: a JobListing linked to self.user with sample title, description, required_skills, required_experience, job_level, start_date (now), and expiration_date (30 days from now).
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         self.job = JobListing.objects.create(
             title="Test Job",
@@ -110,7 +122,11 @@ class ScreeningQuestionModelTest(TestCase):
             )
     
     def test_non_choice_question_should_not_have_choices(self):
-        """Test that non-choice questions shouldn't have choices"""
+        """
+        Validate that a TEXT-type ScreeningQuestion cannot include a non-empty `choices` list.
+        
+        Attempts to create a `ScreeningQuestion` with `question_type="TEXT"` and a non-empty `choices` field and expects a `ValidationError`.
+        """
         with self.assertRaises(ValidationError):
             ScreeningQuestion.objects.create(
                 job_listing=self.job,
@@ -122,7 +138,11 @@ class ScreeningQuestionModelTest(TestCase):
 
 class CommonScreeningQuestionModelTest(TestCase):
     def test_create_common_screening_question(self):
-        """Test creating a common screening question"""
+        """
+        Verify that a CommonScreeningQuestion can be created with specified fields and that its defaults are set.
+        
+        Creates a CommonScreeningQuestion with a question_text, question_type, and category, then asserts the stored values match the inputs and that the `is_active` flag defaults to True.
+        """
         common_q = CommonScreeningQuestion.objects.create(
             question_text="What are your salary expectations?",
             question_type="TEXT",
@@ -152,6 +172,11 @@ class CommonScreeningQuestionModelTest(TestCase):
 
 class ApplicationLinkGenerationTest(TestCase):
     def setUp(self):
+        """
+        Create a test user and attach it to the test case as `self.user`.
+        
+        This user is intended for use as the `created_by` or related user in model tests.
+        """
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
     
     def test_application_link_generation_on_job_creation(self):

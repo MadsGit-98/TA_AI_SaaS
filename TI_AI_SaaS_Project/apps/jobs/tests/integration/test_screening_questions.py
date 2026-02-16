@@ -11,6 +11,15 @@ from apps.jobs.models import JobListing, CommonScreeningQuestion
 
 class ScreeningQuestionWorkflowIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare test client, create and authenticate a talent acquisition specialist user with an active subscription, and create a sample JobListing for integration tests.
+        
+        This sets up:
+        - an APIClient stored on self.client,
+        - a test user and a UserProfile marked as a talent acquisition specialist with an active subscription and future subscription_end_date,
+        - authenticates the user via the API and verifies successful login,
+        - a JobListing owned by the test user stored on self.job.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a user profile to make the user a talent acquisition specialist
@@ -44,6 +53,9 @@ class ScreeningQuestionWorkflowIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Reset shared state between tests by clearing Django's cache, ensuring rate limiting and cached data do not persist across test cases.
+        """
         from django.core.cache import cache
         cache.clear()
 
@@ -157,6 +169,15 @@ class ScreeningQuestionWorkflowIntegrationTest(TestCase):
 
 class ScreeningQuestionValidationIntegrationTest(TestCase):
     def setUp(self):
+        """
+        Prepare test client, create and authenticate a talent acquisition specialist user with an active subscription, and create a sample JobListing for integration tests.
+        
+        This sets up:
+        - an APIClient stored on self.client,
+        - a test user and a UserProfile marked as a talent acquisition specialist with an active subscription and future subscription_end_date,
+        - authenticates the user via the API and verifies successful login,
+        - a JobListing owned by the test user stored on self.job.
+        """
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(username='testuser', password='testpass')
         # Create a user profile to make the user a talent acquisition specialist
@@ -190,6 +211,9 @@ class ScreeningQuestionValidationIntegrationTest(TestCase):
 
     def tearDown(self):
         # Clear cache to reset rate limiting between tests
+        """
+        Reset shared state between tests by clearing Django's cache, ensuring rate limiting and cached data do not persist across test cases.
+        """
         from django.core.cache import cache
         cache.clear()
 

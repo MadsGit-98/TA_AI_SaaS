@@ -13,6 +13,16 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
     """
     def process_request(self, request):
         # Define paths that should trigger activity tracking
+        """
+        Enforces session inactivity timeout for authenticated users when accessing selected endpoints.
+        
+        Parameters:
+            request (HttpRequest): The incoming Django request to inspect.
+        
+        Returns:
+            JsonResponse: A 401 response with {'error': 'Session expired due to inactivity'} if the user's session has expired, or a 500 response with {'error': 'Session verification failed'} if the expiry check fails.
+            None: If no timeout or error is detected so processing should continue.
+        """
         activity_tracking_paths = [
             '/api/accounts/auth/users/me/',  # User profile endpoint
             '/api/analysis/',  # Analysis endpoints

@@ -1,4 +1,8 @@
-// Helper function to get cookie value
+/**
+ * Retrieve the decoded value of a named cookie from document.cookie.
+ * @param {string} name - The name of the cookie to retrieve.
+ * @returns {string|null} The cookie's decoded value, or `null` if the cookie is not present.
+ */
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -14,7 +18,12 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// Helper function to show error message
+/**
+ * Display an error message in the job edit page's error UI.
+ * Updates the element with ID 'job-error-text' to the provided message and reveals
+ * the container element with ID 'job-error-message' if both elements exist.
+ * @param {string} message - The error text to display.
+ */
 function showError(message) {
     const errorMessage = document.getElementById('job-error-message');
     const errorText = document.getElementById('job-error-text');
@@ -24,7 +33,11 @@ function showError(message) {
     }
 }
 
-// Helper function to show success message
+/**
+ * Displays a success message to the user.
+ * If the success message elements are present in the DOM, sets the message text and reveals the message container.
+ * @param {string} message - The text to display in the success message.
+ */
 function showSuccess(message) {
     const successMessage = document.getElementById('job-success-message');
     const successText = document.getElementById('job-success-text');
@@ -34,7 +47,11 @@ function showSuccess(message) {
     }
 }
 
-// Helper function to hide all messages
+/**
+ * Hides any visible job error or success messages on the page.
+ *
+ * Finds elements with IDs 'job-error-message' and 'job-success-message' and adds the 'hidden' class to each if present.
+ */
 function hideAllMessages() {
     const errorMessage = document.getElementById('job-error-message');
     const successMessage = document.getElementById('job-success-message');
@@ -70,7 +87,14 @@ if (!jobId) {
     window.jobIdMissing = true;
 }
 
-// Load job data
+/**
+ * Fetches the job for the current page and populates the edit form and screening questions.
+ *
+ * If window.jobIdMissing is true, the function exits without performing network requests.
+ * On success, form fields (title, description, required_skills, required_experience, job_level,
+ * start_date, expiration_date, status) are populated and screening questions are loaded.
+ * If the job is not found (HTTP 404) the absence is logged; other failures surface a user-facing error.
+ */
 async function loadJobData() {
     // Check if jobId is missing before proceeding
     if (window.jobIdMissing) {
@@ -120,7 +144,12 @@ async function loadJobData() {
     }
 }
 
-// Load screening questions for the job
+/**
+ * Fetches screening questions for the given job and renders them into the page.
+ *
+ * If the request succeeds, the parsed questions are passed to displayScreeningQuestions.
+ * On failure or network error, an error is logged to the console.
+ */
 async function loadScreeningQuestions(jobId) {
     try {
         const response = await fetch(`/dashboard/jobs/${jobId}/screening-questions/`, {
@@ -138,7 +167,18 @@ async function loadScreeningQuestions(jobId) {
     }
 }
 
-// Display screening questions in the UI
+/**
+ * Render a list of screening questions into the page, replacing the current content of the element with ID "questionsList".
+ *
+ * Each question is displayed with its text, a human-readable type label, required/optional status, and any choices. Edit and Delete controls are added for each question.
+ *
+ * @param {Array<Object>} questions - Array of question objects to render. Each object should include at least:
+ *   - {string|number} id
+ *   - {string} question_type
+ *   - {string} question_text
+ *   - {boolean} required
+ *   - {Array<Object>} [choices] - Optional array of choice objects with a `text` property.
+ */
 function displayScreeningQuestions(questions) {
     const questionsList = document.getElementById('questionsList');
     
@@ -250,13 +290,25 @@ function displayScreeningQuestions(questions) {
     });
 }
 
-// Function to edit a screening question
+/**
+ * Redirects the browser to the screening-question editor for the specified job and question.
+ * @param {string|number} questionId - Identifier of the screening question to edit.
+ * @param {string|number} jobId - Identifier of the job that owns the screening question.
+ */
 async function editScreeningQuestion(questionId, jobId) {
     // Redirect to the add screening question page with the question ID for editing
     window.location.href = `/dashboard/${jobId}/add-screening-question/?question_id=${questionId}`;
 }
 
-// Function to delete a screening question
+/**
+ * Delete a screening question from the server and remove its UI card on success.
+ *
+ * Prompts the user for confirmation, sends a DELETE request for the question (using CSRF token and credentials), removes the question's containing UI element when the server responds OK, and shows a success or error message depending on the outcome.
+ *
+ * @param {string|number} questionId - The ID of the screening question to delete.
+ * @param {string|number} jobId - The ID of the job that the screening question belongs to.
+ * @param {Element} element - A DOM element inside the question's card (used to locate and remove the card on successful deletion).
+ */
 async function deleteScreeningQuestion(questionId, jobId, element) {
     if (!confirm('Are you sure you want to delete this screening question?')) return;
 
