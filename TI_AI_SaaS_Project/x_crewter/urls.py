@@ -36,12 +36,11 @@ urlpatterns = [
     path('social-auth/', include('social_django.urls', namespace='social')),  # Include social auth URLs
     path('api/health/', health_check, name='health_check'),
     path('api/accounts/', include('apps.accounts.api_urls')),
-    #path('api/jobs/', include('apps.jobs.urls')),
     path('api/applications/', include('apps.applications.urls')),
     path('api/analysis/', include('apps.analysis.urls')),
     #path('api/subscription/', include('apps.subscription.urls')),
     # Frontend views for non-API access
-    path('dashboard/', include('apps.jobs.urls')),  # Jobs dashboard for subscribed users
+    path('dashboard/', include('apps.jobs.urls', namespace='dashboard_jobs')),  # Jobs dashboard for subscribed users
     path('landing/', include('apps.subscription.urls')),  # Subscription landing for non-subscribed users
 ]
 
@@ -55,7 +54,7 @@ def fallback_view(request, *args, **kwargs):
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
     # Updated to explicitly exclude activation paths, static/media files, and WebSocket URLs
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-).*$', fallback_view, name='fallback'),
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 

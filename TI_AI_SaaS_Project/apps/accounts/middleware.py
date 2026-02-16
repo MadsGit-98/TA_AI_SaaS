@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 from django.core.exceptions import ObjectDoesNotExist
-from .session_utils import is_user_session_expired, update_user_activity
+from .session_utils import is_user_session_expired
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,6 @@ class SessionTimeoutMiddleware(MiddlewareMixin):
         activity_tracking_paths = [
             '/api/accounts/auth/users/me/',  # User profile endpoint
             '/api/analysis/',  # Analysis endpoints
-            '/api/jobs/',  # Job-related endpoints
             '/dashboard/',  # Dashboard pages
         ]
         # Check if the user is authenticated and the path requires activity tracking

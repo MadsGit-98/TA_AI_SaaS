@@ -4,75 +4,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | X-Crewter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
+    <title>Job Listings Dashboard - X-Crewter</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
+                        'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        header {
-            background-color: #fff;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            padding: 15px 0;
-        }
-        .dashboard-content {
-            margin-top: 30px;
-            background: white;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .nav-links {
-            margin-top: 20px;
-        }
-        .nav-links a {
-            display: inline-block;
-            margin-right: 15px;
-            padding: 8px 16px;
-            background-color: #007cba;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-        }
-        .nav-links a:hover {
-            background-color: #005a87;
-        }
-    </style>
-    <!-- Axios library for HTTP requests -->
-    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
-    <!-- Authentication interceptor with user activity tracking -->
-    <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
-<body>
-    <header>
-        <div class="container">
-            <h2>Job Dashboard</h2>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <!-- Logo on the left -->
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Logout anchor -->
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium"> Logout </a>
+                    <!-- Create New Job anchor on the right -->
+                    <a href="/dashboard/create/" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Create New Job</a>
+                </div>
+            </div>
         </div>
     </header>
 
-    <div class="container">
-        <div class="dashboard-content">
-            <h1>Welcome to Your Job Dashboard</h1>
-            <p>This is the placeholder page for the job dashboard. Subscribed users are redirected here after logging in.</p>
-            <p>Here you will be able to manage and view all your job listings and applications.</p>
+    <main class="flex-grow">
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-10">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-3xl font-bold">Job Listings Dashboard</h1>
+            </div>
 
-            <div class="nav-links">
-                <a href="/jobs/">View Jobs</a>
-                <a href="/applications/">View Applications</a>
-                <a href="/settings/">Settings</a>
+        <!-- Success Message (Initially Hidden) -->
+        <div id="job-success-message" class="hidden mt-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-md">
+            <h3 class="text-lg font-medium">Success</h3>
+            <p id="job-success-text"></p>
+        </div>
+
+        <!-- Error Message (Initially Hidden) -->
+        <div id="job-error-message" class="hidden mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md">
+            <h3 class="text-lg font-medium">Error</h3>
+            <p id="job-error-text"></p>
+        </div>
+
+        <!-- Filters -->
+        <div class="mb-6 p-4 bg-[#E0E0E0] rounded-lg">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label for="statusFilter" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Statuses</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="dateRangeFilter" class="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+                    <select id="dateRangeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="jobLevelFilter" class="block text-sm font-medium text-gray-700 mb-1">Job Level</label>
+                    <select id="jobLevelFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">All Levels</option>
+                        <option value="Intern">Intern</option>
+                        <option value="Entry">Entry</option>
+                        <option value="Junior">Junior</option>
+                        <option value="Senior">Senior</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="searchFilter" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                    <input
+                        type="text"
+                        id="searchFilter"
+                        placeholder="Search titles..."
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                </div>
             </div>
         </div>
+
+        <!-- Job Listings Container -->
+        <div id="jobListingsContainer" class="space-y-4">
+            <!-- Job listings will be loaded here -->
+        </div>
+
+        <!-- Pagination -->
+        <div id="paginationContainer" class="mt-6 flex justify-center">
+            <!-- Pagination controls will be loaded here -->
+        </div>
     </div>
+</main>
+
+    {% include 'components/legal_footer.html' %}
+
+    {% block extra_js %}
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+        <script src="{% static 'js/auth-interceptor.js' %}"></script>
+        <script src="{% static 'js/dashboard.js' %}"></script>
+    {% endblock %}
+
+
 </body>
 </html>

@@ -1,6 +1,4 @@
 from django.shortcuts import render
-from django.http import HttpResponse
-from django.template.response import TemplateResponse
 from django.db import DatabaseError
 from django.db.utils import OperationalError
 from .models import HomePageContent, LegalPage, CardLogo, SiteSetting
@@ -167,7 +165,6 @@ def activation_error_view(request):
     """
     View for activation error page
     """
-    error_message = request.GET.get('error', 'Invalid activation token.')
     error_code = request.GET.get('error', 'invalid_token')
 
     # Whitelist of allowed error messages

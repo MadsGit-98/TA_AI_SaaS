@@ -1,0 +1,703 @@
+openapi: 3.0.0
+info:
+  title: Job Listing Management API
+  version: 1.0.0
+  description: API for managing job listings, including creation, modification, activation, and deactivation
+
+servers:
+  - url: https://api.x-crewter.com/v1
+    description: Production server
+  - url: https://staging-api.x-crewter.com/v1
+    description: Staging server
+
+paths:
+  /jobs/:
+    get:
+      summary: List all job listings
+      description: Retrieve a paginated list of job listings with optional filtering
+      parameters:
+        - name: status
+          in: query
+          description: Filter by job status (active, inactive)
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive]
+        - name: start_date_after
+          in: query
+          description: Filter jobs with start date after this date
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: expiration_date_before
+          in: query
+          description: Filter jobs with expiration date before this date
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Successful response with list of job listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JobListing'
+      security:
+        - bearerAuth: []
+
+    post:
+      summary: Create a new job listing
+      description: Create a new job listing with all required details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobListingCreateRequest'
+      responses:
+        '201':
+          description: Job listing created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+      security:
+        - bearerAuth: []
+
+  /jobs/{id}/:
+    get:
+      summary: Retrieve a specific job listing
+      description: Get details of a specific job listing by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response with job listing details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+    put:
+      summary: Update a job listing
+      description: Update all fields of an existing job listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobListingUpdateRequest'
+      responses:
+        '200':
+          description: Job listing updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+    patch:
+      summary: Partially update a job listing
+      description: Update specific fields of an existing job listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobListingPartialUpdateRequest'
+      responses:
+        '200':
+          description: Job listing updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+    delete:
+      summary: Delete a job listing
+      description: Permanently delete a job listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Job listing deleted successfully
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+  /jobs/{id}/activate/:
+    post:
+      summary: Activate a job listing
+      description: Manually activate a job listing regardless of start date
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job listing activated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '400':
+          description: Cannot activate job listing (e.g., expiration date has passed)
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+  /jobs/{id}/deactivate/:
+    post:
+      summary: Deactivate a job listing
+      description: Manually deactivate a job listing regardless of expiration date
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job listing deactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+  /jobs/{id}/duplicate/:
+    post:
+      summary: Duplicate a job listing
+      description: Create a copy of an existing job listing as a template for a new position
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing to duplicate
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Job listing duplicated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListing'
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+  /jobs/{id}/screening-questions/:
+    get:
+      summary: List screening questions for a job
+      description: Retrieve all screening questions associated with a specific job listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response with list of screening questions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScreeningQuestion'
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+    post:
+      summary: Add a screening question to a job
+      description: Create a new screening question associated with a specific job listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreeningQuestionCreateRequest'
+      responses:
+        '201':
+          description: Screening question added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningQuestion'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Job listing not found
+      security:
+        - bearerAuth: []
+
+  /jobs/{job_id}/screening-questions/{question_id}/:
+    get:
+      summary: Retrieve a specific screening question
+      description: Get details of a specific screening question by ID
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: path
+          required: true
+          description: Unique identifier of the screening question
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response with screening question details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningQuestion'
+        '404':
+          description: Screening question or job listing not found
+      security:
+        - bearerAuth: []
+
+    put:
+      summary: Update a screening question
+      description: Update all fields of an existing screening question
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: path
+          required: true
+          description: Unique identifier of the screening question
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreeningQuestionUpdateRequest'
+      responses:
+        '200':
+          description: Screening question updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningQuestion'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Screening question or job listing not found
+      security:
+        - bearerAuth: []
+
+    delete:
+      summary: Delete a screening question
+      description: Permanently delete a screening question
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Unique identifier of the job listing
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: path
+          required: true
+          description: Unique identifier of the screening question
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Screening question deleted successfully
+        '401':
+          description: Unauthorized access
+        '403':
+          description: Forbidden - insufficient permissions
+        '404':
+          description: Screening question or job listing not found
+      security:
+        - bearerAuth: []
+
+components:
+  schemas:
+    JobListing:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - required_skills
+        - required_experience
+        - job_level
+        - start_date
+        - expiration_date
+        - status
+        - application_link
+        - created_by
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the job listing
+        title:
+          type: string
+          maxLength: 200
+          description: Title of the job listing
+        description:
+          type: string
+          maxLength: 3000
+          description: Full description of the job
+        required_skills:
+          type: array
+          items:
+            type: string
+          description: List of required skills
+        required_experience:
+          type: integer
+          minimum: 0
+          description: Years of required experience
+        job_level:
+          type: string
+          enum: [Intern, Entry, Junior, Senior]
+          description: Level of the position
+        start_date:
+          type: string
+          format: date-time
+          description: When the job listing becomes active
+        expiration_date:
+          type: string
+          format: date-time
+          description: When the job listing becomes inactive
+        modification_date:
+          type: string
+          format: date-time
+          description: When the job listing was last modified (equals start_date initially)
+        status:
+          type: string
+          enum: [Active, Inactive]
+          description: Current status of the job listing
+        application_link:
+          type: string
+          format: uuid
+          description: Unique public link for applications
+        created_at:
+          type: string
+          format: date-time
+          description: When the job listing was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the job listing was last updated
+        created_by:
+          type: string
+          format: uuid
+          description: ID of the user who created the listing
+
+    JobListingCreateRequest:
+      type: object
+      required:
+        - title
+        - description
+        - required_skills
+        - required_experience
+        - job_level
+        - start_date
+        - expiration_date
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 3000
+        required_skills:
+          type: array
+          items:
+            type: string
+        required_experience:
+          type: integer
+          minimum: 0
+        job_level:
+          type: string
+          enum: [Intern, Entry, Junior, Senior]
+        start_date:
+          type: string
+          format: date-time
+        expiration_date:
+          type: string
+          format: date-time
+
+    JobListingUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/JobListingCreateRequest'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [Active, Inactive]
+
+    JobListingPartialUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 3000
+        required_skills:
+          type: array
+          items:
+            type: string
+        required_experience:
+          type: integer
+          minimum: 0
+        job_level:
+          type: string
+          enum: [Intern, Entry, Junior, Senior]
+        start_date:
+          type: string
+          format: date-time
+        expiration_date:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [Active, Inactive]
+
+    ScreeningQuestion:
+      type: object
+      required:
+        - id
+        - job_listing
+        - question_text
+        - question_type
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the screening question
+        job_listing:
+          type: string
+          format: uuid
+          description: ID of the associated job listing
+        question_text:
+          type: string
+          description: The actual question text
+        question_type:
+          type: string
+          enum: [TEXT, YES_NO, CHOICE, MULTIPLE_CHOICE, FILE_UPLOAD]
+          description: Type of the question
+        required:
+          type: boolean
+          default: true
+          description: Whether the question is required
+        order:
+          type: integer
+          minimum: 1
+          description: Order of the question in the list
+        choices:
+          type: array
+          items:
+            type: string
+          description: Available choices for choice-based questions
+        created_at:
+          type: string
+          format: date-time
+          description: When the question was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the question was last updated
+
+    ScreeningQuestionCreateRequest:
+      type: object
+      required:
+        - question_text
+        - question_type
+      properties:
+        question_text:
+          type: string
+        question_type:
+          type: string
+          enum: [TEXT, YES_NO, CHOICE, MULTIPLE_CHOICE, FILE_UPLOAD]
+        required:
+          type: boolean
+          default: true
+        order:
+          type: integer
+          minimum: 1
+        choices:
+          type: array
+          items:
+            type: string
+
+    ScreeningQuestionUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ScreeningQuestionCreateRequest'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token required for authentication
+
+security:
+  - bearerAuth: []

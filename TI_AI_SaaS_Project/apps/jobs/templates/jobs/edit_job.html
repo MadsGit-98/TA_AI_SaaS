@@ -1,0 +1,221 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Job Listing - X-Crewter</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',           // Deep Charcoal - Base dark mode background
+                        'primary-text': '#000000',        // Pure White - High contrast main text
+                        'secondary-text': '#A0A0A0',      // Medium Grey - Subtle metadata/supporting text
+                        'accent-cta': '#080707',          // Vibrant Cyan/Teal - Primary call-to-action/link color
+                        'code-block-bg': '#E0E0E0',       // Subtle Dark Grey - Code and card background
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <!-- Logo on the left -->
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Logout anchor -->
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    <!-- Dashboard anchor -->
+                    <a href="/dashboard/" class="bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow">
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        <!-- Success Message (Initially Hidden) -->
+        <div id="job-success-message" class="hidden mt-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-md">
+            <h3 class="text-lg font-medium">Success</h3>
+            <p id="job-success-text"></p>
+        </div>
+
+        <!-- Error Message (Initially Hidden) -->
+        <div id="job-error-message" class="hidden mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md">
+            <h3 class="text-lg font-medium">Error</h3>
+            <p id="job-error-text"></p>
+        </div>
+
+        <form id="jobEditForm" class="space-y-6">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
+                    <input
+                        type="text"
+                        id="title"
+                        name="title"
+                        required
+                        maxlength="200"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
+                        placeholder="e.g., Senior Software Engineer">
+                </div>
+
+                <div>
+                    <label for="job_level" class="block text-sm font-medium text-gray-700 mb-1">Job Level *</label>
+                    <select
+                        id="job_level"
+                        name="job_level"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="Intern">Intern</option>
+                        <option value="Entry">Entry</option>
+                        <option value="Junior">Junior</option>
+                        <option value="Senior">Senior</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="required_experience" class="block text-sm font-medium text-gray-700 mb-1">Required Experience (Years) *</label>
+                    <input
+                        type="number"
+                        id="required_experience"
+                        name="required_experience"
+                        min="0"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
+                        placeholder="e.g., 3">
+                </div>
+
+                <div>
+                    <label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                    <input
+                        type="datetime-local"
+                        id="start_date"
+                        name="start_date"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                </div>
+
+                <div>
+                    <label for="expiration_date" class="block text-sm font-medium text-gray-700 mb-1">Expiration Date *</label>
+                    <input
+                        type="datetime-local"
+                        id="expiration_date"
+                        name="expiration_date"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                </div>
+
+                <div>
+                    <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                        id="status"
+                        name="status"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="required_skills" class="block text-sm font-medium text-gray-700 mb-1">Required Skills *</label>
+                    <textarea
+                        id="required_skills"
+                        name="required_skills"
+                        required
+                        rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
+                        placeholder="Enter skills separated by commas (e.g., Python, Django, REST API)"></textarea>
+                    <p class="mt-1 text-sm text-gray-500">Separate skills with commas</p>
+                </div>
+            </div>
+
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Job Description *</label>
+                <textarea
+                    id="description"
+                    name="description"
+                    required
+                    rows="6"
+                    maxlength="3000"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]"
+                    placeholder="Provide a detailed description of the job responsibilities, requirements, and company culture..."></textarea>
+            </div>
+
+            <!-- Screening Questions Section -->
+            <div class="mt-8 border-t border-gray-200 pt-8">
+                <h2 class="text-xl font-semibold mb-4">Screening Questions</h2>
+                
+                <!-- Existing Screening Questions -->
+                <div id="existingScreeningQuestions" class="mb-6">
+                    <h3 class="font-medium mb-2">Existing Questions:</h3>
+                    <div id="questionsList" class="space-y-3">
+                        <!-- Existing questions will be loaded here dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Add New Screening Question Button -->
+                <div class="mb-6">
+                    <button 
+                        type="button" 
+                        id="addNewQuestionBtn"
+                        class="px-4 py-2 bg-gray-500 text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                        Add New Screening Question
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center pt-4">
+                <div>
+                    <a href="/dashboard/" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        Cancel
+                    </a>
+                </div>
+                <div class="flex space-x-3">
+                    <!-- Update Button -->
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-[#080707] text-[#FFFFFF] rounded-md shadow-sm text-sm font-medium hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#080707]">
+                        Update Job Listing
+                    </button>
+                    <!-- Delete Button -->
+                    <button
+                        type="button"
+                        id="deleteButton"
+                        class="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        Delete Job Listing
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</main>
+
+    {% include 'components/legal_footer.html' %}
+
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    <script src="{% static 'js/edit_job.js' %}"></script>
+</body>
+</html>
