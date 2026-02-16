@@ -10,6 +10,26 @@ document.getElementById('question_type').addEventListener('change', function() {
     }
 });
 
+// Helper function to show error message
+function showError(message) {
+    const errorMessage = document.getElementById('job-error-message');
+    const errorText = document.getElementById('job-error-text');
+    if (errorMessage && errorText) {
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+    }
+}
+
+// Helper function to show success message
+function showSuccess(message) {
+    const successMessage = document.getElementById('job-success-message');
+    const successText = document.getElementById('job-success-text');
+    if (successMessage && successText) {
+        successText.textContent = message;
+        successMessage.classList.remove('hidden');
+    }
+}
+
 // Load suggested questions
 async function loadSuggestedQuestions() {
     try {
@@ -118,7 +138,7 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
         if (choicesText.trim()) {
             questionData.choices = choicesText.split('\n').map(choice => choice.trim()).filter(choice => choice !== '');
         } else {
-            alert('Choices are required for choice-based questions.');
+            showError('Choices are required for choice-based questions.');
             return;
         }
     }
@@ -165,7 +185,7 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
 
     if (!jobId) {
         console.error('Error: No job ID found. Cannot submit screening question.');
-        alert('Error: Job ID is missing. Please go back and try again.');
+        showError('Error: Job ID is missing. Please go back and try again.');
         return;
     }
 
@@ -205,12 +225,14 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
         if (response.ok) {
             const result = await response.json();
             if (questionId) {
-                alert('Screening question updated successfully!');
+                showSuccess('Screening question updated successfully!');
             } else {
-                alert('Screening question added successfully!');
+                showSuccess('Screening question added successfully!');
             }
             // Redirect back to job edit page
-            window.location.href = `/dashboard/${jobId}/edit/`;
+            setTimeout(() => {
+                window.location.href = `/dashboard/${jobId}/edit/`;
+            }, 1500);
         } else {
             const rawBody = await response.text();
             let errorData;
@@ -222,11 +244,11 @@ document.getElementById('screeningQuestionForm').addEventListener('submit', asyn
             }
 
             console.error('Error processing screening question:', errorData);
-            alert('Failed to process screening question. Please try again.');
+            showError('Failed to process screening question. Please try again.');
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('An error occurred while processing the screening question.');
+        showError('An error occurred while processing the screening question.');
     }
 });
 
@@ -276,14 +298,14 @@ async function loadQuestionData(questionId) {
     const jobIdElem = document.getElementById('job_id');
     if (!jobIdElem) {
         console.error('Error: Hidden job ID element not found.');
-        alert('Error: Required form element is missing. Cannot load question data.');
+        showError('Error: Required form element is missing. Cannot load question data.');
         return;
     }
     const jobId = jobIdElem.value;
 
     if (!jobId) {
         console.error('Error: No job ID found for loading question data.');
-        alert('Error: Job ID is missing. Cannot load question data.');
+        showError('Error: Job ID is missing. Cannot load question data.');
         return;
     }
 
@@ -342,11 +364,11 @@ async function loadQuestionData(questionId) {
             }
         } else {
             console.error('Failed to load question data:', response.status);
-            alert('Failed to load question data for editing.');
+            showError('Failed to load question data for editing.');
         }
     } catch (error) {
         console.error('Error loading question data:', error);
-        alert('An error occurred while loading question data.');
+        showError('An error occurred while loading question data.');
     }
 }
 

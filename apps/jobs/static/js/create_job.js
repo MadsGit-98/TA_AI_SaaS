@@ -1,3 +1,23 @@
+// Helper function to show error message
+function showError(message) {
+    const errorMessage = document.getElementById('job-error-message');
+    const errorText = document.getElementById('job-error-text');
+    if (errorMessage && errorText) {
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+    }
+}
+
+// Helper function to show success message
+function showSuccess(message) {
+    const successMessage = document.getElementById('job-success-message');
+    const successText = document.getElementById('job-success-text');
+    if (successMessage && successText) {
+        successText.textContent = message;
+        successMessage.classList.remove('hidden');
+    }
+}
+
 document.getElementById('jobCreationForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -10,7 +30,7 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
         const expirationDate = new Date(expirationDateInput.value);
 
         if (expirationDate <= startDate) {
-            alert('Expiration date must be after start date.');
+            showError('Expiration date must be after start date.');
             return; // Stop the submission
         }
     }
@@ -41,12 +61,16 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
         if (response.ok) {
             const result = await response.json();
             if (result && result.id) {
-                alert('Job listing created successfully!');
-                window.location.href = '/dashboard/';
+                showSuccess('Job listing created successfully!');
+                setTimeout(() => {
+                    window.location.href = '/dashboard/';
+                }, 1500);
             } else {
                 console.error('Unexpected response format:', result);
-                alert('Job listing created successfully but ID not returned. Redirecting to dashboard.');
-                window.location.href = '/dashboard/';
+                showSuccess('Job listing created successfully but ID not returned. Redirecting to dashboard.');
+                setTimeout(() => {
+                    window.location.href = '/dashboard/';
+                }, 1500);
             }
         } else {
             const errorData = await response.json();
@@ -64,11 +88,11 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
                 }
             }
 
-            alert(`Error creating job listing: ${userMessage}`);
+            showError(`Error creating job listing: ${userMessage}`);
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('An error occurred while creating the job listing.');
+        showError('An error occurred while creating the job listing.');
     }
 });
 
@@ -78,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (addScreeningQuestionsBtn) {
         addScreeningQuestionsBtn.addEventListener('click', async function(e) {
             e.preventDefault();
-            
+
             // Perform client-side validation similar to the form submission
             const startDateInput = document.getElementById('start_date');
             const expirationDateInput = document.getElementById('expiration_date');
@@ -88,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const expirationDate = new Date(expirationDateInput.value);
 
                 if (expirationDate <= startDate) {
-                    alert('Expiration date must be after start date.');
+                    showError('Expiration date must be after start date.');
                     return; // Stop the submission
                 }
             }
@@ -108,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Validate required fields
             if (!jobData.title || !jobData.description || !Array.isArray(jobData.required_skills) || jobData.required_skills.length === 0 || !jobData.required_experience ||
                 !jobData.job_level || !jobData.start_date || !jobData.expiration_date) {
-                alert('Please fill in all required fields before creating the job.');
+                showError('Please fill in all required fields before creating the job.');
                 return;
             }
 
@@ -130,20 +154,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.location.href = `/dashboard/${result.id}/add-screening-question/`;
                     } else {
                         console.error('Unexpected response format:', result);
-                        alert('Job listing created successfully but ID not returned.');
-                        window.location.href = '/dashboard/';
+                        showError('Job listing created successfully but ID not returned.');
+                        setTimeout(() => {
+                            window.location.href = '/dashboard/';
+                        }, 1500);
                     }
                 } else {
                     const errorText = await response.text(); // Get raw response text
                     let errorData;
-                    
+
                     try {
                         errorData = JSON.parse(errorText); // Try to parse as JSON
                     } catch (e) {
                         // If not JSON, use the raw text
                         errorData = { detail: errorText || 'Unknown error occurred' };
                     }
-                    
+
                     console.error('Error creating job listing:', errorData);
 
                     let userMessage = 'Unable to create job listing. Please try again.';
@@ -158,7 +184,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     fieldErrors.push(`${field}: ${errorData[field].join(', ')}`);
                                 }
                             });
-                            
+
                             if (fieldErrors.length > 0) {
                                 userMessage = fieldErrors.join('; ');
                             }
@@ -169,11 +195,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
 
-                    alert(`Error creating job listing: ${userMessage}`);
+                    showError(`Error creating job listing: ${userMessage}`);
                 }
             } catch (error) {
                 console.error('Error creating job listing:', error);
-                alert('An error occurred while creating the job listing. Please check your connection and try again.');
+                showError('An error occurred while creating the job listing. Please check your connection and try again.');
             }
         });
     }

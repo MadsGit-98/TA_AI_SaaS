@@ -14,6 +14,34 @@ function getCookie(name) {
     return cookieValue;
 }
 
+// Helper function to show error message
+function showError(message) {
+    const errorMessage = document.getElementById('job-error-message');
+    const errorText = document.getElementById('job-error-text');
+    if (errorMessage && errorText) {
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+    }
+}
+
+// Helper function to show success message
+function showSuccess(message) {
+    const successMessage = document.getElementById('job-success-message');
+    const successText = document.getElementById('job-success-text');
+    if (successMessage && successText) {
+        successText.textContent = message;
+        successMessage.classList.remove('hidden');
+    }
+}
+
+// Helper function to hide all messages
+function hideAllMessages() {
+    const errorMessage = document.getElementById('job-error-message');
+    const successMessage = document.getElementById('job-success-message');
+    if (errorMessage) errorMessage.classList.add('hidden');
+    if (successMessage) successMessage.classList.add('hidden');
+}
+
 // Get job ID from URL
 // The URL pattern is /dashboard/{job_id}/edit/
 const pathSegments = window.location.pathname.split('/').filter(segment => segment !== '');
@@ -37,7 +65,7 @@ if (!jobId) {
 
 if (!jobId) {
     console.error('Job ID still not found in URL after alternative method');
-    alert('Error: Unable to determine job ID from URL. Please navigate to this page from the dashboard.');
+    showError('Error: Unable to determine job ID from URL. Please navigate to this page from the dashboard.');
     // Set a flag to indicate that initialization should not proceed
     window.jobIdMissing = true;
 }
@@ -84,11 +112,11 @@ async function loadJobData() {
             // This prevents the error message from showing after deletion
             console.log('Job not found, possibly deleted');
         } else {
-            alert('Failed to load job data');
+            showError('Failed to load job data');
         }
     } catch (error) {
         console.error('Error loading job data:', error);
-        alert('An error occurred while loading job data.');
+        showError('An error occurred while loading job data.');
     }
 }
 
@@ -244,13 +272,13 @@ async function deleteScreeningQuestion(questionId, jobId, element) {
         if (response.ok) {
             // Remove the question element from the UI
             element.closest('.border').remove();
-            alert('Screening question deleted successfully!');
+            showSuccess('Screening question deleted successfully!');
         } else {
-            alert('Failed to delete screening question');
+            showError('Failed to delete screening question');
         }
     } catch (error) {
         console.error('Error deleting screening question:', error);
-        alert('An error occurred while deleting the screening question.');
+        showError('An error occurred while deleting the screening question.');
     }
 }
 
@@ -274,10 +302,11 @@ const jobEditForm = document.getElementById('jobEditForm');
 if (jobEditForm) {
     jobEditForm.addEventListener('submit', async function(e) {
         e.preventDefault();
+        hideAllMessages();
 
         // Check if jobId is missing before proceeding
         if (window.jobIdMissing) {
-            alert('Error: Cannot update job. Job ID is missing.');
+            showError('Error: Cannot update job. Job ID is missing.');
             return;
         }
 
@@ -305,20 +334,21 @@ if (jobEditForm) {
             });
 
             if (response.ok) {
-                const result = await response.json();
-                alert('Job listing updated successfully!');
-                window.location.href = '/dashboard/';
+                showSuccess('Job listing updated successfully!');
+                setTimeout(() => {
+                    window.location.href = '/dashboard/';
+                }, 1500);
             } else {
                 let errorMessage = `HTTP ${response.status}`;
                 try {
                     const errorData = await response.json();
                     errorMessage = JSON.stringify(errorData);
                 } catch { /* Response not JSON */ }
-                alert(`Error updating job listing: ${errorMessage}`);
+                showError(`Error updating job listing: ${errorMessage}`);
             }
         } catch (error) {
             console.error('Error:', error);
-            alert('An error occurred while updating the job listing.');
+            showError('An error occurred while updating the job listing.');
         }
     });
 }
@@ -327,10 +357,10 @@ if (jobEditForm) {
 document.getElementById('deleteButton').addEventListener('click', async function() {
     // Check if jobId is missing before proceeding
     if (window.jobIdMissing) {
-        alert('Error: Cannot delete job. Job ID is missing.');
+        showError('Error: Cannot delete job. Job ID is missing.');
         return;
     }
-    
+
     if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
 
     try {
@@ -343,15 +373,17 @@ document.getElementById('deleteButton').addEventListener('click', async function
         });
 
         if (response.ok) {
-            alert('Job deleted successfully!');
-            window.location.href = '/dashboard/'; // Redirect to dashboard
+            showSuccess('Job deleted successfully!');
+            setTimeout(() => {
+                window.location.href = '/dashboard/'; // Redirect to dashboard
+            }, 1500);
         } else {
             const errorData = await response.json();
-            alert(`Error deleting job: ${JSON.stringify(errorData)}`);
+            showError(`Error deleting job: ${JSON.stringify(errorData)}`);
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('An error occurred while deleting the job.');
+        showError('An error occurred while deleting the job.');
     }
 });
 
