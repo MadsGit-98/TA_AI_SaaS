@@ -69,4 +69,6 @@ Python 3.11: Follow standard conventions
 
 
 <!-- MANUAL ADDITIONS START -->
+- Donot include imports within methods they must reside at the top of the python file.
+- No JS scripts to be embedded in any .html file, they must be in separate files within the appropriate directory. In .html they are then refrenced.
 <!-- MANUAL ADDITIONS END -->
