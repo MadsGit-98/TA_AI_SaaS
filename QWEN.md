@@ -12,6 +12,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-04
 - Sqlite3 (initial implementation) with Redis for session/token management (006-remember-me-functionality)
 - Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid, shadcn_django (007-job-listings)
 - Sqlite3 (initial implementation) with potential upgrade path to PostgreSQL (007-job-listings)
+- Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2 (008-job-application-submission)
+- Sqlite3 (initial), Amazon S3 or Google Cloud Storage for files (django-storages backend), media/ for local dev (008-job-application-submission)
 
 - Python 3.11 + Django, Django REST Framework (DRF), Tailwind CSS, shadcn_django (002-compliant-home-page)
 
@@ -63,12 +65,10 @@ Python 3.11: Follow standard conventions
 3. **Test Execution**: Do not use pytest to run any of the tests created. You must use the "python manage.py test" command.
 
 ## Recent Changes
+- 008-job-application-submission: Added Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2
 - 007-job-listings: Added Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid, shadcn_django
 - 006-remember-me-functionality: Added Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid6, nanoid
-- 005-uuid-migration: Added Python 3.11 + Django, Django REST Framework (DRF), uuid6, nanoid, Celery, Redis
 
 
 <!-- MANUAL ADDITIONS START -->
-- Donot include imports within methods they must reside at the top of the python file.
-- No JS scripts to be embedded in any .html file, they must be in separate files within the appropriate directory. In .html they are then refrenced.
 <!-- MANUAL ADDITIONS END -->
