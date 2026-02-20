@@ -20,11 +20,11 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create Django applications app structure in `TI_AI_SaaS_Project/apps/applications/` with templates/, static/, tests/ directories
-- [ ] T002 [P] Install new dependencies: django-storages, PyPDF2, python-docx, phonenumbers, email-validator in requirements.txt
-- [ ] T003 [P] Configure Redis connection in Django settings for Celery and rate limiting
-- [ ] T004 [P] Create decoupled services directory in project root: `TI_AI_SaaS_Project/services/` (per constitution §4)
-- [ ] T005 Configure django-storages settings for S3/GCS with local filesystem fallback in settings.py
+- [x] T001 Create Django applications app structure in `TI_AI_SaaS_Project/apps/applications/` with templates/, static/, tests/ directories
+- [x] T002 [P] Install new dependencies: django-storages, PyPDF2, python-docx, phonenumbers, email-validator in requirements.txt
+- [x] T003 [P] Configure Redis connection in Django settings for Celery and rate limiting (Already configured)
+- [x] T004 [P] Create decoupled services directory in project root: `TI_AI_SaaS_Project/services/` (per constitution §4)
+- [x] T005 Configure django-storages settings for S3/GCS with local filesystem fallback in settings.py
 
 ---
 
@@ -34,20 +34,20 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Create Applicant model in `TI_AI_SaaS_Project/apps/applications/models.py` with all fields per data-model.md
-- [ ] T007 [P] Create ScreeningQuestion model in `TI_AI_SaaS_Project/apps/applications/models.py`
-- [ ] T008 [P] Create ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/models.py`
-- [ ] T009 Create and run migrations for applications app models
-- [ ] T010 [P] Implement resume parsing service in `TI_AI_SaaS_Project/services/resume_parsing_service.py` (project root services directory per constitution §4) with PDF/Docx extraction
-- [ ] T011 [P] Implement ConfidentialInfoFilter in `TI_AI_SaaS_Project/services/resume_parsing_service.py` (project root services directory per constitution §4) for PII redaction
-- [ ] T012 [P] Create DRF serializers in `TI_AI_SaaS_Project/apps/applications/serializers.py` for Applicant, ScreeningQuestion, ApplicationAnswer
-- [ ] T013 [P] Implement file validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
-- [ ] T014 [P] Implement email validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/email_validation.py`
-- [ ] T015 [P] Implement phone validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/phone_validation.py`
-- [ ] T016 [P] Create Celery tasks file in `TI_AI_SaaS_Project/apps/applications/tasks.py`
-- [ ] T017 [P] Implement rate limiting middleware in `TI_AI_SaaS_Project/apps/applications/middleware/rate_limit.py`
-- [ ] T018 [P] Create base API viewset structure in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T019 [P] Create URL routing in `TI_AI_SaaS_Project/apps/applications/urls.py`
+- [x] T006 Create Applicant model in `TI_AI_SaaS_Project/apps/applications/models.py` with all fields per data-model.md
+- [x] T007 [P] Create ScreeningQuestion model in `TI_AI_SaaS_Project/apps/applications/models.py` (Already exists in jobs app)
+- [x] T008 [P] Create ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/models.py`
+- [x] T009 Create and run migrations for applications app models
+- [x] T010 [P] Implement resume parsing service in `TI_AI_SaaS_Project/services/resume_parsing_service.py` (project root services directory per constitution §4) with PDF/Docx extraction
+- [x] T011 [P] Implement ConfidentialInfoFilter in `TI_AI_SaaS_Project/services/resume_parsing_service.py` (project root services directory per constitution §4) for PII redaction
+- [x] T012 [P] Create DRF serializers in `TI_AI_SaaS_Project/apps/applications/serializers.py` for Applicant, ScreeningQuestion, ApplicationAnswer
+- [x] T013 [P] Implement file validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
+- [x] T014 [P] Implement email validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/email_validation.py`
+- [x] T015 [P] Implement phone validation utilities in `TI_AI_SaaS_Project/apps/applications/utils/phone_validation.py`
+- [x] T016 [P] Create Celery tasks file in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T017 [P] Implement rate limiting middleware in `TI_AI_SaaS_Project/apps/applications/middleware/rate_limit.py`
+- [x] T018 [P] Create base API viewset structure in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T019 [P] Create URL routing in `TI_AI_SaaS_Project/apps/applications/urls.py`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -63,24 +63,24 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T020 [P] [US1] Create unit tests for Applicant model in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_models.py`
-- [ ] T021 [P] [US1] Create unit tests for ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_models.py`
-- [ ] T022 [P] [US1] Create integration tests for application submission endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_submission.py`
-- [ ] T023 [P] [US1] Create E2E test for complete application flow in `TI_AI_SaaS_Project/apps/applications/tests/E2E/test_application_flow.py`
+- [x] T020 [P] [US1] Create unit tests for Applicant model in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_models.py`
+- [x] T021 [P] [US1] Create unit tests for ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_models.py`
+- [x] T022 [P] [US1] Create integration tests for application submission endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_submission.py`
+- [x] T023 [P] [US1] Create E2E test for complete application flow in `TI_AI_SaaS_Project/apps/applications/tests/E2E/test_application_flow.py`
 
 ### Implementation for User Story 1
 
-- [ ] T024 [P] [US1] Implement ApplicantViewSet with create action in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T025 [US1] Implement file upload handling with magic bytes validation in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T026 [US1] Implement screening answers processing and validation in `TI_AI_SaaS_Project/apps/applications/serializers.py`
-- [ ] T027 [US1] Implement resume hash calculation (SHA-256) in `TI_AI_SaaS_Project/apps/applications/utils/file_utils.py`
-- [ ] T028 [US1] Implement resume text parsing integration in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T029 [US1] Implement application form template in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
-- [ ] T030 [US1] Implement application form CSS in `TI_AI_SaaS_Project/apps/applications/static/css/application-form.css`
-- [ ] T031 [US1] Implement application form JavaScript in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
-- [ ] T032 [US1] Implement job listing display on application form in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T033 [US1] Add success confirmation page/template in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_success.html`
-- [ ] T034 [US1] Add logging for application submission operations in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T024 [P] [US1] Implement ApplicantViewSet with create action in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T025 [US1] Implement file upload handling with magic bytes validation in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T026 [US1] Implement screening answers processing and validation in `TI_AI_SaaS_Project/apps/applications/serializers.py`
+- [x] T027 [US1] Implement resume hash calculation (SHA-256) in `TI_AI_SaaS_Project/apps/applications/utils/file_utils.py`
+- [x] T028 [US1] Implement resume text parsing integration in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T029 [US1] Implement application form template in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
+- [x] T030 [US1] Implement application form CSS in `TI_AI_SaaS_Project/apps/applications/static/css/application-form.css`
+- [x] T031 [US1] Implement application form JavaScript in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
+- [x] T032 [US1] Implement job listing display on application form in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T033 [US1] Add success confirmation page/template in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_success.html`
+- [x] T034 [US1] Add logging for application submission operations in `TI_AI_SaaS_Project/apps/applications/views.py`
 
 **Checkpoint**: User Story 1 fully functional - applicant can submit complete application with resume and receive confirmation
 
@@ -94,19 +94,19 @@
 
 ### Tests for User Story 2
 
-- [ ] T035 [P] [US2] Create unit tests for resume hash duplication detection in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_duplication.py`
-- [ ] T036 [P] [US2] Create integration tests for duplicate resume blocking in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_duplication.py`
-- [ ] T037 [P] [US2] Create contract tests for validate-file endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_validate_file.py`
+- [x] T035 [P] [US2] Create unit tests for resume hash duplication detection in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_duplication.py`
+- [x] T036 [P] [US2] Create integration tests for duplicate resume blocking in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_duplication.py`
+- [x] T037 [P] [US2] Create contract tests for validate-file endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_validate_file.py`
 
 ### Implementation for User Story 2
 
-- [ ] T038 [P] [US2] Implement validate-file endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T039 [US2] Implement duplicate resume query logic in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
-- [ ] T040 [US2] Add database unique constraint (job_listing, resume_file_hash) in `TI_AI_SaaS_Project/apps/applications/models.py`
-- [ ] T041 [US2] Implement duplicate warning response in `TI_AI_SaaS_Project/apps/applications/serializers.py`
-- [ ] T042 [US2] Add client-side async duplication check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
-- [ ] T043 [US2] Implement duplicate resume error message UI in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
-- [ ] T044 [US2] Add logging for duplicate detection events in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
+- [x] T038 [P] [US2] Implement validate-file endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T039 [US2] Implement duplicate resume query logic in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
+- [x] T040 [US2] Add database unique constraint (job_listing, resume_file_hash) in `TI_AI_SaaS_Project/apps/applications/models.py`
+- [x] T041 [US2] Implement duplicate warning response in `TI_AI_SaaS_Project/apps/applications/serializers.py`
+- [x] T042 [US2] Add client-side async duplication check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
+- [x] T043 [US2] Implement duplicate resume error message UI in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
+- [x] T044 [US2] Add logging for duplicate detection events in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
 
 **Checkpoint**: User Stories 1 AND 2 both work independently - duplicate resumes blocked with clear warning
 
@@ -120,19 +120,19 @@
 
 ### Tests for User Story 3
 
-- [ ] T045 [P] [US3] Create unit tests for contact duplication detection in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_duplication.py`
-- [ ] T046 [P] [US3] Create integration tests for duplicate contact blocking in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_duplication.py`
-- [ ] T047 [P] [US3] Create contract tests for validate-contact endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_validate_contact.py`
+- [x] T045 [P] [US3] Create unit tests for contact duplication detection in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_duplication.py`
+- [x] T046 [P] [US3] Create integration tests for duplicate contact blocking in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_duplication.py`
+- [x] T047 [P] [US3] Create contract tests for validate-contact endpoint in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_validate_contact.py`
 
 ### Implementation for User Story 3
 
-- [ ] T048 [P] [US3] Implement validate-contact endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T049 [US3] Implement duplicate email/phone query logic in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
-- [ ] T050 [US3] Add database unique constraints (job_listing, email) and (job_listing, phone) in `TI_AI_SaaS_Project/apps/applications/models.py`
-- [ ] T051 [US3] Implement duplicate contact warning responses in `TI_AI_SaaS_Project/apps/applications/serializers.py`
-- [ ] T052 [US3] Add client-side contact duplication check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
-- [ ] T053 [US3] Implement duplicate contact error messages UI in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
-- [ ] T054 [US3] Add logging for contact duplication events in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
+- [x] T048 [P] [US3] Implement validate-contact endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T049 [US3] Implement duplicate email/phone query logic in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
+- [x] T050 [US3] Add database unique constraints (job_listing, email) and (job_listing, phone) in `TI_AI_SaaS_Project/apps/applications/models.py`
+- [x] T051 [US3] Implement duplicate contact warning responses in `TI_AI_SaaS_Project/apps/applications/serializers.py`
+- [x] T052 [US3] Add client-side contact duplication check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
+- [x] T053 [US3] Implement duplicate contact error messages UI in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
+- [x] T054 [US3] Add logging for contact duplication events in `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py`
 
 **Checkpoint**: All three user stories (1, 2, 3) work independently - duplicate resumes and contacts blocked
 
@@ -146,20 +146,20 @@
 
 ### Tests for User Story 4
 
-- [ ] T055 [P] [US4] Create unit tests for file format validation in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_file_validation.py`
-- [ ] T056 [P] [US4] Create unit tests for file size validation in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_file_validation.py`
-- [ ] T057 [P] [US4] Create integration tests for file rejection in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_file_validation.py`
+- [x] T055 [P] [US4] Create unit tests for file format validation in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_file_validation.py`
+- [x] T056 [P] [US4] Create unit tests for file size validation in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_file_validation.py`
+- [x] T057 [P] [US4] Create integration tests for file rejection in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_file_validation.py`
 
 ### Implementation for User Story 4
 
-- [ ] T058 [P] [US4] Implement magic bytes validation for PDF in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
-- [ ] T059 [P] [US4] Implement magic bytes validation for Docx in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
-- [ ] T060 [US4] Implement file size validation (50KB min, 10MB max) in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
-- [ ] T061 [US4] Add file format error messages in `TI_AI_SaaS_Project/apps/applications/serializers.py`
-- [ ] T062 [US4] Add file size error messages in `TI_AI_SaaS_Project/apps/applications/serializers.py`
-- [ ] T063 [US4] Implement client-side file size check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
-- [ ] T064 [US4] Implement file format requirements display in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
-- [ ] T065 [US4] Add visual file size indicator in `TI_AI_SaaS_Project/apps/applications/static/css/application-form.css`
+- [x] T058 [P] [US4] Implement magic bytes validation for PDF in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
+- [x] T059 [P] [US4] Implement magic bytes validation for Docx in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
+- [x] T060 [US4] Implement file size validation (50KB min, 10MB max) in `TI_AI_SaaS_Project/apps/applications/utils/file_validation.py`
+- [x] T061 [US4] Add file format error messages in `TI_AI_SaaS_Project/apps/applications/serializers.py`
+- [x] T062 [US4] Add file size error messages in `TI_AI_SaaS_Project/apps/applications/serializers.py`
+- [x] T063 [US4] Implement client-side file size check in `TI_AI_SaaS_Project/apps/applications/static/js/application-form.js`
+- [x] T064 [US4] Implement file format requirements display in `TI_AI_SaaS_Project/apps/applications/templates/applications/application_form.html`
+- [x] T065 [US4] Add visual file size indicator in `TI_AI_SaaS_Project/apps/applications/static/css/application-form.css`
 
 **Checkpoint**: All four user stories work - file validation provides immediate feedback on format and size
 
@@ -173,20 +173,20 @@
 
 ### Tests for User Story 5
 
-- [ ] T066 [P] [US5] Create unit tests for email task in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_tasks.py`
-- [ ] T067 [P] [US5] Create integration tests for email delivery in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_email.py`
-- [ ] T068 [P] [US5] Create E2E test for complete email flow in `TI_AI_SaaS_Project/apps/applications/tests/E2E/test_email_flow.py`
+- [x] T066 [P] [US5] Create unit tests for email task in `TI_AI_SaaS_Project/apps/applications/tests/Unit/test_tasks.py`
+- [x] T067 [P] [US5] Create integration tests for email delivery in `TI_AI_SaaS_Project/apps/applications/tests/Integration/test_email.py`
+- [x] T068 [P] [US5] Create E2E test for complete email flow in `TI_AI_SaaS_Project/apps/applications/tests/E2E/test_email_flow.py`
 
 ### Implementation for User Story 5
 
-- [ ] T069 [P] [US5] Implement send_application_confirmation_email Celery task in `TI_AI_SaaS_Project/apps/applications/tasks.py`
-- [ ] T070 [US5] Create email template in `TI_AI_SaaS_Project/apps/applications/templates/applications/emails/confirmation_email.html`
-- [ ] T071 [US5] Create plain text email alternative in `TI_AI_SaaS_Project/apps/applications/templates/applications/emails/confirmation_email.txt`
-- [ ] T072 [US5] Implement email content rendering (job title, timestamp, thank you) in `TI_AI_SaaS_Project/apps/applications/tasks.py`
-- [ ] T073 [US5] Integrate email task call in application submission view in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T074 [US5] Implement email retry logic with exponential backoff in `TI_AI_SaaS_Project/apps/applications/tasks.py`
-- [ ] T075 [US5] Configure Celery beat schedule for email retry cleanup in `TI_AI_SaaS_Project/celery.py`
-- [ ] T076 [US5] Add logging for email send success/failure in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T069 [P] [US5] Implement send_application_confirmation_email Celery task in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T070 [US5] Create email template in `TI_AI_SaaS_Project/apps/applications/templates/applications/emails/confirmation_email.html`
+- [x] T071 [US5] Create plain text email alternative in `TI_AI_SaaS_Project/apps/applications/templates/applications/emails/confirmation_email.txt`
+- [x] T072 [US5] Implement email content rendering (job title, timestamp, thank you) in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T073 [US5] Integrate email task call in application submission view in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T074 [US5] Implement email retry logic with exponential backoff in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T075 [US5] Configure Celery beat schedule for email retry cleanup in `TI_AI_SaaS_Project/celery.py`
+- [x] T076 [US5] Add logging for email send success/failure in `TI_AI_SaaS_Project/apps/applications/tasks.py`
 
 **Checkpoint**: All five user stories work - confirmation email sent within 2 minutes of submission
 
@@ -196,13 +196,13 @@
 
 **Purpose**: Improvements that affect multiple user stories and final validation
 
-- [ ] T077 [P] Create data cleanup Celery task for 90-day retention in `TI_AI_SaaS_Project/apps/applications/tasks.py`
-- [ ] T078 [P] Configure Celery beat schedule for daily cleanup task in `TI_AI_SaaS_Project/celery.py`
-- [ ] T079 Implement get-application-status endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
-- [ ] T080 [P] Create admin interface for Applicant model in `TI_AI_SaaS_Project/apps/applications/admin.py`
-- [ ] T081 [P] Create admin interface for ScreeningQuestion model in `TI_AI_SaaS_Project/apps/applications/admin.py`
-- [ ] T082 [P] Create admin interface for ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/admin.py`
-- [ ] T083 Update API documentation in `docs/api.md` with application endpoints
+- [x] T077 [P] Create data cleanup Celery task for 90-day retention in `TI_AI_SaaS_Project/apps/applications/tasks.py`
+- [x] T078 [P] Configure Celery beat schedule for daily cleanup task in `TI_AI_SaaS_Project/celery.py`
+- [x] T079 Implement get-application-status endpoint in `TI_AI_SaaS_Project/apps/applications/views.py`
+- [x] T080 [P] Create admin interface for Applicant model in `TI_AI_SaaS_Project/apps/applications/admin.py`
+- [x] T081 [P] Create admin interface for ScreeningQuestion model in `TI_AI_SaaS_Project/apps/applications/admin.py`
+- [x] T082 [P] Create admin interface for ApplicationAnswer model in `TI_AI_SaaS_Project/apps/applications/admin.py`
+- [x] T083 Update API documentation in `docs/api.md` with application endpoints
 - [ ] T084 [P] Run full test suite and verify 90% coverage with Python unittest module
 - [ ] T085 [P] Run Selenium E2E tests for complete application flow
 - [ ] T086 Verify SSL configuration with secure cookies, HSTS, HTTPS redirection

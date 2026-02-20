@@ -1,0 +1,223 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply for {{ job.title }} - X-Crewter</title>
+    
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',
+                        'primary-text': '#000000',
+                        'secondary-text': '#A0A0A0',
+                        'accent-cta': '#080707',
+                        'code-block-bg': '#E0E0E0',
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="{% static 'css/application-form.css' %}">
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen py-12 px-4 sm:px-6 lg:px-8">
+    
+    <div class="max-w-4xl mx-auto">
+        <!-- Job Details Section -->
+        <section class="mb-12 pb-8 border-b-2 border-code-block-bg">
+            <h1 class="text-4xl font-bold mb-4 text-primary-text">{{ job.title }}</h1>
+            
+            <div class="flex gap-4 mb-6">
+                <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">
+                    {{ job.job_level }}
+                </span>
+                <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">
+                    {{ job.required_experience }}+ years experience
+                </span>
+            </div>
+            
+            <div class="mb-8">
+                <h2 class="text-2xl font-semibold mb-3 text-primary-text">About the Role</h2>
+                <p class="text-secondary-text leading-relaxed">{{ job.description }}</p>
+            </div>
+            
+            <div>
+                <h2 class="text-2xl font-semibold mb-3 text-primary-text">Required Skills</h2>
+                <div class="flex flex-wrap gap-2">
+                    {% for skill in job.required_skills %}
+                    <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded-full text-sm">
+                        {{ skill }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+        
+        <!-- Application Form Section -->
+        <section>
+            <h2 class="text-3xl font-bold mb-8 text-primary-text">Submit Your Application</h2>
+            
+            <form id="application-form" enctype="multipart/form-data" class="space-y-8" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="job_listing_id" value="{{ job.id }}">
+                
+                <!-- Personal Information -->
+                <div class="bg-primary-bg border border-code-block-bg rounded-lg p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-primary-text">Personal Information</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="first_name" class="block text-sm font-semibold mb-2 text-primary-text">
+                                First Name <span class="text-red-600">*</span>
+                            </label>
+                            <input type="text" id="first_name" name="first_name" required maxlength="200"
+                                class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base">
+                            <span class="error-message text-red-600 text-sm mt-1 block" id="first_name-error"></span>
+                        </div>
+                        
+                        <div>
+                            <label for="last_name" class="block text-sm font-semibold mb-2 text-primary-text">
+                                Last Name <span class="text-red-600">*</span>
+                            </label>
+                            <input type="text" id="last_name" name="last_name" required maxlength="200"
+                                class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base">
+                            <span class="error-message text-red-600 text-sm mt-1 block" id="last_name-error"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="email" class="block text-sm font-semibold mb-2 text-primary-text">
+                                Email Address <span class="text-red-600">*</span>
+                            </label>
+                            <input type="email" id="email" name="email" required
+                                class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base">
+                            <span class="error-message text-red-600 text-sm mt-1 block" id="email-error"></span>
+                        </div>
+                        
+                        <div>
+                            <label for="phone" class="block text-sm font-semibold mb-2 text-primary-text">
+                                Phone Number <span class="text-red-600">*</span>
+                            </label>
+                            <input type="tel" id="phone" name="phone" required
+                                class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base">
+                            <input type="hidden" id="country_code" name="country_code" value="US">
+                            <span class="error-message text-red-600 text-sm mt-1 block" id="phone-error"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Screening Questions -->
+                <div class="bg-primary-bg border border-code-block-bg rounded-lg p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-primary-text">Screening Questions</h3>
+                    
+                    {% for question in screening_questions %}
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold mb-3 text-primary-text">
+                            {{ question.question_text }}
+                            {% if question.required %}<span class="text-red-600">*</span>{% endif %}
+                        </label>
+                        
+                        {% if question.question_type == 'TEXT' %}
+                        <textarea 
+                            name="screening_answers"
+                            data-question-id="{{ question.id }}"
+                            rows="4"
+                            {% if question.required %}required{% endif %}
+                            class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base resize-vertical"
+                        ></textarea>
+                        
+                        {% elif question.question_type == 'YES_NO' %}
+                        <div class="flex gap-6">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="question_{{ question.id }}" value="Yes" required
+                                    class="w-5 h-5 cursor-pointer">
+                                <span class="text-primary-text">Yes</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="question_{{ question.id }}" value="No" required
+                                    class="w-5 h-5 cursor-pointer">
+                                <span class="text-primary-text">No</span>
+                            </label>
+                        </div>
+                        {% endif %}
+                        
+                        <span class="error-message text-red-600 text-sm mt-1 block" id="question_{{ question.id }}-error"></span>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Resume Upload -->
+                <div class="bg-primary-bg border border-code-block-bg rounded-lg p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-primary-text">Resume</h3>
+                    
+                    <div class="file-upload-area border-2 border-dashed border-code-block-bg rounded-lg p-10 text-center cursor-pointer hover:border-accent-cta hover:bg-gray-50 transition-all" 
+                         id="file-upload-area">
+                        <div class="upload-icon mb-4 text-accent-cta">
+                            <svg class="w-16 h-16 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <p class="text-lg font-semibold text-primary-text mb-2">
+                            Drag and drop your resume here, or click to browse
+                        </p>
+                        <p class="text-sm text-secondary-text">
+                            Accepted formats: PDF, DOCX (50KB - 10MB max)
+                        </p>
+                        <input type="file" id="resume" name="resume" accept=".pdf,.docx" hidden>
+                    </div>
+                    
+                    <div id="file-info" class="hidden items-center gap-4 bg-code-block-bg rounded p-4 mt-4">
+                        <span id="file-name" class="flex-1 font-semibold text-primary-text text-sm"></span>
+                        <span id="file-size" class="text-secondary-text text-sm"></span>
+                        <button type="button" id="remove-file" 
+                            class="border border-red-600 text-red-600 px-3 py-1.5 rounded text-sm hover:bg-red-600 hover:text-cta-text transition">
+                            Remove
+                        </button>
+                    </div>
+                    
+                    <div id="file-error" class="error-message text-red-600 text-sm mt-2"></div>
+                    <div id="file-success" class="success-message text-green-700 text-sm mt-2 bg-green-100 p-2 rounded hidden">
+                        ✓ File validated successfully
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div class="text-center">
+                    <button type="submit" id="submit-btn" 
+                        class="bg-accent-cta text-cta-text px-12 py-4 rounded text-lg font-semibold hover:bg-gray-900 transition disabled:bg-code-block-bg disabled:text-secondary-text disabled:cursor-not-allowed min-w-[250px]"
+                        disabled>
+                        Submit Application
+                    </button>
+                    <p class="text-sm text-secondary-text mt-3">
+                        All fields marked with <span class="text-red-600">*</span> are required
+                    </p>
+                </div>
+            </form>
+        </section>
+    </div>
+    
+    <!-- Duplicate Warning Modal -->
+    <div id="duplicate-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+        <div class="bg-primary-bg rounded-lg p-8 max-w-md mx-4 text-center">
+            <h2 class="text-2xl font-bold text-red-600 mb-4">Application Already Submitted</h2>
+            <p id="duplicate-message" class="text-secondary-text mb-6"></p>
+            <button onclick="closeModal()" 
+                class="bg-accent-cta text-cta-text px-8 py-3 rounded font-semibold hover:bg-gray-900 transition">
+                OK
+            </button>
+        </div>
+    </div>
+    
+    <script src="{% static 'js/application-form.js' %}"></script>
+</body>
+</html>
