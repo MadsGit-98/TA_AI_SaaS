@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #080707;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px 20px;
+            background-color: #f9f9f9;
+        }
+        .job-details {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #666666;
+        }
+        h1 {
+            color: #080707;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #080707;
+            color: #ffffff;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Application Received</h1>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{ applicant.first_name }} {{ applicant.last_name }},</p>
+        
+        <p>Thank you for applying! We have successfully received your application for the position of <strong>{{ job_listing.title }}</strong>.</p>
+        
+        <div class="job-details">
+            <h2>Application Details</h2>
+            <p><strong>Position:</strong> {{ job_listing.title }}</p>
+            <p><strong>Submitted:</strong> {{ submitted_at|date:"F d, Y \a\t H:i" }}</p>
+            <p><strong>Application ID:</strong> {{ applicant.id }}</p>
+        </div>
+        
+        <p>Our team will review your application carefully. If your qualifications match our requirements, we will contact you at the email or phone number you provided.</p>
+        
+        <p><strong>What happens next?</strong></p>
+        <ol>
+            <li>Our AI system analyzes your resume against the job requirements</li>
+            <li>Our Talent Acquisition Specialist reviews qualified candidates</li>
+            <li>Selected candidates will be contacted for the next steps</li>
+        </ol>
+        
+        <p style="margin-top: 30px;">Thank you for your interest in joining our team!</p>
+        
+        <p>Best regards,<br>
+        <strong>The Recruitment Team</strong></p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+        <p>&copy; {% now "Y" %} X-Crewter. All rights reserved.</p>
+    </div>
+</body>
+</html>
