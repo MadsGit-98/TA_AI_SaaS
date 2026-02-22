@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.core.exceptions import ValidationError
+from pathlib import Path
 from apps.applications.models import Applicant, ApplicationAnswer
 from apps.jobs.models import ScreeningQuestion, JobListing
 from apps.applications.utils.file_validation import validate_resume_file
@@ -33,16 +33,39 @@ class ApplicationAnswerSerializer(serializers.ModelSerializer):
             question = ScreeningQuestion.objects.get(id=value)
             return question
         except ScreeningQuestion.DoesNotExist:
-            raise ValidationError("Question not found.")
-    
+            raise serializers.ValidationError("Question not found.")
+
     def validate_answer_text(self, value):
-        """Validate answer length."""
+        """Validate answer length based on question type."""
         if not value or len(value.strip()) == 0:
-            raise ValidationError("Answer cannot be empty.")
-        if len(value) < 10:
-            raise ValidationError("Answer must be at least 10 characters.")
+            raise serializers.ValidationError("Answer cannot be empty.")
         if len(value) > 5000:
-            raise ValidationError("Answer cannot exceed 5000 characters.")
+            raise serializers.ValidationError("Answer cannot exceed 5000 characters.")
+
+        # Get the question object to determine question type
+        question = None
+        if hasattr(self, 'initial_data') and self.initial_data.get('question_id'):
+            question_id = self.initial_data.get('question_id')
+            if hasattr(question_id, 'id'):
+                # Already a ScreeningQuestion object from validate_question_id
+                question = question_id
+            else:
+                # UUID string, fetch the question
+                try:
+                    question = ScreeningQuestion.objects.get(id=question_id)
+                except ScreeningQuestion.DoesNotExist:
+                    pass
+
+        # Apply conditional minimum length based on question type
+        short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD', 'NUMERIC', 'SINGLE_WORD']
+        if question and question.question_type in short_answer_types:
+            # Short answer types only need to be non-empty (already checked above)
+            pass
+        else:
+            # TEXT and other long-answer types require minimum 10 characters
+            if len(value) < 10:
+                raise serializers.ValidationError("Answer must be at least 10 characters.")
+
         return value
 
 
@@ -68,10 +91,10 @@ class ApplicantSerializer(serializers.ModelSerializer):
         try:
             job_listing = JobListing.objects.get(id=value)
             if job_listing.status != 'Active':
-                raise ValidationError("This job is no longer accepting applications.")
+                raise serializers.ValidationError("This job is no longer accepting applications.")
             return job_listing
         except JobListing.DoesNotExist:
-            raise ValidationError("Job listing not found.")
+            raise serializers.ValidationError("Job listing not found.")
     
     def validate_email(self, value):
         """Validate email format and MX record."""
@@ -84,56 +107,66 @@ class ApplicantSerializer(serializers.ModelSerializer):
     
     def validate_resume(self, value):
         """Validate resume file format and size."""
-        return validate_resume_file(value)
-    
-    def validate_screening_answers(self, value):
-        """Validate that all required questions are answered."""
-        job_listing = self.validated_data.get('job_listing_id')
-        if not job_listing:
-            # Job listing validation failed earlier
-            return value
-        
-        # Get all required questions for this job
-        required_questions = ScreeningQuestion.objects.filter(
-            job_listing=job_listing,
-            required=True
-        ).values_list('id', flat=True)
-        
-        # Get answered question IDs
-        answered_question_ids = {
-            answer['question_id'].id if hasattr(answer['question_id'], 'id') else answer['question_id']
-            for answer in value
-        }
-        
-        # Check for missing required questions
-        missing_questions = set(required_questions) - set(answered_question_ids)
-        if missing_questions:
-            raise ValidationError(f"Missing required answers for questions: {missing_questions}")
-        
-        return value
-    
+        validated_file = validate_resume_file(value)
+        # Store the validated extension for use in create()
+        self.validated_file_extension = Path(value.name).suffix.lower().lstrip('.')
+        return validated_file
+
+    def validate(self, attrs):
+        """Validate cross-field dependencies (screening answers vs required questions)."""
+        job_listing = attrs.get('job_listing_id')
+        screening_answers = attrs.get('screening_answers')
+
+        if job_listing and screening_answers:
+            # Get all required questions for this job
+            required_questions = ScreeningQuestion.objects.filter(
+                job_listing=job_listing,
+                required=True
+            ).values_list('id', flat=True)
+
+            # Get answered question IDs
+            answered_question_ids = {
+                answer['question_id'].id if hasattr(answer['question_id'], 'id') else answer['question_id']
+                for answer in screening_answers
+            }
+
+            # Check for missing required questions
+            missing_questions = set(required_questions) - set(answered_question_ids)
+            if missing_questions:
+                raise serializers.ValidationError({
+                    'screening_answers': f"Missing required answers for questions: {missing_questions}"
+                })
+
+        return attrs
+
     def create(self, validated_data):
         """Create applicant and answers."""
         screening_answers = validated_data.pop('screening_answers')
         job_listing = validated_data.pop('job_listing_id')
         resume_file = validated_data.pop('resume')
-        
+        # Remove country_code as it's write-only and not a model field
+        validated_data.pop('country_code', None)
+
         # Calculate file hash for duplication detection
         file_content = resume_file.read()
         file_hash = ResumeParserService.calculate_file_hash(file_content)
-        
-        # Extract and redact resume text
-        file_extension = resume_file.name.split('.')[-1].lower()
+
+        # Extract and redact resume text using pre-validated extension
+        file_extension = self.validated_file_extension
         if file_extension == 'pdf':
             parsed_text = ResumeParserService.extract_text_from_pdf(file_content)
         elif file_extension == 'docx':
             parsed_text = ResumeParserService.extract_text_from_docx(file_content)
         else:
-            raise ValidationError("Unsupported file format.")
-        
+            # This should never happen due to validate_resume()
+            raise serializers.ValidationError("Unsupported file format.")
+
         # Redact confidential information
         redacted_text = ConfidentialInfoFilter.redact(parsed_text)
-        
+
+        # Reset file pointer to the beginning before saving
+        resume_file.seek(0)
+
         # Create applicant
         applicant = Applicant.objects.create(
             job_listing=job_listing,
@@ -141,7 +174,7 @@ class ApplicantSerializer(serializers.ModelSerializer):
             resume_parsed_text=redacted_text,
             **validated_data
         )
-        
+
         # Save the resume file after creating the object
         applicant.resume_file.save(resume_file.name, resume_file, save=True)
         
@@ -158,10 +191,11 @@ class ApplicantSerializer(serializers.ModelSerializer):
 
 class ApplicantCreateResponseSerializer(serializers.Serializer):
     """Serializer for applicant creation response."""
-    
+
     id = serializers.UUIDField()
     status = serializers.CharField()
     submitted_at = serializers.DateTimeField()
+    access_token = serializers.UUIDField()
     message = serializers.CharField()
 
 
@@ -182,7 +216,20 @@ class FileValidationRequestSerializer(serializers.Serializer):
 
 class ContactValidationRequestSerializer(serializers.Serializer):
     """Serializer for contact validation request."""
-    
+
     job_listing_id = serializers.UUIDField()
     email = serializers.EmailField()
     phone = serializers.CharField()
+
+
+class ApplicationStatusSerializer(serializers.Serializer):
+    """
+    Lean serializer for application status endpoint.
+    
+    Returns only non-PII fields to prevent IDOR exposure.
+    Per security requirements: only status and submitted_at are exposed.
+    """
+
+    id = serializers.UUIDField()
+    status = serializers.CharField()
+    submitted_at = serializers.DateTimeField()

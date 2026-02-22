@@ -9,7 +9,7 @@ APPLICATION DETAILS
 -------------------
 Position: {{ job_listing.title }}
 Submitted: {{ submitted_at|date:"F d, Y at H:i" }}
-Application ID: {{ applicant.id }}
+Reference Number: {{ applicant.reference_number }}
 
 Our team will review your application carefully. If your qualifications match our requirements, we will contact you at the email or phone number you provided.
 

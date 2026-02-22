@@ -21,79 +21,104 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileError = document.getElementById('file-error');
     const fileSuccess = document.getElementById('file-success');
     const submitBtn = document.getElementById('submit-btn');
-    
+    const countryCodeSelect = document.getElementById('country_code_select');
+    const countryCodeInput = document.getElementById('country_code');
+
+    // Bail out early if critical elements are missing
+    if (!form) {
+        console.warn('Application form not found on this page');
+        return;
+    }
+
+    // Initialize country code selector (sync select with hidden input)
+    if (countryCodeSelect && countryCodeInput) {
+        countryCodeSelect.addEventListener('change', function() {
+            countryCodeInput.value = countryCodeSelect.value;
+        });
+        // Set initial value
+        countryCodeInput.value = countryCodeSelect.value;
+    }
+
     // File validation constants
     const MIN_FILE_SIZE = 50 * 1024; // 50KB
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     const ALLOWED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     const ALLOWED_EXTENSIONS = ['pdf', 'docx'];
-    
+
     // State
     let selectedFile = null;
     let fileValidated = false;
     let validationTimeout = null;
-    
-    // Initialize file upload area click handler
-    fileUploadArea.addEventListener('click', function() {
-        resumeInput.click();
-    });
-    
-    // Handle file selection
-    resumeInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            handleFileSelect(file);
-        }
-    });
-    
-    // Drag and drop handlers
-    fileUploadArea.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        fileUploadArea.classList.add('drag-over');
-    });
-    
-    fileUploadArea.addEventListener('dragleave', function(e) {
-        e.preventDefault();
-        fileUploadArea.classList.remove('drag-over');
-    });
-    
-    fileUploadArea.addEventListener('drop', function(e) {
-        e.preventDefault();
-        fileUploadArea.classList.remove('drag-over');
-        const file = e.dataTransfer.files[0];
-        if (file) {
-            handleFileSelect(file);
-        }
-    });
-    
-    // Remove file handler
-    removeFileBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        removeFile();
-    });
-    
-    // Form validation on input
+
+    // Initialize file upload area click handler (only if elements exist)
+    if (fileUploadArea && resumeInput) {
+        fileUploadArea.addEventListener('click', function() {
+            resumeInput.click();
+        });
+    }
+
+    // Handle file selection (only if resumeInput exists)
+    if (resumeInput) {
+        resumeInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+    }
+
+    // Drag and drop handlers (only if fileUploadArea exists)
+    if (fileUploadArea) {
+        fileUploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            fileUploadArea.classList.add('drag-over');
+        });
+
+        fileUploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            fileUploadArea.classList.remove('drag-over');
+        });
+
+        fileUploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            fileUploadArea.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+    }
+
+    // Remove file handler (only if removeFileBtn exists)
+    if (removeFileBtn) {
+        removeFileBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            removeFile();
+        });
+    }
+
+    // Form validation on input (only if form exists)
     form.addEventListener('input', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             validateField(e.target);
             checkFormValidity();
         }
     });
-    
+
     form.addEventListener('change', function(e) {
         if (e.target.type === 'radio') {
             checkFormValidity();
         }
     });
-    
-    // Form submission
+
+    // Form submission (only if form exists)
     form.addEventListener('submit', function(e) {
         e.preventDefault();
-        
+
         if (!validateForm()) {
             return;
         }
-        
+
         submitApplication();
     });
     
@@ -103,22 +128,28 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleFileSelect(file) {
         // Clear previous state
         clearFileMessages();
-        
+
         // Validate file
         const validationResult = validateFile(file);
-        
+
         if (!validationResult.valid) {
             showFileError(validationResult.error);
             return;
         }
-        
-        // Display file info
+
+        // Display file info (only if elements exist)
         selectedFile = file;
-        fileName.textContent = file.name;
-        fileSize.textContent = formatFileSize(file.size);
-        fileInfo.classList.remove('hidden');
-        fileInfo.classList.add('flex');
-        
+        if (fileName) {
+            fileName.textContent = file.name;
+        }
+        if (fileSize) {
+            fileSize.textContent = formatFileSize(file.size);
+        }
+        if (fileInfo) {
+            fileInfo.classList.remove('hidden');
+            fileInfo.classList.add('flex');
+        }
+
         // Validate file with server (async duplication check)
         validateFileWithServer(file);
     }
@@ -162,11 +193,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (validationTimeout) {
             clearTimeout(validationTimeout);
         }
-        
+
         // Debounce validation
         validationTimeout = setTimeout(async function() {
-            const jobListingId = document.querySelector('input[name="job_listing_id"]').value;
+            const jobListingInput = document.querySelector('input[name="job_listing_id"]');
             
+            if (!jobListingInput) {
+                console.error('Job listing ID input not found');
+                showFileError('Job listing information is missing. Please refresh the page and try again.');
+                return;
+            }
+
+            const jobListingId = jobListingInput.value;
+
             const formData = new FormData();
             formData.append('job_listing_id', jobListingId);
             formData.append('resume', file);
@@ -209,9 +248,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function removeFile() {
         selectedFile = null;
         fileValidated = false;
-        resumeInput.value = '';
-        fileInfo.classList.add('hidden');
-        fileInfo.classList.remove('flex');
+        if (resumeInput) {
+            resumeInput.value = '';
+        }
+        if (fileInfo) {
+            fileInfo.classList.add('hidden');
+            fileInfo.classList.remove('flex');
+        }
         clearFileMessages();
         checkFormValidity();
     }
@@ -250,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function validateForm() {
         let isValid = true;
-        
+
         // Validate all required fields
         const requiredFields = form.querySelectorAll('[required]');
         requiredFields.forEach(function(field) {
@@ -265,7 +308,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 if (!groupValid) {
                     isValid = false;
-                    const errorElement = document.getElementById(`question_${field.name.split('_')[1]}-error`);
+                    // Extract question ID by removing 'question_' prefix (handles IDs with underscores)
+                    const questionId = field.name.replace(/^question_/, '');
+                    const errorElement = document.getElementById(`question_${questionId}-error`);
                     if (errorElement) {
                         errorElement.textContent = 'Please select an answer';
                     }
@@ -295,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function checkFormValidity() {
         const requiredFields = form.querySelectorAll('[required]');
         let allFilled = true;
-        
+
         requiredFields.forEach(function(field) {
             if (field.type === 'radio') {
                 const radioGroup = form.querySelectorAll(`input[name="${field.name}"]`);
@@ -314,9 +359,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-        
+
         // Enable submit button only if all fields filled and file validated
-        submitBtn.disabled = !(allFilled && selectedFile && fileValidated);
+        if (submitBtn) {
+            submitBtn.disabled = !(allFilled && selectedFile && fileValidated);
+        }
     }
     
     /**
@@ -324,16 +371,24 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     async function submitApplication() {
         // Disable submit button
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+        }
         
         const formData = new FormData(form);
-        
+
+        // Remove existing resume entry from FormData to avoid duplicates
+        formData.delete('resume');
+
         // Append file
         if (selectedFile) {
             formData.append('resume', selectedFile);
         }
-        
+
+        // Remove existing screening_answers entries (from textareas) to avoid duplicates
+        formData.delete('screening_answers');
+
         // Process screening answers
         const screeningAnswers = [];
         const answerElements = form.querySelectorAll('textarea[name="screening_answers"]');
@@ -343,16 +398,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 answer: textarea.value
             });
         });
-        
+
         // Handle radio button answers
         const radioGroups = {};
         form.querySelectorAll('input[type="radio"]:checked').forEach(function(radio) {
-            const questionId = radio.name.split('_')[1];
-            if (!radioGroups[questionId]) {
+            // Prefer data-question-id attribute, fallback to parsing name
+            const questionId = radio.dataset.questionId || radio.getAttribute('data-question-id') || radio.name.replace(/^question_/, '');
+            if (questionId) {
                 radioGroups[questionId] = radio.value;
             }
         });
-        
+
         // Add radio answers to screening answers
         Object.keys(radioGroups).forEach(function(questionId) {
             screeningAnswers.push({
@@ -360,7 +416,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 answer: radioGroups[questionId]
             });
         });
-        
+
         // Convert to JSON and append
         formData.append('screening_answers', JSON.stringify(screeningAnswers));
         
@@ -374,14 +430,16 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             const data = await response.json();
-            
+
             if (response.status === 201) {
-                // Success - redirect to success page
-                window.location.href = `/applications/success/${data.id}/`;
+                // Success - redirect to success page with access token for security
+                window.location.href = `/applications/success/${data.id}/${data.access_token}/`;
             } else if (response.status === 409) {
                 // Duplicate detected
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Application';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Application';
+                }
                 
                 if (data.duplicate_type === 'resume') {
                     showFileError(data.message);
@@ -401,8 +459,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else if (response.status === 400) {
                 // Validation error
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Application';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Application';
+                }
                 
                 if (data.details) {
                     // Display validation errors
@@ -420,14 +480,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else {
                 // Server error
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Application';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Application';
+                }
                 showFileError('An error occurred. Please try again later.');
             }
         } catch (error) {
             console.error('Submission error:', error);
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit Application';
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Application';
+            }
             showFileError('An error occurred. Please check your connection and try again.');
         }
     }
@@ -451,21 +515,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showFileError(message) {
-        fileError.textContent = message;
-        fileError.classList.remove('hidden');
-        fileSuccess.classList.add('hidden');
+        if (fileError) {
+            fileError.textContent = message;
+            fileError.classList.remove('hidden');
+        }
+        if (fileSuccess) {
+            fileSuccess.classList.add('hidden');
+        }
     }
-    
+
     function showFileSuccess(message) {
-        fileSuccess.textContent = message;
-        fileSuccess.classList.remove('hidden');
-        fileError.classList.add('hidden');
+        if (fileSuccess) {
+            fileSuccess.textContent = message;
+            fileSuccess.classList.remove('hidden');
+        }
+        if (fileError) {
+            fileError.classList.add('hidden');
+        }
     }
-    
+
     function clearFileMessages() {
-        fileError.textContent = '';
-        fileError.classList.add('hidden');
-        fileSuccess.classList.add('hidden');
+        if (fileError) {
+            fileError.textContent = '';
+            fileError.classList.add('hidden');
+        }
+        if (fileSuccess) {
+            fileSuccess.classList.add('hidden');
+        }
     }
     
     function showDuplicateModal(message) {

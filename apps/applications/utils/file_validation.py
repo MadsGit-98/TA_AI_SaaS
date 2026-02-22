@@ -2,6 +2,7 @@
 File validation utilities for resume uploads.
 """
 
+from pathlib import Path
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 
@@ -50,8 +51,13 @@ def validate_resume_file(file: UploadedFile) -> UploadedFile:
             "Please upload a smaller file."
         )
     
-    # Check file extension
-    file_extension = file.name.split('.')[-1].lower() if file.name else ''
+    # Check file extension using pathlib for robustness
+    file_extension = Path(file.name).suffix.lower().lstrip('.')
+    if not file_extension:
+        raise ValidationError(
+            "File has no extension. "
+            "Only PDF and DOCX files are accepted."
+        )
     if file_extension not in ALLOWED_EXTENSIONS:
         raise ValidationError(
             f"Unsupported file format '.{file_extension}'. "
@@ -59,15 +65,16 @@ def validate_resume_file(file: UploadedFile) -> UploadedFile:
         )
     
     # Validate magic bytes (file signature)
-    file_content = file.read()
-    file.seek(0)  # Reset file pointer
-    
-    if not validate_magic_bytes(file_content, file_extension):
+    # Read only the first 4 bytes for magic byte check to avoid loading entire file into memory
+    magic_bytes = file.read(4)
+    file.seek(0)  # Reset file pointer for downstream processing
+
+    if not validate_magic_bytes(magic_bytes, file_extension):
         raise ValidationError(
             "File content does not match extension. "
             "Please ensure you're uploading a valid PDF or DOCX file."
         )
-    
+
     return file
 
 
