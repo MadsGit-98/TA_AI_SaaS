@@ -71,20 +71,31 @@ class ApplicationAnswerSerializer(serializers.ModelSerializer):
 
 class ApplicantSerializer(serializers.ModelSerializer):
     """Serializer for Applicant model with file upload and validation."""
-    
+
     job_listing_id = serializers.UUIDField(write_only=True)
-    screening_answers = ApplicationAnswerSerializer(many=True, write_only=True)
+    screening_answers = ApplicationAnswerSerializer(many=True, write_only=True, required=False, default=list)
     resume = serializers.FileField(write_only=True)
     country_code = serializers.CharField(write_only=True, required=False, default='US')
-    
+
     class Meta:
         model = Applicant
         fields = [
-            'id', 'job_listing_id', 'first_name', 'last_name', 'email', 
+            'id', 'job_listing_id', 'first_name', 'last_name', 'email',
             'phone', 'country_code', 'resume', 'screening_answers',
             'submitted_at', 'status'
         ]
         read_only_fields = ['id', 'submitted_at', 'status']
+
+    def to_internal_value(self, data):
+        """Parse JSON strings for screening_answers field (from multipart forms)."""
+        if 'screening_answers' in data and isinstance(data['screening_answers'], str):
+            try:
+                import json
+                data = data.copy()
+                data['screening_answers'] = json.loads(data['screening_answers'])
+            except (json.JSONDecodeError, ValueError):
+                pass  # Let the serializer validation handle invalid JSON
+        return super().to_internal_value(data)
     
     def validate_job_listing_id(self, value):
         """Validate that the job listing exists and is active."""
