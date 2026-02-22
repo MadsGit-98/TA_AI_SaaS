@@ -8,6 +8,7 @@ Handles:
 """
 
 import logging
+import os
 from django.db.models import Q
 from apps.applications.models import Applicant
 from services.resume_parsing_service import ResumeParserService
@@ -78,24 +79,27 @@ class DuplicationService:
     def validate_resume_file(file_content: bytes, filename: str) -> dict:
         """
         Validate resume file and return validation result.
-        
+
         Args:
             file_content: Raw file bytes
             filename: Original filename
-            
+
         Returns:
             Dictionary with validation results:
             {
                 'valid': bool,
                 'checks': {
                     'format_valid': bool,
-                    'size_valid': bool,
-                    'duplicate': bool
+                    'size_valid': bool
                 },
                 'errors': list,
                 'file_hash': str,
                 'file_extension': str
             }
+
+        Note:
+            Duplicate checking is performed separately via check_resume_duplicate()
+            using the file_hash returned in this result.
         """
         result = {
             'valid': True,
@@ -107,9 +111,9 @@ class DuplicationService:
             'file_hash': None,
             'file_extension': None
         }
-        
-        # Get file extension
-        file_extension = filename.split('.')[-1].lower() if filename else ''
+
+        # Get file extension using robust method
+        file_extension = os.path.splitext(filename)[1].lstrip('.').lower() if filename else ''
         result['file_extension'] = file_extension
         
         # Calculate file hash

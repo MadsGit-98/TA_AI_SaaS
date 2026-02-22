@@ -65,7 +65,7 @@ textarea:focus,
 select:focus {
     outline: none;
     border-color: #080707;
-    box-shadow: 0 0 0 3px rgba(8, 7, 7, 0.1);
+    box-shadow: 0 0 0 3px rgba(8, 7, 7, 0.2);
 }
 
 /* Disabled state */

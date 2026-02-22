@@ -406,8 +406,8 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
 
 # Rate Limiting Configuration
-RATE_LIMIT_WINDOW = env('RATE_LIMIT_WINDOW', default=3600)  # 1 hour in seconds
-RATE_LIMIT_MAX = env('RATE_LIMIT_MAX', default=5)  # 5 submissions per window
+RATE_LIMIT_WINDOW = env.int('RATE_LIMIT_WINDOW', default=3600)  # 1 hour in seconds
+RATE_LIMIT_MAX = env.int('RATE_LIMIT_MAX', default=5)  # 5 submissions per window
 
 
 # Logging configuration

@@ -6,7 +6,7 @@
 {% block content %}
 <div class="success-container">
     <div class="success-icon">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#080707" stroke-width="2">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#080707" stroke-width="2" role="img" aria-label="Success checkmark">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
             <polyline points="22 4 12 14.01 9 11.01"></polyline>
         </svg>
@@ -22,8 +22,8 @@
     <div class="confirmation-details">
         <h2>Confirmation Details</h2>
         <div class="detail-row">
-            <span class="label">Application ID:</span>
-            <span class="value">{{ applicant.id }}</span>
+            <span class="label">Reference Number:</span>
+            <span class="value">{{ applicant.reference_number }}</span>
         </div>
         <div class="detail-row">
             <span class="label">Position:</span>

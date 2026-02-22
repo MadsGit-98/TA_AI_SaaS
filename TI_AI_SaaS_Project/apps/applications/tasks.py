@@ -17,23 +17,26 @@ logger = get_task_logger(__name__)
 def send_application_confirmation_email(self, applicant_id: str):
     """
     Send confirmation email to applicant after successful submission.
-    
+
     Args:
         applicant_id: UUID of the applicant
     """
+    applicant = None
+    email = "<unknown>"
     try:
         applicant = Applicant.objects.get(id=applicant_id)
-        
+        email = applicant.email
+
         # Email subject
         subject = f"Application Received - {applicant.job_listing.title}"
-        
+
         # Email context
         context = {
             'applicant': applicant,
             'job_listing': applicant.job_listing,
             'submitted_at': applicant.submitted_at,
         }
-        
+
         # Render HTML and plain text versions
         html_content = render_to_string(
             'applications/emails/confirmation_email.html',
@@ -43,7 +46,7 @@ def send_application_confirmation_email(self, applicant_id: str):
             'applications/emails/confirmation_email.txt',
             context
         )
-        
+
         # Create email
         email = EmailMultiAlternatives(
             subject=subject,
@@ -52,18 +55,18 @@ def send_application_confirmation_email(self, applicant_id: str):
             to=[applicant.email],
         )
         email.attach_alternative(html_content, 'text/html')
-        
+
         # Send email
         email.send()
-        
-        logger.info(f"Confirmation email sent to {applicant.email} for application {applicant_id}")
-        
+
+        logger.info(f"Confirmation email sent for application {applicant_id}")
+
     except Applicant.DoesNotExist:
         logger.error(f"Applicant {applicant_id} not found")
         # Don't retry if applicant doesn't exist
         return
     except Exception as exc:
-        logger.error(f"Failed to send email to {applicant.email}: {exc}")
+        logger.error(f"Failed to send email to {email} (applicant_id={applicant_id}): {exc}")
         # Retry with exponential backoff
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
@@ -122,7 +125,9 @@ def check_duplicate_resumes():
         logger.warning(f"Found {len(duplicates)} potential duplicate resume groups")
         # Log for manual review - actual deduplication should be handled manually
         for dup in duplicates:
+            # Safely handle missing or None resume_file_hash
+            resume_hash = dup.get('resume_file_hash') or '<no_hash>'
             logger.warning(
-                f"Job {dup['job_listing']}, Hash {dup['resume_file_hash'][:16]}... "
+                f"Job {dup['job_listing']}, Hash {resume_hash[:16] if resume_hash != '<no_hash>' else resume_hash}... "
                 f"has {dup['count']} submissions"
             )
