@@ -7,17 +7,24 @@ from datetime import timedelta
 from django.utils import timezone
 from django.test import TestCase
 from django.core import mail
+from django.contrib.auth import get_user_model
 from apps.applications.models import Applicant
 from apps.jobs.models import JobListing
 from apps.applications.tasks import send_application_confirmation_email
-from uuid import uuid4
+
+User = get_user_model()
 
 
 class EmailTaskTest(TestCase):
     """Unit tests for email Celery tasks"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
         self.job_listing = JobListing.objects.create(
             title='Test Developer',
             description='Test job',
@@ -26,9 +33,9 @@ class EmailTaskTest(TestCase):
             job_level='Junior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         self.applicant = Applicant.objects.create(
             job_listing=self.job_listing,
             first_name='John',

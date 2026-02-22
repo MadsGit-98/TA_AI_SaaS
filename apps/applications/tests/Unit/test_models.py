@@ -8,27 +8,35 @@ from django.utils import timezone
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.contrib.auth import get_user_model
 from apps.applications.models import Applicant, ApplicationAnswer
 from apps.jobs.models import JobListing, ScreeningQuestion
 from uuid import uuid4
 
+User = get_user_model()
+
 
 class ApplicantModelTest(TestCase):
     """Unit tests for Applicant model"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
         self.job_listing = JobListing.objects.create(
             title='Test Developer',
             description='Test job description',
             required_skills=['Python', 'Django'],
             required_experience=3,
-            job_level='Mid',
+            job_level='Entry',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         self.applicant_data = {
             'job_listing': self.job_listing,
             'first_name': 'John',
@@ -96,7 +104,7 @@ class ApplicantModelTest(TestCase):
         """Test that same resume can be submitted for different jobs"""
         # Create first job and applicant
         Applicant.objects.create(**self.applicant_data)
-        
+
         # Create second job
         job2 = JobListing.objects.create(
             title='Another Developer',
@@ -106,9 +114,9 @@ class ApplicantModelTest(TestCase):
             job_level='Senior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         # Same resume hash should work for different job
         applicant2 = Applicant.objects.create(
             job_listing=job2,
@@ -119,15 +127,20 @@ class ApplicantModelTest(TestCase):
             resume_file_hash=self.applicant_data['resume_file_hash'],
             resume_parsed_text='Test resume content'
         )
-        
+
         self.assertIsNotNone(applicant2.id)
 
 
 class ApplicationAnswerModelTest(TestCase):
     """Unit tests for ApplicationAnswer model"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
+        self.user = User.objects.create_user(
+            username='testuser2',
+            email='test2@example.com',
+            password='testpass123'
+        )
         self.job_listing = JobListing.objects.create(
             title='Test Developer',
             description='Test job',
@@ -136,9 +149,9 @@ class ApplicationAnswerModelTest(TestCase):
             job_level='Junior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         self.applicant = Applicant.objects.create(
             job_listing=self.job_listing,
             first_name='John',
@@ -148,7 +161,7 @@ class ApplicationAnswerModelTest(TestCase):
             resume_file_hash='test_hash',
             resume_parsed_text='Test content'
         )
-        
+
         self.question = ScreeningQuestion.objects.create(
             job_listing=self.job_listing,
             question_text='What is your experience?',

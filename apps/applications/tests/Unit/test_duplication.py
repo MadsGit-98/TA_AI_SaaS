@@ -6,17 +6,24 @@ import unittest
 from datetime import timedelta
 from django.utils import timezone
 from django.test import TestCase
+from django.contrib.auth import get_user_model
 from apps.applications.models import Applicant
 from apps.jobs.models import JobListing
 from apps.applications.services.duplication_service import DuplicationService
-from uuid import uuid4
+
+User = get_user_model()
 
 
 class DuplicationServiceTest(TestCase):
     """Unit tests for DuplicationService"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
         self.job_listing = JobListing.objects.create(
             title='Test Developer',
             description='Test job',
@@ -25,9 +32,9 @@ class DuplicationServiceTest(TestCase):
             job_level='Junior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         self.existing_applicant = Applicant.objects.create(
             job_listing=self.job_listing,
             first_name='John',
@@ -105,16 +112,16 @@ class DuplicationServiceTest(TestCase):
             job_level='Senior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
-            created_by_id=uuid4()
+            created_by=self.user
         )
-        
+
         # Same email should not be duplicate for different job
         is_duplicate = DuplicationService.check_email_duplicate(
             job2,
             'john@example.com'
         )
         self.assertFalse(is_duplicate)
-        
+
         # Same resume should not be duplicate for different job
         is_duplicate = DuplicationService.check_resume_duplicate(
             job2,
