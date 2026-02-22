@@ -11,7 +11,6 @@ This service handles:
 
 import re
 import hashlib
-from typing import Optional
 from pypdf import PdfReader
 from docx import Document
 from io import BytesIO
@@ -46,10 +45,10 @@ class ResumeParserService:
     def extract_text_from_docx(file_content: bytes) -> str:
         """
         Extract text from a Docx file.
-        
+
         Args:
             file_content: Raw bytes of the Docx file
-            
+
         Returns:
             Extracted text content
         """
@@ -58,6 +57,13 @@ class ResumeParserService:
         for paragraph in doc.paragraphs:
             if paragraph.text.strip():
                 text += paragraph.text + "\n"
+        # Extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    cell_text = cell.text.strip()
+                    if cell_text and cell_text not in text:
+                        text += cell_text + "\n"
         return text.strip()
     
     @staticmethod
@@ -89,11 +95,31 @@ class ConfidentialInfoFilter:
     # Phone pattern (simple, will be enhanced by phonenumbers library)
     PHONE_PATTERN = r'\b(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b'
     
-    # SSN pattern
-    SSN_PATTERN = r'\b\d{3}-\d{2}-\d{4}\b'
-    
-    # Date of birth pattern (MM/DD/YYYY or MM-DD-YYYY)
-    DOB_PATTERN = r'\b(0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])[-/](19|20)\d{2}\b'
+    # SSN pattern (matches XXX-XX-XXXX, XXX XX XXXX, or XXXXXXXXXX)
+    SSN_PATTERN = r'\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b'
+
+    # Month names for date patterns
+    MONTH_NAMES = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
+
+    # Date of birth pattern - matches multiple formats:
+    # - MM/DD/YYYY or MM-DD-YYYY (US format)
+    # - YYYY-MM-DD (ISO format)
+    # - Month DD, YYYY or DD Month YYYY (written month format)
+    DOB_PATTERN = (
+        r'\b(?:'
+        # MM/DD/YYYY or MM-DD-YYYY
+        r'(0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])[-/](19|20)\d{2}'
+        r'|'
+        # YYYY-MM-DD (ISO)
+        r'(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])'
+        r'|'
+        # Month DD, YYYY (e.g., January 15, 1990)
+        r'' + MONTH_NAMES + r'\s+(0[1-9]|[12]\d|3[01]),?\s+(19|20)\d{2}'
+        r'|'
+        # DD Month YYYY (e.g., 15 January 1990)
+        r'(0[1-9]|[12]\d|3[01])\s+' + MONTH_NAMES + r',?\s+(19|20)\d{2}'
+        r')\b'
+    )
     
     # Street address pattern (simplified)
     ADDRESS_PATTERN = r'\b\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl)\b,?\s*[A-Za-z\s]+,?\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?\b'
@@ -139,15 +165,15 @@ class ConfidentialInfoFilter:
         def replace_phone(match):
             phone_str = match.group(0)
             try:
-                # Try to parse the phone number
-                parsed = phonenumbers.parse(phone_str, None)
+                # Try to parse the phone number with default region US
+                parsed = phonenumbers.parse(phone_str, "US")
                 if phonenumbers.is_valid_number(parsed):
                     return '[PHONE_REDACTED]'
             except phonenumbers.NumberParseException:
                 pass
-            # If parsing fails, use regex match anyway
-            return '[PHONE_REDACTED]'
-        
+            # If parsing or validation fails, return original string
+            return phone_str
+
         return re.sub(cls.PHONE_PATTERN, replace_phone, text)
     
     @classmethod
@@ -158,7 +184,7 @@ class ConfidentialInfoFilter:
     @classmethod
     def _redact_dates_of_birth(cls, text: str) -> str:
         """Redact dates of birth."""
-        return re.sub(cls.DOB_PATTERN, '[DOB_REDACTED]', text)
+        return re.sub(cls.DOB_PATTERN, '[DOB_REDACTED]', text, flags=re.IGNORECASE)
     
     @classmethod
     def _redact_addresses(cls, text: str) -> str:
