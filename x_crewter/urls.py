@@ -16,12 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic import TemplateView
 from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
-import os
 
 
 def health_check(request):
@@ -36,10 +34,11 @@ urlpatterns = [
     path('social-auth/', include('social_django.urls', namespace='social')),  # Include social auth URLs
     path('api/health/', health_check, name='health_check'),
     path('api/accounts/', include('apps.accounts.api_urls')),
-    path('api/applications/', include('apps.applications.urls')),
+    path('api/applications/', include('apps.applications.api_urls')),  # API endpoints only
     path('api/analysis/', include('apps.analysis.urls')),
     #path('api/subscription/', include('apps.subscription.urls')),
     # Frontend views for non-API access
+    path('', include('apps.applications.urls')),  # Application form template views (apply/, application/success/)
     path('dashboard/', include('apps.jobs.urls', namespace='dashboard_jobs')),  # Jobs dashboard for subscribed users
     path('landing/', include('apps.subscription.urls')),  # Subscription landing for non-subscribed users
 ]
@@ -53,8 +52,8 @@ def fallback_view(request, *args, **kwargs):
 
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
-    # Updated to explicitly exclude activation paths, static/media files, and WebSocket URLs
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)).*$', fallback_view, name='fallback'),
+    # Updated to explicitly exclude activation paths, static/media files, WebSocket URLs, and application form paths
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)|apply(?:/|$)|application(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 

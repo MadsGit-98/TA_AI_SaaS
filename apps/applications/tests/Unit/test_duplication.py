@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from apps.applications.models import Applicant
 from apps.jobs.models import JobListing
-from apps.applications.services.duplication_service import DuplicationService
+from services.duplication_service import DuplicationService
 
 User = get_user_model()
 
