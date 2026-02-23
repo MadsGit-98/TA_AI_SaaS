@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Applications Closed - {{ job.title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-primary-bg text-primary-text">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <div class="bg-white rounded-lg shadow-md p-6 text-center">
+            <h1 class="text-2xl font-bold mb-4 text-primary-text">Applications Closed</h1>
+            
+            <p class="text-secondary-text mb-6">
+                We're sorry, but applications for <strong>{{ job.title }}</strong> are no longer being accepted.
+            </p>
+            
+            <div class="mb-6">
+                <p class="text-secondary-text">
+                    This position may have been filled or the application period has ended.
+                </p>
+            </div>
+            
+            <a href="/" class="inline-block bg-primary-text text-primary-bg px-6 py-2 rounded hover:opacity-90 transition">
+                Return to Home
+            </a>
+        </div>
+    </div>
+</body>
+</html>

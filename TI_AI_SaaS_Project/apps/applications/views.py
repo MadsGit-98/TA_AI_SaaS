@@ -12,14 +12,14 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 
 
-def application_form_view(request, job_id):
+def application_form_view(request, application_link):
     """
     Render the public application form for a specific job.
 
     This is an unauthenticated view - anyone with the link can apply.
     """
-    # Get job listing
-    job = get_object_or_404(JobListing, id=job_id)
+    # Get job listing by application_link (not id)
+    job = get_object_or_404(JobListing, application_link=application_link)
 
     # Check if job is accepting applications
     if job.status != 'Active':

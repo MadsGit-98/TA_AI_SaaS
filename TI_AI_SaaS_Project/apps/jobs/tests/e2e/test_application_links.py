@@ -56,16 +56,16 @@ class ApplicationLinkE2ETest(StaticLiveServerTestCase):
         """Test that the application link is accessible and leads to the correct page"""
         # Get the application link from the job
         application_link = self.job.application_link
-        
+
         # The application link should be accessible via a specific URL pattern
         # According to the requirements, it should be something like /apply/{link}
-        full_url = f"/apply/{application_link}"
-        
+        full_url = f"/apply/{application_link}/"
+
         # Test that the URL exists and returns a successful response
         # For this test, we'll make a direct request rather than using Selenium
         # since we're testing the backend functionality
         response = self.client.get(full_url)
-        
+
         # The response should be either a successful page load or a redirect
         # depending on the implementation of the application form
         self.assertIn(response.status_code, [200, 302])
@@ -199,32 +199,32 @@ class ApplicationLinkSharingE2ETest(StaticLiveServerTestCase):
         self.assertIsNotNone(application_link)
 
         # Test that the link can be accessed (even if it redirects)
-        link_response = self.client.get(f'/apply/{application_link}')
+        link_response = self.client.get(f'/apply/{application_link}/')
         # This might be a redirect to the application form or a 404 if not implemented yet
         # But it should not cause a server error
         self.assertIn(link_response.status_code, [200, 302, 404])
-    
+
     def test_link_validity_after_status_change(self):
         """Test that application links remain valid after job status changes"""
         # Initially, the job is inactive
         self.assertEqual(self.job.status, 'Inactive')
-        
+
         # The application link should still be accessible
         application_link = self.job.application_link
-        link_response = self.client.get(f'/apply/{application_link}')
+        link_response = self.client.get(f'/apply/{application_link}/')
         self.assertIn(link_response.status_code, [200, 302, 404])
-        
+
         # Change the job status to active
         self.job.status = 'Active'
         self.job.save()
-        
+
         # Refresh the job from DB
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, 'Active')
-        
+
         # The application link should still be accessible
-        link_response_after_change = self.client.get(f'/apply/{application_link}')
+        link_response_after_change = self.client.get(f'/apply/{application_link}/')
         self.assertIn(link_response_after_change.status_code, [200, 302, 404])
-        
+
         # The link itself should not have changed
         self.assertEqual(self.job.application_link, application_link)

@@ -8,7 +8,6 @@ Uses Django cache backend (Redis) for atomic operations.
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.conf import settings
-import time
 import ipaddress
 
 

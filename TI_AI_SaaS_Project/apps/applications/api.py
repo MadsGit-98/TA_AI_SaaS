@@ -14,17 +14,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import UserRateThrottle
-from django.shortcuts import get_object_or_404
 from apps.applications.models import Applicant
 from apps.applications.serializers import (
     ApplicantSerializer,
     ApplicantCreateResponseSerializer,
-    DuplicateCheckResponseSerializer,
     FileValidationRequestSerializer,
     ContactValidationRequestSerializer,
     ApplicationStatusSerializer,
 )
-from apps.applications.services.duplication_service import DuplicationService
+from services.duplication_service import DuplicationService
 from apps.applications.tasks import send_application_confirmation_email
 from services.resume_parsing_service import ResumeParserService
 
