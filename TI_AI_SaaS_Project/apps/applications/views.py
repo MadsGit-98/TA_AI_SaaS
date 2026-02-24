@@ -25,8 +25,8 @@ def application_form_view(request, application_link):
     if job.status != 'Active':
         return render(request, 'applications/job_closed.html', {'job': job})
 
-    # Get screening questions for this job
-    screening_questions = job.screening_questions.filter(required=True).order_by('order')
+    # Get screening questions for this job (all questions, not just required)
+    screening_questions = job.screening_questions.all().order_by('order')
 
     # Get default country code from request or use US as default
     default_country_code = request.GET.get('country_code', 'US')

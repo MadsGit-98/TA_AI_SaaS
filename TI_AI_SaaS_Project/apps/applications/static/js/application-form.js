@@ -97,6 +97,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Initialize question file upload handlers for FILE_UPLOAD questions
+    initializeQuestionFileUploads();
+
     // Form validation on input (only if form exists)
     form.addEventListener('input', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
@@ -298,7 +301,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requiredFields = form.querySelectorAll('[required]');
         requiredFields.forEach(function(field) {
             if (field.type === 'radio') {
-                // Handle radio buttons
+                // Handle radio buttons (YES_NO questions)
                 const radioGroup = form.querySelectorAll(`input[name="${field.name}"]`);
                 let groupValid = false;
                 radioGroup.forEach(function(radio) {
@@ -315,13 +318,50 @@ document.addEventListener('DOMContentLoaded', function() {
                         errorElement.textContent = 'Please select an answer';
                     }
                 }
+            } else if (field.type === 'checkbox') {
+                // Handle checkboxes (MULTIPLE_CHOICE questions) - at least one should be checked
+                const checkboxGroup = form.querySelectorAll(`input[name="${field.name}"]`);
+                let groupValid = false;
+                checkboxGroup.forEach(function(checkbox) {
+                    if (checkbox.checked) {
+                        groupValid = true;
+                    }
+                });
+                if (!groupValid) {
+                    isValid = false;
+                    const questionId = field.name.replace(/^question_/, '');
+                    const errorElement = document.getElementById(`question_${questionId}-error`);
+                    if (errorElement) {
+                        errorElement.textContent = 'Please select at least one option';
+                    }
+                }
+            } else if (field.tagName === 'SELECT') {
+                // Handle select dropdowns (CHOICE questions)
+                if (!field.value.trim()) {
+                    isValid = false;
+                    const questionId = field.dataset.questionId;
+                    const errorElement = document.getElementById(`question_${questionId}-error`);
+                    if (errorElement) {
+                        errorElement.textContent = 'Please select an option';
+                    }
+                }
+            } else if (field.type === 'file') {
+                // Handle file uploads (FILE_UPLOAD questions)
+                if (!field.files || !field.files[0]) {
+                    isValid = false;
+                    const questionId = field.dataset.questionId;
+                    const errorElement = document.getElementById(`question_${questionId}-error`);
+                    if (errorElement) {
+                        errorElement.textContent = 'Please upload a file';
+                    }
+                }
             } else {
                 if (!validateField(field)) {
                     isValid = false;
                 }
             }
         });
-        
+
         // Check file validation
         if (!selectedFile) {
             isValid = false;
@@ -330,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
             isValid = false;
             showFileError('Please wait for file validation to complete');
         }
-        
+
         return isValid;
     }
     
@@ -343,6 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         requiredFields.forEach(function(field) {
             if (field.type === 'radio') {
+                // Handle radio buttons (YES_NO questions)
                 const radioGroup = form.querySelectorAll(`input[name="${field.name}"]`);
                 let groupFilled = false;
                 radioGroup.forEach(function(radio) {
@@ -351,6 +392,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
                 if (!groupFilled) {
+                    allFilled = false;
+                }
+            } else if (field.type === 'checkbox') {
+                // Handle checkboxes (MULTIPLE_CHOICE questions) - at least one should be checked
+                const checkboxGroup = form.querySelectorAll(`input[name="${field.name}"]`);
+                let groupFilled = false;
+                checkboxGroup.forEach(function(checkbox) {
+                    if (checkbox.checked) {
+                        groupFilled = true;
+                    }
+                });
+                if (!groupFilled) {
+                    allFilled = false;
+                }
+            } else if (field.tagName === 'SELECT') {
+                // Handle select dropdowns (CHOICE questions)
+                if (!field.value.trim()) {
+                    allFilled = false;
+                }
+            } else if (field.type === 'file') {
+                // Handle file uploads (FILE_UPLOAD questions)
+                if (!field.files || !field.files[0]) {
                     allFilled = false;
                 }
             } else {
@@ -391,15 +454,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Process screening answers
         const screeningAnswers = [];
+        
+        // Handle TEXT questions (textareas)
         const answerElements = form.querySelectorAll('textarea[name="screening_answers"]');
         answerElements.forEach(function(textarea) {
             screeningAnswers.push({
                 question_id: textarea.dataset.questionId,
-                answer: textarea.value
+                answer_text: textarea.value
             });
         });
 
-        // Handle radio button answers
+        // Handle CHOICE questions (select dropdowns)
+        const selectElements = form.querySelectorAll('select[name="screening_answers"]');
+        selectElements.forEach(function(select) {
+            if (select.value) {
+                screeningAnswers.push({
+                    question_id: select.dataset.questionId,
+                    answer_text: select.value
+                });
+            }
+        });
+
+        // Handle radio button answers (YES_NO questions)
         const radioGroups = {};
         form.querySelectorAll('input[type="radio"]:checked').forEach(function(radio) {
             // Prefer data-question-id attribute, fallback to parsing name
@@ -413,8 +489,46 @@ document.addEventListener('DOMContentLoaded', function() {
         Object.keys(radioGroups).forEach(function(questionId) {
             screeningAnswers.push({
                 question_id: questionId,
-                answer: radioGroups[questionId]
+                answer_text: radioGroups[questionId]
             });
+        });
+
+        // Handle MULTIPLE_CHOICE questions (checkboxes)
+        const checkboxGroups = {};
+        form.querySelectorAll('input[type="checkbox"]:checked').forEach(function(checkbox) {
+            // Extract question ID from name attribute (question_{questionId})
+            const match = checkbox.name.match(/^question_(.+)$/);
+            if (match && match[1]) {
+                const questionId = match[1];
+                if (!checkboxGroups[questionId]) {
+                    checkboxGroups[questionId] = [];
+                }
+                checkboxGroups[questionId].push(checkbox.value);
+            }
+        });
+
+        // Add multiple choice answers to screening answers
+        Object.keys(checkboxGroups).forEach(function(questionId) {
+            screeningAnswers.push({
+                question_id: questionId,
+                answer_text: JSON.stringify(checkboxGroups[questionId]) // Store as JSON array
+            });
+        });
+
+        // Handle FILE_UPLOAD questions
+        const fileUploadInputs = form.querySelectorAll('input[type="file"][name^="question_file_"]');
+        fileUploadInputs.forEach(function(fileInput) {
+            const questionId = fileInput.name.replace('question_file_', '');
+            const file = fileInput.files[0];
+            if (file) {
+                screeningAnswers.push({
+                    question_id: questionId,
+                    answer_text: null,
+                    file_upload: true
+                });
+                // Append file with unique name
+                formData.append('question_file_' + questionId, file);
+            }
         });
 
         // Convert to JSON and append
@@ -556,4 +670,52 @@ document.addEventListener('DOMContentLoaded', function() {
 function closeModal() {
     const modal = document.getElementById('duplicate-modal');
     modal.classList.add('hidden');
+}
+
+// Initialize question file upload handlers for FILE_UPLOAD questions
+function initializeQuestionFileUploads() {
+    const fileUploadAreas = document.querySelectorAll('[id^="file-upload-area-"]');
+    
+    fileUploadAreas.forEach(function(area) {
+        const questionId = area.id.replace('file-upload-area-', '');
+        const fileInput = area.querySelector('input[type="file"]');
+        
+        if (fileInput) {
+            // Click to upload
+            area.addEventListener('click', function(e) {
+                e.stopPropagation();
+                fileInput.click();
+            });
+            
+            // File selected
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const fileNameEl = document.getElementById('file-name-' + questionId);
+                    const fileInfoEl = document.getElementById('file-info-' + questionId);
+                    if (fileNameEl) {
+                        fileNameEl.textContent = file.name;
+                    }
+                    if (fileInfoEl) {
+                        fileInfoEl.classList.remove('hidden');
+                        fileInfoEl.classList.add('flex');
+                    }
+                }
+            });
+        }
+    });
+}
+
+// Remove question file (global scope)
+function removeQuestionFile(questionId) {
+    const fileInput = document.querySelector('input[name="question_file_' + questionId + '"]');
+    const fileInfo = document.getElementById('file-info-' + questionId);
+    
+    if (fileInput) {
+        fileInput.value = '';
+    }
+    if (fileInfo) {
+        fileInfo.classList.add('hidden');
+        fileInfo.classList.remove('flex');
+    }
 }
