@@ -341,11 +341,17 @@ async function loadQuestionData(questionId) {
                 }
 
                 if (question.choices && question.choices.length > 0) {
-                    // Filter out choices with missing text and map to safe values
+                    // Handle both string choices and object choices (with text property)
                     const validChoices = question.choices
-                        .filter(choice => choice && choice.text !== undefined && choice.text !== null)
-                        .map(choice => String(choice.text).trim())
-                        .filter(text => text !== ''); // Remove empty strings after trimming
+                        .map(choice => {
+                            if (typeof choice === 'string') {
+                                return choice.trim();
+                            } else if (choice && choice.text !== undefined && choice.text !== null) {
+                                return String(choice.text).trim();
+                            }
+                            return null;
+                        })
+                        .filter(text => text !== ''); // Remove empty/null strings
 
                     if (validChoices.length > 0) {
                         const choicesText = validChoices.join('\n');

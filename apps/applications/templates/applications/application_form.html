@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apply for {{ job.title }} - X-Crewter</title>
-    
+
     <!-- Initialize Tailwind CSS with custom configuration -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -24,17 +24,40 @@
             }
         }
     </script>
-    
+
     <link rel="stylesheet" href="{% static 'css/application-form.css' %}">
 </head>
-<body class="bg-primary-bg text-primary-text min-h-screen py-12 px-4 sm:px-6 lg:px-8">
-    
-    <div class="max-w-4xl mx-auto">
-        <!-- Job Details Section -->
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+
+    <!-- Header with Logo and Branding - at very top of page -->
+    <header class="w-full border-b-2 border-code-block-bg">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
+                <!-- Logo on the left - links to homepage -->
+                <a href="/" class="flex-shrink-0">
+                    <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                </a>
+                <!-- X-crewter branding text on the right -->
+                <span class="text-xl font-bold text-primary-text">X-Crewter</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex-grow py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- Large Logo Image Before Form (like login page) -->
+            <div class="flex flex-col items-center">
+                <div class="h-40 w-auto">
+                    <img src="{% static 'images/logo.png' %}" alt="X-Crewter Logo" class="h-32 max-w-[300px] w-auto mx-auto">
+                </div>
+                <h1 class="mt-6 text-center text-3xl font-extrabold text-primary-text">
+                    Apply for {{ job.title }}
+                </h1>
+            </div>
+
+            <!-- Job Details Section -->
         <section class="mb-12 pb-8 border-b-2 border-code-block-bg">
-            <h1 class="text-4xl font-bold mb-4 text-primary-text">{{ job.title }}</h1>
-            
-            <div class="flex gap-4 mb-6">
+            <div class="flex gap-4 mb-8 mt-8">
                 <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">
                     {{ job.job_level }}
                 </span>
@@ -42,12 +65,12 @@
                     {{ job.required_experience }}+ years experience
                 </span>
             </div>
-            
+
             <div class="mb-8">
                 <h2 class="text-2xl font-semibold mb-3 text-primary-text">About the Role</h2>
                 <p class="text-secondary-text leading-relaxed">{{ job.description }}</p>
             </div>
-            
+
             <div>
                 <h2 class="text-2xl font-semibold mb-3 text-primary-text">Required Skills</h2>
                 <div class="flex flex-wrap gap-2">
@@ -108,38 +131,84 @@
                             </label>
                             <div class="flex gap-2">
                                 <select id="country_code_select"
-                                    class="w-32 px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base"
+                                    class="w-40 px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base"
                                     aria-label="Country code">
-                                    <option value="US" {% if default_country_code == 'US' %}selected{% endif %}>🇺🇸 +1</option>
-                                    <option value="GB" {% if default_country_code == 'GB' %}selected{% endif %}>🇬🇧 +44</option>
-                                    <option value="CA" {% if default_country_code == 'CA' %}selected{% endif %}>🇨🇦 +1</option>
-                                    <option value="AU" {% if default_country_code == 'AU' %}selected{% endif %}>🇦🇺 +61</option>
-                                    <option value="DE" {% if default_country_code == 'DE' %}selected{% endif %}>🇩🇪 +49</option>
-                                    <option value="FR" {% if default_country_code == 'FR' %}selected{% endif %}>🇫🇷 +33</option>
-                                    <option value="IN" {% if default_country_code == 'IN' %}selected{% endif %}>🇮🇳 +91</option>
-                                    <option value="CN" {% if default_country_code == 'CN' %}selected{% endif %}>🇨🇳 +86</option>
-                                    <option value="JP" {% if default_country_code == 'JP' %}selected{% endif %}>🇯🇵 +81</option>
-                                    <option value="BR" {% if default_country_code == 'BR' %}selected{% endif %}>🇧🇷 +55</option>
-                                    <option value="MX" {% if default_country_code == 'MX' %}selected{% endif %}>🇲🇽 +52</option>
-                                    <option value="ES" {% if default_country_code == 'ES' %}selected{% endif %}>🇪🇸 +34</option>
-                                    <option value="IT" {% if default_country_code == 'IT' %}selected{% endif %}>🇮🇹 +39</option>
-                                    <option value="NL" {% if default_country_code == 'NL' %}selected{% endif %}>🇳🇱 +31</option>
-                                    <option value="SE" {% if default_country_code == 'SE' %}selected{% endif %}>🇸🇪 +46</option>
-                                    <option value="NO" {% if default_country_code == 'NO' %}selected{% endif %}>🇳🇴 +47</option>
-                                    <option value="DK" {% if default_country_code == 'DK' %}selected{% endif %}>🇩🇰 +45</option>
-                                    <option value="FI" {% if default_country_code == 'FI' %}selected{% endif %}>🇫🇮 +358</option>
-                                    <option value="PL" {% if default_country_code == 'PL' %}selected{% endif %}>🇵🇱 +48</option>
-                                    <option value="RU" {% if default_country_code == 'RU' %}selected{% endif %}>🇷🇺 +7</option>
-                                    <option value="KR" {% if default_country_code == 'KR' %}selected{% endif %}>🇰🇷 +82</option>
-                                    <option value="SG" {% if default_country_code == 'SG' %}selected{% endif %}>🇸🇬 +65</option>
-                                    <option value="HK" {% if default_country_code == 'HK' %}selected{% endif %}>🇭🇰 +852</option>
-                                    <option value="NZ" {% if default_country_code == 'NZ' %}selected{% endif %}>🇳🇿 +64</option>
-                                    <option value="ZA" {% if default_country_code == 'ZA' %}selected{% endif %}>🇿🇦 +27</option>
-                                    <option value="IE" {% if default_country_code == 'IE' %}selected{% endif %}>🇮🇪 +353</option>
-                                    <option value="AT" {% if default_country_code == 'AT' %}selected{% endif %}>🇦🇹 +43</option>
-                                    <option value="CH" {% if default_country_code == 'CH' %}selected{% endif %}>🇨🇭 +41</option>
-                                    <option value="BE" {% if default_country_code == 'BE' %}selected{% endif %}>🇧🇪 +32</option>
-                                    <option value="PT" {% if default_country_code == 'PT' %}selected{% endif %}>🇵🇹 +351</option>
+                                    <option value="" disabled>Select country</option>
+                                    <!-- North America -->
+                                    <option value="US" data-dial-code="+1" {% if default_country_code == 'US' %}selected{% endif %}>🇺🇸 US +1</option>
+                                    <option value="CA" data-dial-code="+1" {% if default_country_code == 'CA' %}selected{% endif %}>🇨🇦 CA +1</option>
+                                    <option value="MX" data-dial-code="+52" {% if default_country_code == 'MX' %}selected{% endif %}>🇲🇽 MX +52</option>
+                                    <!-- Europe -->
+                                    <option value="GB" data-dial-code="+44" {% if default_country_code == 'GB' %}selected{% endif %}>🇬🇧 UK +44</option>
+                                    <option value="DE" data-dial-code="+49" {% if default_country_code == 'DE' %}selected{% endif %}>🇩🇪 DE +49</option>
+                                    <option value="FR" data-dial-code="+33" {% if default_country_code == 'FR' %}selected{% endif %}>🇫🇷 FR +33</option>
+                                    <option value="ES" data-dial-code="+34" {% if default_country_code == 'ES' %}selected{% endif %}>🇪🇸 ES +34</option>
+                                    <option value="IT" data-dial-code="+39" {% if default_country_code == 'IT' %}selected{% endif %}>🇮🇹 IT +39</option>
+                                    <option value="NL" data-dial-code="+31" {% if default_country_code == 'NL' %}selected{% endif %}>🇳🇱 NL +31</option>
+                                    <option value="SE" data-dial-code="+46" {% if default_country_code == 'SE' %}selected{% endif %}>🇸🇪 SE +46</option>
+                                    <option value="NO" data-dial-code="+47" {% if default_country_code == 'NO' %}selected{% endif %}>🇳🇴 NO +47</option>
+                                    <option value="DK" data-dial-code="+45" {% if default_country_code == 'DK' %}selected{% endif %}>🇩🇰 DK +45</option>
+                                    <option value="FI" data-dial-code="+358" {% if default_country_code == 'FI' %}selected{% endif %}>🇫🇮 FI +358</option>
+                                    <option value="PL" data-dial-code="+48" {% if default_country_code == 'PL' %}selected{% endif %}>🇵🇱 PL +48</option>
+                                    <option value="IE" data-dial-code="+353" {% if default_country_code == 'IE' %}selected{% endif %}>🇮🇪 IE +353</option>
+                                    <option value="AT" data-dial-code="+43" {% if default_country_code == 'AT' %}selected{% endif %}>🇦🇹 AT +43</option>
+                                    <option value="CH" data-dial-code="+41" {% if default_country_code == 'CH' %}selected{% endif %}>🇨🇭 CH +41</option>
+                                    <option value="BE" data-dial-code="+32" {% if default_country_code == 'BE' %}selected{% endif %}>🇧🇪 BE +32</option>
+                                    <option value="PT" data-dial-code="+351" {% if default_country_code == 'PT' %}selected{% endif %}>🇵🇹 PT +351</option>
+                                    <option value="RU" data-dial-code="+7" {% if default_country_code == 'RU' %}selected{% endif %}>🇷🇺 RU +7</option>
+                                    <!-- Asia -->
+                                    <option value="IN" data-dial-code="+91" {% if default_country_code == 'IN' %}selected{% endif %}>🇮🇳 IN +91</option>
+                                    <option value="CN" data-dial-code="+86" {% if default_country_code == 'CN' %}selected{% endif %}>🇨🇳 CN +86</option>
+                                    <option value="JP" data-dial-code="+81" {% if default_country_code == 'JP' %}selected{% endif %}>🇯🇵 JP +81</option>
+                                    <option value="KR" data-dial-code="+82" {% if default_country_code == 'KR' %}selected{% endif %}>🇰🇷 KR +82</option>
+                                    <option value="SG" data-dial-code="+65" {% if default_country_code == 'SG' %}selected{% endif %}>🇸🇬 SG +65</option>
+                                    <option value="HK" data-dial-code="+852" {% if default_country_code == 'HK' %}selected{% endif %}>🇭🇰 HK +852</option>
+                                    <option value="TH" data-dial-code="+66" {% if default_country_code == 'TH' %}selected{% endif %}>🇹🇭 TH +66</option>
+                                    <option value="MY" data-dial-code="+60" {% if default_country_code == 'MY' %}selected{% endif %}>🇲🇾 MY +60</option>
+                                    <option value="PH" data-dial-code="+63" {% if default_country_code == 'PH' %}selected{% endif %}>🇵🇭 PH +63</option>
+                                    <option value="VN" data-dial-code="+84" {% if default_country_code == 'VN' %}selected{% endif %}>🇻🇳 VN +84</option>
+                                    <option value="ID" data-dial-code="+62" {% if default_country_code == 'ID' %}selected{% endif %}>🇮🇩 ID +62</option>
+                                    <option value="PK" data-dial-code="+92" {% if default_country_code == 'PK' %}selected{% endif %}>🇵🇰 PK +92</option>
+                                    <option value="BD" data-dial-code="+880" {% if default_country_code == 'BD' %}selected{% endif %}>🇧🇩 BD +880</option>
+                                    <option value="LK" data-dial-code="+94" {% if default_country_code == 'LK' %}selected{% endif %}>🇱🇰 LK +94</option>
+                                    <option value="TW" data-dial-code="+886" {% if default_country_code == 'TW' %}selected{% endif %}>🇹🇼 TW +886</option>
+                                    <!-- Oceania -->
+                                    <option value="AU" data-dial-code="+61" {% if default_country_code == 'AU' %}selected{% endif %}>🇦🇺 AU +61</option>
+                                    <option value="NZ" data-dial-code="+64" {% if default_country_code == 'NZ' %}selected{% endif %}>🇳🇿 NZ +64</option>
+                                    <!-- South America -->
+                                    <option value="BR" data-dial-code="+55" {% if default_country_code == 'BR' %}selected{% endif %}>🇧🇷 BR +55</option>
+                                    <option value="AR" data-dial-code="+54" {% if default_country_code == 'AR' %}selected{% endif %}>🇦🇷 AR +54</option>
+                                    <option value="CL" data-dial-code="+56" {% if default_country_code == 'CL' %}selected{% endif %}>🇨🇱 CL +56</option>
+                                    <option value="CO" data-dial-code="+57" {% if default_country_code == 'CO' %}selected{% endif %}>🇨🇴 CO +57</option>
+                                    <option value="PE" data-dial-code="+51" {% if default_country_code == 'PE' %}selected{% endif %}>🇵🇪 PE +51</option>
+                                    <option value="VE" data-dial-code="+58" {% if default_country_code == 'VE' %}selected{% endif %}>🇻🇪 VE +58</option>
+                                    <option value="EC" data-dial-code="+593" {% if default_country_code == 'EC' %}selected{% endif %}>🇪🇨 EC +593</option>
+                                    <!-- Africa -->
+                                    <option value="ZA" data-dial-code="+27" {% if default_country_code == 'ZA' %}selected{% endif %}>🇿🇦 ZA +27</option>
+                                    <option value="NG" data-dial-code="+234" {% if default_country_code == 'NG' %}selected{% endif %}>🇳🇬 NG +234</option>
+                                    <option value="KE" data-dial-code="+254" {% if default_country_code == 'KE' %}selected{% endif %}>🇰🇪 KE +254</option>
+                                    <option value="EG" data-dial-code="+20" {% if default_country_code == 'EG' %}selected{% endif %}>🇪🇬 EG +20</option>
+                                    <option value="GH" data-dial-code="+233" {% if default_country_code == 'GH' %}selected{% endif %}>🇬🇭 GH +233</option>
+                                    <option value="MA" data-dial-code="+212" {% if default_country_code == 'MA' %}selected{% endif %}>🇲🇦 MA +212</option>
+                                    <option value="TZ" data-dial-code="+255" {% if default_country_code == 'TZ' %}selected{% endif %}>🇹🇿 TZ +255</option>
+                                    <option value="UG" data-dial-code="+256" {% if default_country_code == 'UG' %}selected{% endif %}>🇺🇬 UG +256</option>
+                                    <!-- Middle East -->
+                                    <option value="AE" data-dial-code="+971" {% if default_country_code == 'AE' %}selected{% endif %}>🇦🇪 AE +971</option>
+                                    <option value="SA" data-dial-code="+966" {% if default_country_code == 'SA' %}selected{% endif %}>🇸🇦 SA +966</option>
+                                    <option value="IL" data-dial-code="+972" {% if default_country_code == 'IL' %}selected{% endif %}>🇮🇱 IL +972</option>
+                                    <option value="TR" data-dial-code="+90" {% if default_country_code == 'TR' %}selected{% endif %}>🇹🇷 TR +90</option>
+                                    <option value="QA" data-dial-code="+974" {% if default_country_code == 'QA' %}selected{% endif %}>🇶🇦 QA +974</option>
+                                    <option value="KW" data-dial-code="+965" {% if default_country_code == 'KW' %}selected{% endif %}>🇰🇼 KW +965</option>
+                                    <option value="BH" data-dial-code="+973" {% if default_country_code == 'BH' %}selected{% endif %}>🇧🇭 BH +973</option>
+                                    <option value="OM" data-dial-code="+968" {% if default_country_code == 'OM' %}selected{% endif %}>🇴🇲 OM +968</option>
+                                    <option value="JO" data-dial-code="+962" {% if default_country_code == 'JO' %}selected{% endif %}>🇯🇴 JO +962</option>
+                                    <option value="LB" data-dial-code="+961" {% if default_country_code == 'LB' %}selected{% endif %}>🇱🇧 LB +961</option>
+                                    <!-- Central Asia & Caucasus -->
+                                    <option value="KZ" data-dial-code="+7" {% if default_country_code == 'KZ' %}selected{% endif %}>🇰🇿 KZ +7</option>
+                                    <option value="UZ" data-dial-code="+998" {% if default_country_code == 'UZ' %}selected{% endif %}>🇺🇿 UZ +998</option>
+                                    <option value="AZ" data-dial-code="+994" {% if default_country_code == 'AZ' %}selected{% endif %}>🇦🇿 AZ +994</option>
+                                    <option value="AM" data-dial-code="+374" {% if default_country_code == 'AM' %}selected{% endif %}>🇦🇲 AM +374</option>
+                                    <option value="GE" data-dial-code="+995" {% if default_country_code == 'GE' %}selected{% endif %}>🇬🇪 GE +995</option>
                                 </select>
                                 <input type="tel" id="phone" name="phone" required
                                     class="flex-1 px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base"
@@ -154,23 +223,24 @@
                 <!-- Screening Questions -->
                 <div class="bg-primary-bg border border-code-block-bg rounded-lg p-6">
                     <h3 class="text-xl font-semibold mb-4 text-primary-text">Screening Questions</h3>
-                    
+
+                    {% if screening_questions %}
                     {% for question in screening_questions %}
                     <div class="mb-6">
                         <label class="block text-sm font-semibold mb-3 text-primary-text">
                             {{ question.question_text }}
                             {% if question.required %}<span class="text-red-600">*</span>{% endif %}
                         </label>
-                        
+
                         {% if question.question_type == 'TEXT' %}
-                        <textarea 
+                        <textarea
                             name="screening_answers"
                             data-question-id="{{ question.id }}"
                             rows="4"
                             {% if question.required %}required{% endif %}
                             class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base resize-vertical"
                         ></textarea>
-                        
+
                         {% elif question.question_type == 'YES_NO' %}
                         <div class="flex gap-6">
                             <label class="flex items-center gap-2 cursor-pointer">
@@ -184,11 +254,65 @@
                                 <span class="text-primary-text">No</span>
                             </label>
                         </div>
+
+                        {% elif question.question_type == 'CHOICE' %}
+                        <select
+                            name="screening_answers"
+                            data-question-id="{{ question.id }}"
+                            {% if question.required %}required{% endif %}
+                            class="w-full px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base">
+                            <option value="">Select an option</option>
+                            {% for choice in question.choices %}
+                            <option value="{{ choice }}">{{ choice }}</option>
+                            {% endfor %}
+                        </select>
+
+                        {% elif question.question_type == 'MULTIPLE_CHOICE' %}
+                        <div class="space-y-2">
+                            {% for choice in question.choices %}
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="question_{{ question.id }}" value="{{ choice }}"
+                                    class="w-5 h-5 cursor-pointer accent-cta">
+                                <span class="text-primary-text">{{ choice }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                        {% elif question.question_type == 'FILE_UPLOAD' %}
+                        <div class="file-upload-area border-2 border-dashed border-code-block-bg rounded-lg p-6 text-center cursor-pointer hover:border-accent-cta hover:bg-gray-50 transition-all"
+                             id="file-upload-area-{{ question.id }}">
+                            <div class="upload-icon mb-4 text-accent-cta">
+                                <svg class="w-12 h-12 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="17 8 12 3 7 8"></polyline>
+                                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                                </svg>
+                            </div>
+                            <p class="text-sm font-semibold text-primary-text mb-2">
+                                Click to upload file
+                            </p>
+                            <p class="text-xs text-secondary-text">
+                                Any file format accepted
+                            </p>
+                            <input type="file" name="question_file_{{ question.id }}" data-question-id="{{ question.id }}"
+                                {% if question.required %}required{% endif %}
+                                class="hidden">
+                        </div>
+                        <div id="file-info-{{ question.id }}" class="hidden items-center gap-4 bg-code-block-bg rounded p-3 mt-2">
+                            <span id="file-name-{{ question.id }}" class="flex-1 font-semibold text-primary-text text-xs"></span>
+                            <button type="button" onclick="removeQuestionFile('{{ question.id }}')"
+                                class="border border-red-600 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-600 hover:text-cta-text transition">
+                                Remove
+                            </button>
+                        </div>
                         {% endif %}
-                        
+
                         <span class="error-message text-red-600 text-sm mt-1 block" id="question_{{ question.id }}-error"></span>
                     </div>
                     {% endfor %}
+                    {% else %}
+                    <p class="text-secondary-text italic">No screening questions for this position.</p>
+                    {% endif %}
                 </div>
                 
                 <!-- Resume Upload -->
@@ -241,8 +365,9 @@
                 </div>
             </form>
         </section>
+        </div>
     </div>
-    
+
     <!-- Duplicate Warning Modal -->
     <div id="duplicate-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
         <div class="bg-primary-bg rounded-lg p-8 max-w-md mx-4 text-center">
