@@ -153,14 +153,15 @@ class DuplicationIntegrationTest(TestCase):
                 'email': 'john.doe@gmail.com',  # Duplicate email
                 'phone': '+12025559999',
                 'country_code': 'US',
-                'screening_answers': [
+                'screening_answers': json.dumps([
                     {
                         'question_id': str(screening_question.id),
-                        'answer': 'I have 3 years of experience'
+                        'answer_text': 'I have 3 years of experience'
                     }
-                ],
+                ]),
                 'resume': resume
-            }
+            },
+            format='multipart'
         )
 
         self.assertEqual(response.status_code, 409)

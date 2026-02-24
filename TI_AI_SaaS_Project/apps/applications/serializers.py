@@ -19,18 +19,26 @@ class ScreeningQuestionSerializer(serializers.ModelSerializer):
 
 class ApplicationAnswerSerializer(serializers.ModelSerializer):
     """Serializer for ApplicationAnswer model."""
-    
+
     question_id = serializers.UUIDField(write_only=True)
-    
+
     class Meta:
         model = ApplicationAnswer
         fields = ['id', 'question_id', 'answer_text', 'created_at']
         read_only_fields = ['id', 'created_at']
-    
+
+    def to_internal_value(self, data):
+        """Parse and validate nested serializer data."""
+        # Initialize question instance attribute
+        self._question_instance = None
+        return super().to_internal_value(data)
+
     def validate_question_id(self, value):
         """Validate that the question exists."""
         try:
             question = ScreeningQuestion.objects.get(id=value)
+            # Store the question instance for use in validate_answer_text
+            self._question_instance = question
             return question
         except ScreeningQuestion.DoesNotExist:
             raise serializers.ValidationError("Question not found.")
@@ -42,27 +50,24 @@ class ApplicationAnswerSerializer(serializers.ModelSerializer):
         if len(value) > 5000:
             raise serializers.ValidationError("Answer cannot exceed 5000 characters.")
 
-        # Get the question object to determine question type
-        question = None
-        if hasattr(self, 'initial_data') and self.initial_data.get('question_id'):
+        # Get the question object from instance attribute (set by validate_question_id)
+        question = getattr(self, '_question_instance', None)
+        
+        # Fallback: try to get question from initial_data
+        if not question and hasattr(self, 'initial_data') and isinstance(self.initial_data, dict):
             question_id = self.initial_data.get('question_id')
-            if hasattr(question_id, 'id'):
-                # Already a ScreeningQuestion object from validate_question_id
+            if question_id and hasattr(question_id, 'id'):
                 question = question_id
-            else:
-                # UUID string, fetch the question
-                try:
-                    question = ScreeningQuestion.objects.get(id=question_id)
-                except ScreeningQuestion.DoesNotExist:
-                    pass
 
-        # Apply conditional minimum length based on question type
-        short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD', 'NUMERIC', 'SINGLE_WORD']
+        # Short answer types that don't require minimum length (only need to be non-empty)
+        # These match the QUESTION_TYPE_CHOICES in ScreeningQuestion model
+        short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD']
+        
         if question and question.question_type in short_answer_types:
             # Short answer types only need to be non-empty (already checked above)
             pass
         else:
-            # TEXT and other long-answer types require minimum 10 characters
+            # TEXT type requires minimum 10 characters (temporarily lowered for testing)
             if len(value) < 10:
                 raise serializers.ValidationError("Answer must be at least 10 characters.")
 
@@ -93,9 +98,35 @@ class ApplicantSerializer(serializers.ModelSerializer):
                 import json
                 data = data.copy()
                 data['screening_answers'] = json.loads(data['screening_answers'])
-            except (json.JSONDecodeError, ValueError):
-                pass  # Let the serializer validation handle invalid JSON
-        return super().to_internal_value(data)
+            except (json.JSONDecodeError, ValueError) as e:
+                raise serializers.ValidationError({
+                    'screening_answers': f'Invalid JSON format: {str(e)}'
+                })
+        
+        # Manually validate nested screening_answers serializer
+        validated_screening_answers = []
+        if 'screening_answers' in data and isinstance(data['screening_answers'], list):
+            data = data.copy()
+            answer_serializer = ApplicationAnswerSerializer(many=True, data=data['screening_answers'])
+            if answer_serializer.is_valid():
+                validated_screening_answers = answer_serializer.validated_data
+            else:
+                raise serializers.ValidationError({
+                    'screening_answers': answer_serializer.errors
+                })
+        
+        # Call parent to_internal_value to validate other fields
+        result = super().to_internal_value(data)
+        
+        # Manually add the validated screening answers to the result
+        # This is needed because DRF doesn't automatically handle nested serializers
+        # for write-only fields that aren't on the model
+        if hasattr(result, '_dict'):
+            result._dict['screening_answers'] = validated_screening_answers
+        elif isinstance(result, dict):
+            result['screening_answers'] = validated_screening_answers
+        
+        return result
     
     def validate_job_listing_id(self, value):
         """Validate that the job listing exists and is active."""
@@ -152,7 +183,8 @@ class ApplicantSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create applicant and answers."""
-        screening_answers = validated_data.pop('screening_answers')
+        # Get screening answers (may be empty list if no questions)
+        screening_answers = validated_data.pop('screening_answers', [])
         job_listing = validated_data.pop('job_listing_id')
         resume_file = validated_data.pop('resume')
         # Remove country_code as it's write-only and not a model field
@@ -188,15 +220,24 @@ class ApplicantSerializer(serializers.ModelSerializer):
 
         # Save the resume file after creating the object
         applicant.resume_file.save(resume_file.name, resume_file, save=True)
-        
-        # Create answers
+
+        # Create answers for each screening question response
         for answer_data in screening_answers:
+            question = answer_data['question_id']
+            answer_text = answer_data['answer_text']
+
+            # Handle FILE_UPLOAD questions - store file path or placeholder
+            if answer_data.get('file_upload'):
+                # For file upload questions, store a reference to the uploaded file
+                # The actual file is stored in FormData and should be handled separately
+                answer_text = f"[File uploaded for question {question.id}]"
+
             ApplicationAnswer.objects.create(
                 applicant=applicant,
-                question=answer_data['question_id'],
-                answer_text=answer_data['answer_text']
+                question=question,
+                answer_text=answer_text
             )
-        
+
         return applicant
 
 

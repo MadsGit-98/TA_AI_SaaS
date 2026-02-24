@@ -573,24 +573,44 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else if (response.status === 400) {
                 // Validation error
+                console.error('Validation errors:', data);
+                console.error('Full response:', response);
                 if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Submit Application';
                 }
-                
+
                 if (data.details) {
                     // Display validation errors
                     Object.keys(data.details).forEach(function(fieldName) {
                         const errors = data.details[fieldName];
+                        console.error(`Field ${fieldName} errors:`, errors);
+                        
+                        if (fieldName === 'screening_answers' && Array.isArray(errors)) {
+                            // Handle screening answers errors
+                            errors.forEach(function(error, index) {
+                                if (error && typeof error === 'object') {
+                                    Object.keys(error).forEach(function(field) {
+                                        const fieldErrors = error[field];
+                                        console.error(`Screening answer ${index} - ${field}:`, fieldErrors);
+                                    });
+                                }
+                            });
+                        }
+                        
                         const errorElement = document.getElementById(`${fieldName}-error`);
                         if (errorElement && errors && errors[0]) {
-                            errorElement.textContent = errors[0];
+                            if (typeof errors[0] === 'string') {
+                                errorElement.textContent = errors[0];
+                            } else if (Array.isArray(errors)) {
+                                errorElement.textContent = JSON.stringify(errors);
+                            }
                         }
                     });
                 }
-                
+
                 if (data.error === 'validation_failed') {
-                    showFileError('Please correct the errors above and try again');
+                    showFileError('Please check the console for validation errors and correct them.');
                 }
             } else {
                 // Server error

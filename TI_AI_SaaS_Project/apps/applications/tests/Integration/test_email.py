@@ -83,14 +83,15 @@ class EmailDeliveryIntegrationTest(TestCase):
                 'email': 'john.doe@gmail.com',
                 'phone': '+12025551234',
                 'country_code': 'US',
-                'screening_answers': [
+                'screening_answers': json.dumps([
                     {
                         'question_id': str(self.screening_question.id),
-                        'answer': 'I have 3 years of experience'
+                        'answer_text': 'I have 3 years of experience'
                     }
-                ],
+                ]),
                 'resume': resume
-            }
+            },
+            format='multipart'
         )
 
         self.assertEqual(response.status_code, 201)
@@ -121,14 +122,15 @@ class EmailDeliveryIntegrationTest(TestCase):
                 'email': 'jane.smith@gmail.com',
                 'phone': '+12025559999',
                 'country_code': 'US',
-                'screening_answers': [
+                'screening_answers': json.dumps([
                     {
                         'question_id': str(self.screening_question.id),
-                        'answer': 'I have 5 years of experience'
+                        'answer_text': 'I have 5 years of experience'
                     }
-                ],
+                ]),
                 'resume': resume
-            }
+            },
+            format='multipart'
         )
 
         self.assertEqual(response.status_code, 201)
