@@ -118,6 +118,9 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
         e.preventDefault();
 
+        // Clear previous errors
+        clearAllErrors();
+
         if (!validateForm()) {
             return;
         }
@@ -546,8 +549,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
 
             if (response.status === 201) {
-                // Success - redirect to success page with access token for security
-                window.location.href = `/applications/success/${data.id}/${data.access_token}/`;
+                // Success - show success message with countdown before redirect
+                showSuccessMessage(data.message);
             } else if (response.status === 409) {
                 // Duplicate detected
                 if (submitBtn) {
@@ -574,44 +577,107 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (response.status === 400) {
                 // Validation error
                 console.error('Validation errors:', data);
-                console.error('Full response:', response);
                 if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Submit Application';
                 }
 
                 if (data.details) {
-                    // Display validation errors
+                    // Display validation errors and highlight fields
+                    let firstErrorElement = null;
+                    
                     Object.keys(data.details).forEach(function(fieldName) {
                         const errors = data.details[fieldName];
                         console.error(`Field ${fieldName} errors:`, errors);
                         
                         if (fieldName === 'screening_answers' && Array.isArray(errors)) {
                             // Handle screening answers errors
+                            // Each array index corresponds to a screening question in order
+                            const screeningQuestions = form.querySelectorAll('[data-question-id]');
+                            
                             errors.forEach(function(error, index) {
                                 if (error && typeof error === 'object') {
+                                    // Get the question ID from the corresponding question element
+                                    const questionEl = screeningQuestions[index];
+                                    const questionId = questionEl ? questionEl.dataset.questionId : null;
+                                    
                                     Object.keys(error).forEach(function(field) {
                                         const fieldErrors = error[field];
+                                        const errorMessage = Array.isArray(fieldErrors) ? fieldErrors[0] : fieldErrors;
                                         console.error(`Screening answer ${index} - ${field}:`, fieldErrors);
+                                        
+                                        // Display error for this question
+                                        if (questionId) {
+                                            const questionErrorEl = document.getElementById(`question_${questionId}-error`);
+                                            if (questionErrorEl) {
+                                                questionErrorEl.textContent = errorMessage;
+                                                questionErrorEl.classList.remove('hidden');
+                                            }
+                                            
+                                            // Highlight the question field
+                                            const questionField = form.querySelector(`[data-question-id="${questionId}"]`);
+                                            if (questionField) {
+                                                questionField.classList.remove('border-code-block-bg');
+                                                questionField.classList.add('border-red-600');
+                                            }
+                                            
+                                            // Track first error for scrolling
+                                            if (!firstErrorElement && questionErrorEl) {
+                                                firstErrorElement = questionErrorEl;
+                                            }
+                                        }
                                     });
+                                } else if (error && typeof error === 'string') {
+                                    // Generic error for screening answers
+                                    const questionEl = screeningQuestions[index];
+                                    const questionId = questionEl ? questionEl.dataset.questionId : null;
+                                    if (questionId) {
+                                        const questionErrorEl = document.getElementById(`question_${questionId}-error`);
+                                        if (questionErrorEl) {
+                                            questionErrorEl.textContent = error;
+                                            questionErrorEl.classList.remove('hidden');
+                                        }
+                                        if (!firstErrorElement && questionErrorEl) {
+                                            firstErrorElement = questionErrorEl;
+                                        }
+                                    }
                                 }
                             });
-                        }
-                        
-                        const errorElement = document.getElementById(`${fieldName}-error`);
-                        if (errorElement && errors && errors[0]) {
-                            if (typeof errors[0] === 'string') {
-                                errorElement.textContent = errors[0];
-                            } else if (Array.isArray(errors)) {
-                                errorElement.textContent = JSON.stringify(errors);
+                        } else if (errors && errors[0]) {
+                            // Handle regular field errors
+                            const errorElement = document.getElementById(`${fieldName}-error`);
+                            const fieldElement = document.getElementById(fieldName);
+                            
+                            if (errorElement) {
+                                if (typeof errors[0] === 'string') {
+                                    errorElement.textContent = errors[0];
+                                } else {
+                                    errorElement.textContent = JSON.stringify(errors[0]);
+                                }
+                                // Track first error for scrolling
+                                if (!firstErrorElement && errorElement) {
+                                    firstErrorElement = errorElement;
+                                }
+                            }
+                            
+                            // Add red border to the field
+                            if (fieldElement) {
+                                fieldElement.classList.remove('border-code-block-bg');
+                                fieldElement.classList.add('border-red-600');
+                                if (!firstErrorElement) {
+                                    firstErrorElement = fieldElement;
+                                }
                             }
                         }
                     });
+                    
+                    // Scroll to first error
+                    if (firstErrorElement) {
+                        firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                 }
 
-                if (data.error === 'validation_failed') {
-                    showFileError('Please check the console for validation errors and correct them.');
-                }
+                showFileError('Please correct the errors highlighted above and try again.');
             } else {
                 // Server error
                 if (submitBtn) {
@@ -677,12 +743,64 @@ document.addEventListener('DOMContentLoaded', function() {
             fileSuccess.classList.add('hidden');
         }
     }
+
+    function clearAllErrors() {
+        // Clear all field error messages and remove red borders
+        const errorElements = document.querySelectorAll('.error-message');
+        errorElements.forEach(function(el) {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+
+        // Remove red borders from all input fields
+        const inputFields = document.querySelectorAll('input, textarea, select');
+        inputFields.forEach(function(field) {
+            field.classList.remove('border-red-600');
+            field.classList.add('border-code-block-bg');
+        });
+
+        // Clear file error/success messages
+        clearFileMessages();
+    }
     
     function showDuplicateModal(message) {
         const modal = document.getElementById('duplicate-modal');
         const messageElement = document.getElementById('duplicate-message');
         messageElement.textContent = message;
         modal.classList.remove('hidden');
+    }
+
+    function showSuccessMessage(message) {
+        // Hide the form
+        const form = document.getElementById('application-form');
+        if (form) {
+            form.classList.add('hidden');
+        }
+
+        // Show success message
+        const successMessage = document.getElementById('application-success-message');
+        const messageText = document.getElementById('success-message-text');
+        const countdownEl = document.getElementById('countdown');
+
+        if (successMessage && messageText) {
+            messageText.textContent = message;
+            successMessage.classList.remove('hidden');
+
+            // Start countdown
+            let secondsLeft = 5;
+            const countdownInterval = setInterval(function() {
+                secondsLeft--;
+                if (countdownEl) {
+                    countdownEl.textContent = secondsLeft;
+                }
+
+                if (secondsLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    // Redirect to homepage
+                    window.location.href = '/';
+                }
+            }, 1000);
+        }
     }
 });
 

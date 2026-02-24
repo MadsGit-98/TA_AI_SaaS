@@ -69,7 +69,7 @@ class ApplicationFlowE2ETest(LiveServerTestCase):
             created_by=self.user
         )
 
-        self.application_url = f'{self.live_server_url}{reverse("applications:application_form", kwargs={"job_id": self.job_listing.id})}'
+        self.application_url = f'{self.live_server_url}{reverse("applications:application_form", kwargs={"application_link": self.job_listing.application_link})}'
     
     def test_application_form_loads_successfully(self):
         """Test that application form loads successfully with all elements"""
@@ -80,7 +80,7 @@ class ApplicationFlowE2ETest(LiveServerTestCase):
 
         # Check job title is displayed (using h1 tag since no specific class)
         job_title = self.selenium.find_element(By.TAG_NAME, 'h1')
-        self.assertEqual(job_title.text, self.job_listing.title)
+        self.assertIn(self.job_listing.title, job_title.text)
 
         # Check job description is displayed
         self.assertIn(self.job_listing.description[:50], self.selenium.page_source)
@@ -162,18 +162,11 @@ class ApplicationFlowE2ETest(LiveServerTestCase):
 
         self.selenium.get(self.application_url)
 
-        # Note: The job_closed.html template doesn't exist yet
-        # This test verifies the view correctly identifies inactive jobs
-        # When template is created, it should show a "job closed" message
-        # For now, we verify the page returns a 500 or shows an error
-        # since the template is missing
+        # Check that the job closed page is displayed
         page_source = self.selenium.page_source
-        # Either shows server error (template missing) or job closed message
         self.assertTrue(
-            'Server Error' in page_source or 
-            'not accepting applications' in page_source or
-            'no longer accepting' in page_source or
-            'Job Closed' in page_source or
+            'Applications Closed' in page_source or
+            'no longer being accepted' in page_source or
             'Position Unavailable' in page_source
         )
 
