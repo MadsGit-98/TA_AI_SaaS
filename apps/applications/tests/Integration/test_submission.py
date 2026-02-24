@@ -58,7 +58,7 @@ class ApplicationSubmissionIntegrationTest(TestCase):
             'screening_answers': [
                 {
                     'question_id': str(self.screening_question.id),
-                    'answer': 'I have 3 years of experience'
+                    'answer_text': 'I have 3 years of experience'
                 }
             ]
         }
@@ -99,7 +99,7 @@ class ApplicationSubmissionIntegrationTest(TestCase):
             'screening_answers': json.dumps([
                 {
                     'question_id': str(self.screening_question.id),
-                    'answer': 'I have 3 years of experience'
+                    'answer_text': 'I have 3 years of experience'
                 }
             ])
         }
@@ -110,52 +110,84 @@ class ApplicationSubmissionIntegrationTest(TestCase):
             format='multipart'
         )
 
-        # Print response for debugging
-        if response.status_code != 201:
-            print(f"Response: {response.data}")
-
         self.assertEqual(response.status_code, 201)
         self.assertIn('id', response.data)
         self.assertEqual(response.data['status'], 'submitted')
         self.assertIn('Application submitted successfully', response.data['message'])
-        
+
         # Verify applicant was created
         self.assertEqual(Applicant.objects.count(), 1)
         applicant = Applicant.objects.first()
         self.assertEqual(applicant.first_name, 'John')
         self.assertEqual(applicant.email, 'john.doe@gmail.com')
-    
+
+        # Verify screening answers were saved to ApplicationAnswer model
+        from apps.applications.models import ApplicationAnswer
+        self.assertEqual(ApplicationAnswer.objects.count(), 1)
+        answer = ApplicationAnswer.objects.first()
+        self.assertEqual(answer.applicant, applicant)
+        self.assertEqual(answer.question, self.screening_question)
+        self.assertEqual(answer.answer_text, 'I have 3 years of experience')
+
     def test_submit_application_inactive_job(self):
         """Test application submission to inactive job"""
         self.job_listing.status = 'Inactive'
         self.job_listing.save()
-        
+
         resume = self.create_valid_resume()
-        
+
+        # Build data with JSON-encoded screening_answers for multipart form
+        data = {
+            'job_listing_id': str(self.job_listing.id),
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'email': 'john.doe@gmail.com',
+            'phone': '+12025551234',
+            'country_code': 'US',
+            'resume': resume,
+            'screening_answers': json.dumps([
+                {
+                    'question_id': str(self.screening_question.id),
+                    'answer_text': 'I have 3 years of experience'
+                }
+            ])
+        }
+
         response = self.client.post(
             '/api/applications/',
-            {
-                **self.valid_application_data,
-                'resume': resume
-            }
+            data,
+            format='multipart'
         )
-        
+
         self.assertEqual(response.status_code, 400)
         self.assertIn('error', response.data)
     
     def test_submit_application_missing_required_fields(self):
         """Test application submission with missing required fields"""
         resume = self.create_valid_resume()
-        
-        # Remove required field
-        data = self.valid_application_data.copy()
-        del data['first_name']
-        
+
+        # Build data with JSON-encoded screening_answers for multipart form
+        data = {
+            'job_listing_id': str(self.job_listing.id),
+            'last_name': 'Doe',
+            'email': 'john.doe@gmail.com',
+            'phone': '+12025551234',
+            'country_code': 'US',
+            'resume': resume,
+            'screening_answers': json.dumps([
+                {
+                    'question_id': str(self.screening_question.id),
+                    'answer_text': 'I have 3 years of experience'
+                }
+            ])
+        }
+
         response = self.client.post(
             '/api/applications/',
-            {**data, 'resume': resume}
+            data,
+            format='multipart'
         )
-        
+
         self.assertEqual(response.status_code, 400)
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error'], 'validation_failed')
@@ -163,15 +195,30 @@ class ApplicationSubmissionIntegrationTest(TestCase):
     def test_submit_application_invalid_email(self):
         """Test application submission with invalid email"""
         resume = self.create_valid_resume()
-        
-        data = self.valid_application_data.copy()
-        data['email'] = 'invalid-email'
-        
+
+        # Build data with JSON-encoded screening_answers for multipart form
+        data = {
+            'job_listing_id': str(self.job_listing.id),
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'email': 'invalid-email',
+            'phone': '+12025551234',
+            'country_code': 'US',
+            'resume': resume,
+            'screening_answers': json.dumps([
+                {
+                    'question_id': str(self.screening_question.id),
+                    'answer_text': 'I have 3 years of experience'
+                }
+            ])
+        }
+
         response = self.client.post(
             '/api/applications/',
-            {**data, 'resume': resume}
+            data,
+            format='multipart'
         )
-        
+
         self.assertEqual(response.status_code, 400)
         self.assertIn('details', response.data)
         self.assertIn('email', response.data['details'])
