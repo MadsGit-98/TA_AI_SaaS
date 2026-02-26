@@ -292,7 +292,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Function to load question data for editing
+/**
+ * Populate the screening-question form with data for the given question ID.
+ *
+ * Fetches the question for editing and fills the form fields (question text, type, required flag,
+ * hidden job/question IDs, and choices). Reveals the choices section when appropriate and updates
+ * the submit button text to indicate editing. Shows a user-facing error if required form elements
+ * are missing or the load fails.
+ *
+ * @param {string} questionId - The ID of the screening question to load into the form.
+ */
 async function loadQuestionData(questionId) {
     // Get job ID from hidden field (should be populated by DOMContentLoaded handler)
     const jobIdElem = document.getElementById('job_id');
@@ -341,11 +350,17 @@ async function loadQuestionData(questionId) {
                 }
 
                 if (question.choices && question.choices.length > 0) {
-                    // Filter out choices with missing text and map to safe values
+                    // Handle both string choices and object choices (with text property)
                     const validChoices = question.choices
-                        .filter(choice => choice && choice.text !== undefined && choice.text !== null)
-                        .map(choice => String(choice.text).trim())
-                        .filter(text => text !== ''); // Remove empty strings after trimming
+                        .map(choice => {
+                            if (typeof choice === 'string') {
+                                return choice.trim();
+                            } else if (choice && choice.text !== undefined && choice.text !== null) {
+                                return String(choice.text).trim();
+                            }
+                            return null;
+                        })
+                        .filter(Boolean); // Remove all falsy values (null, undefined, empty strings)
 
                     if (validChoices.length > 0) {
                         const choicesText = validChoices.join('\n');

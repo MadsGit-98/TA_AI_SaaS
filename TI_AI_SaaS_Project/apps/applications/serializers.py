@@ -1,0 +1,388 @@
+from rest_framework import serializers
+from pathlib import Path
+from apps.applications.models import Applicant, ApplicationAnswer
+from apps.jobs.models import ScreeningQuestion, JobListing
+from apps.applications.utils.file_validation import validate_resume_file
+from apps.applications.utils.email_validation import validate_email
+from apps.applications.utils.phone_validation import validate_phone
+from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+
+
+class ScreeningQuestionSerializer(serializers.ModelSerializer):
+    """Serializer for ScreeningQuestion model (read-only)."""
+    
+    class Meta:
+        model = ScreeningQuestion
+        fields = ['id', 'question_text', 'question_type', 'required', 'order', 'choices']
+        read_only_fields = fields
+
+
+class ApplicationAnswerSerializer(serializers.ModelSerializer):
+    """Serializer for ApplicationAnswer model."""
+
+    question_id = serializers.UUIDField(write_only=True)
+
+    class Meta:
+        model = ApplicationAnswer
+        fields = ['id', 'question_id', 'answer_text', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate_question_id(self, value):
+        """
+        Validate that a ScreeningQuestion with the given id exists and return it.
+        
+        Parameters:
+            value (UUID|int): ID of the ScreeningQuestion to validate.
+        
+        Returns:
+            ScreeningQuestion: The matching ScreeningQuestion instance.
+        
+        Raises:
+            serializers.ValidationError: If no ScreeningQuestion with the given id exists ("Question not found.").
+        """
+        try:
+            question = ScreeningQuestion.objects.get(id=value)
+            return question
+        except ScreeningQuestion.DoesNotExist:
+            raise serializers.ValidationError("Question not found.")
+
+    def validate_answer_text(self, value):
+        """
+        Validate that an answer text is present and within allowed length.
+        
+        Checks that `value` is not empty or whitespace-only and does not exceed 5000 characters.
+        
+        Parameters:
+            value (str): The answer text to validate.
+        
+        Returns:
+            str: The validated `value`.
+        
+        Raises:
+            serializers.ValidationError: If `value` is empty or longer than 5000 characters.
+        """
+        if not value or len(value.strip()) == 0:
+            raise serializers.ValidationError("Answer cannot be empty.")
+        if len(value) > 5000:
+            raise serializers.ValidationError("Answer cannot exceed 5000 characters.")
+        return value
+
+    def validate(self, attrs):
+        """
+        Enforces minimum answer length for non-short screening questions.
+        
+        If both `question_id` and `answer_text` are present, ensures answers for question types other than YES_NO, CHOICE, MULTIPLE_CHOICE, and FILE_UPLOAD are at least 10 characters long.
+        
+        Returns:
+            attrs (dict): The validated attributes.
+        
+        Raises:
+            serializers.ValidationError: If `answer_text` is shorter than 10 characters for applicable question types.
+        """
+        question = attrs.get('question_id')
+        answer_text = attrs.get('answer_text')
+
+        if question and answer_text:
+            # Short answer types that don't require minimum length (only need to be non-empty)
+            # These match the QUESTION_TYPE_CHOICES in ScreeningQuestion model
+            short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD']
+
+            if question.question_type not in short_answer_types:
+                # TEXT type requires minimum 10 characters
+                if len(answer_text) < 10:
+                    raise serializers.ValidationError({
+                        'answer_text': "Answer must be at least 10 characters."
+                    })
+
+        return attrs
+
+
+class ApplicantSerializer(serializers.ModelSerializer):
+    """Serializer for Applicant model with file upload and validation."""
+
+    job_listing_id = serializers.UUIDField(write_only=True)
+    screening_answers = ApplicationAnswerSerializer(many=True, write_only=True, required=False, default=list)
+    resume = serializers.FileField(write_only=True)
+    country_code = serializers.CharField(write_only=True, required=False, default='US')
+
+    class Meta:
+        model = Applicant
+        fields = [
+            'id', 'job_listing_id', 'first_name', 'last_name', 'email',
+            'phone', 'country_code', 'resume', 'screening_answers',
+            'submitted_at', 'status'
+        ]
+        read_only_fields = ['id', 'submitted_at', 'status']
+
+    def to_internal_value(self, data):
+        """
+        Parse incoming data for applicant creation, normalizing and validating the write-only nested `screening_answers` field.
+        
+        If `screening_answers` is provided as a JSON string (common with multipart/form-data), it is parsed into a list. If `screening_answers` is a list, each entry is validated using ApplicationAnswerSerializer and the validated list is attached to the returned internal value under the `screening_answers` key so downstream logic receives canonical, validated data.
+        
+        Parameters:
+            data (dict): Raw input data from the request.
+        
+        Returns:
+            dict: The internal representation produced by the parent serializer with an added `screening_answers` key containing the validated answers.
+        
+        Raises:
+            serializers.ValidationError: If `screening_answers` contains invalid JSON or nested validation fails; the error payload is keyed under `screening_answers`.
+        """
+        if 'screening_answers' in data and isinstance(data['screening_answers'], str):
+            try:
+                import json
+                data = data.copy()
+                data['screening_answers'] = json.loads(data['screening_answers'])
+            except (json.JSONDecodeError, ValueError) as e:
+                raise serializers.ValidationError({
+                    'screening_answers': f'Invalid JSON format: {str(e)}'
+                })
+        
+        # Manually validate nested screening_answers serializer
+        validated_screening_answers = []
+        if 'screening_answers' in data and isinstance(data['screening_answers'], list):
+            data = data.copy()
+            answer_serializer = ApplicationAnswerSerializer(many=True, data=data['screening_answers'])
+            if answer_serializer.is_valid():
+                validated_screening_answers = answer_serializer.validated_data
+            else:
+                raise serializers.ValidationError({
+                    'screening_answers': answer_serializer.errors
+                })
+        
+        # Call parent to_internal_value to validate other fields
+        result = super().to_internal_value(data)
+        
+        # Manually add the validated screening answers to the result
+        # This is needed because DRF doesn't automatically handle nested serializers
+        # for write-only fields that aren't on the model
+        if hasattr(result, '_dict'):
+            result._dict['screening_answers'] = validated_screening_answers
+        elif isinstance(result, dict):
+            result['screening_answers'] = validated_screening_answers
+        
+        return result
+    
+    def validate_job_listing_id(self, value):
+        """
+        Validate that `value` identifies an existing, active JobListing.
+        
+        Parameters:
+            value (UUID): The UUID of the job listing to validate.
+        
+        Returns:
+            JobListing: The matching JobListing instance when it exists and its status is 'Active'.
+        
+        Raises:
+            serializers.ValidationError: If no JobListing with the given id exists ("Job listing not found.")
+                or if the JobListing exists but its status is not 'Active'
+                ("This job is no longer accepting applications.").
+        """
+        try:
+            job_listing = JobListing.objects.get(id=value)
+            if job_listing.status != 'Active':
+                raise serializers.ValidationError("This job is no longer accepting applications.")
+            return job_listing
+        except JobListing.DoesNotExist:
+            raise serializers.ValidationError("Job listing not found.")
+    
+    def validate_email(self, value):
+        """
+        Validate an email address's format and MX records.
+        
+        Parameters:
+            value (str): Email address to validate.
+        
+        Returns:
+            str: The validated (and possibly normalized) email address.
+        """
+        return validate_email(value)
+    
+    def validate_phone(self, value):
+        """
+        Validate and normalize an input phone number using the serializer's country_code (default 'US').
+        
+        Parameters:
+            value (str): Raw phone number input.
+        
+        Returns:
+            str: Normalized, validated phone number.
+        """
+        country_code = self.initial_data.get('country_code', 'US')
+        return validate_phone(value, country_code)
+    
+    def validate_resume(self, value):
+        """
+        Validate a resume file and record its file extension for later use.
+        
+        Parameters:
+            value (File): Uploaded resume file to validate.
+        
+        Returns:
+            File: The validated resume file returned by validate_resume_file.
+        """
+        validated_file = validate_resume_file(value)
+        # Store the validated extension for use in create()
+        self.validated_file_extension = Path(value.name).suffix.lower().lstrip('.')
+        return validated_file
+
+    def validate(self, attrs):
+        """
+        Ensure all required screening questions for the provided job_listing_id have corresponding answers in screening_answers.
+        
+        Validates cross-field dependency between `job_listing_id` and `screening_answers`: if both are present, finds required ScreeningQuestion ids for the job and verifies each has an answer in `screening_answers`. If any required question is missing an answer, raises a ValidationError identifying the missing question ids.
+        
+        Parameters:
+            attrs (dict): Incoming validated field values from the serializer.
+        
+        Returns:
+            dict: The (possibly unchanged) `attrs` mapping when validation succeeds.
+        
+        Raises:
+            serializers.ValidationError: If one or more required screening questions are not answered. The error will be attached to the `screening_answers` field and list the missing question ids.
+        """
+        job_listing = attrs.get('job_listing_id')
+        screening_answers = attrs.get('screening_answers')
+
+        if job_listing and screening_answers:
+            # Get all required questions for this job
+            required_questions = ScreeningQuestion.objects.filter(
+                job_listing=job_listing,
+                required=True
+            ).values_list('id', flat=True)
+
+            # Get answered question IDs
+            answered_question_ids = {
+                answer['question_id'].id if hasattr(answer['question_id'], 'id') else answer['question_id']
+                for answer in screening_answers
+            }
+
+            # Check for missing required questions
+            missing_questions = set(required_questions) - set(answered_question_ids)
+            if missing_questions:
+                raise serializers.ValidationError({
+                    'screening_answers': f"Missing required answers for questions: {missing_questions}"
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        """
+        Create an Applicant record, persist the uploaded resume file, and create ApplicationAnswer records for any provided screening answers.
+        
+        Parameters:
+            validated_data (dict): Validated input containing applicant fields. Expected keys:
+                - screening_answers (list): Optional list of dicts each with `question_id` (ScreeningQuestion instance) and `answer_text` (str).
+                - job_listing_id (JobListing): JobListing instance to associate the applicant with.
+                - resume (file-like): Uploaded resume file.
+                - other Applicant model fields as applicable.
+                Note: `country_code` is ignored and removed before creation.
+        
+        Description:
+            - Computes a file hash for the resume file.
+            - Extracts text from the resume using the serializer's pre-validated `validated_file_extension` (`pdf` or `docx`) and redacts confidential information.
+            - Creates the Applicant with the resume hash and redacted parsed text, saves the resume file to the Applicant, and creates one ApplicationAnswer per screening answer.
+        
+        Returns:
+            Applicant: The created Applicant instance.
+        
+        Raises:
+            serializers.ValidationError: If the resume file extension is unsupported.
+        """
+        # Get screening answers (may be empty list if no questions)
+        screening_answers = validated_data.pop('screening_answers', [])
+        job_listing = validated_data.pop('job_listing_id')
+        resume_file = validated_data.pop('resume')
+        # Remove country_code as it's write-only and not a model field
+        validated_data.pop('country_code', None)
+
+        # Calculate file hash for duplication detection
+        file_content = resume_file.read()
+        file_hash = ResumeParserService.calculate_file_hash(file_content)
+
+        # Extract and redact resume text using pre-validated extension
+        file_extension = self.validated_file_extension
+        if file_extension == 'pdf':
+            parsed_text = ResumeParserService.extract_text_from_pdf(file_content)
+        elif file_extension == 'docx':
+            parsed_text = ResumeParserService.extract_text_from_docx(file_content)
+        else:
+            # This should never happen due to validate_resume()
+            raise serializers.ValidationError("Unsupported file format.")
+
+        # Redact confidential information
+        redacted_text = ConfidentialInfoFilter.redact(parsed_text)
+
+        # Reset file pointer to the beginning before saving
+        resume_file.seek(0)
+
+        # Create applicant
+        applicant = Applicant.objects.create(
+            job_listing=job_listing,
+            resume_file_hash=file_hash,
+            resume_parsed_text=redacted_text,
+            **validated_data
+        )
+
+        # Save the resume file after creating the object
+        applicant.resume_file.save(resume_file.name, resume_file, save=True)
+
+        # Create answers for each screening question response
+        for answer_data in screening_answers:
+            question = answer_data['question_id']
+            answer_text = answer_data['answer_text']
+
+            ApplicationAnswer.objects.create(
+                applicant=applicant,
+                question=question,
+                answer_text=answer_text
+            )
+
+        return applicant
+
+
+class ApplicantCreateResponseSerializer(serializers.Serializer):
+    """Serializer for applicant creation response."""
+
+    id = serializers.UUIDField()
+    status = serializers.CharField()
+    submitted_at = serializers.DateTimeField()
+    access_token = serializers.UUIDField()
+    message = serializers.CharField()
+
+
+class DuplicateCheckResponseSerializer(serializers.Serializer):
+    """Serializer for duplication check response."""
+    
+    valid = serializers.BooleanField()
+    checks = serializers.DictField()
+    errors = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class FileValidationRequestSerializer(serializers.Serializer):
+    """Serializer for file validation request."""
+    
+    job_listing_id = serializers.UUIDField()
+    resume = serializers.FileField()
+
+
+class ContactValidationRequestSerializer(serializers.Serializer):
+    """Serializer for contact validation request."""
+
+    job_listing_id = serializers.UUIDField()
+    email = serializers.EmailField()
+    phone = serializers.CharField()
+
+
+class ApplicationStatusSerializer(serializers.Serializer):
+    """
+    Lean serializer for application status endpoint.
+    
+    Returns only non-PII fields to prevent IDOR exposure.
+    Per security requirements: only status and submitted_at are exposed.
+    """
+
+    id = serializers.UUIDField()
+    status = serializers.CharField()
+    submitted_at = serializers.DateTimeField()

@@ -138,7 +138,21 @@ async function loadScreeningQuestions(jobId) {
     }
 }
 
-// Display screening questions in the UI
+/**
+ * Render a list of screening questions into the DOM element with ID "questionsList".
+ *
+ * When `questions` is empty or falsy, replaces the list with a "No screening questions added yet." placeholder.
+ * For each question, inserts a styled container showing the question text, a human-readable question type,
+ * whether it's required, an optional choices list (supports choices as strings or objects with a `text` property),
+ * and Edit/Delete action buttons with click handlers.
+ *
+ * @param {Array<Object>} questions - Array of question objects. Each object is expected to include:
+ *   - {number|string} id
+ *   - {string} question_text
+ *   - {string} question_type
+ *   - {boolean} required
+ *   - {Array<string|Object>} [choices] - Optional array of choices; each choice may be a string or an object with a `text` property.
+ */
 function displayScreeningQuestions(questions) {
     const questionsList = document.getElementById('questionsList');
     
@@ -200,7 +214,8 @@ function displayScreeningQuestions(questions) {
 
             question.choices.forEach(choice => {
                 const choiceItem = document.createElement('li');
-                choiceItem.textContent = choice.text; // Safe assignment
+                // Handle both string choices and object choices (with text property)
+                choiceItem.textContent = typeof choice === 'string' ? choice : (choice.text || '');
                 choicesList.appendChild(choiceItem);
             });
 
