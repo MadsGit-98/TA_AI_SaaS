@@ -5,27 +5,24 @@ Handles:
 - Application submission (public, unauthenticated)
 - File validation (async duplication check)
 - Contact validation (async duplication check)
-- Application status retrieval
 """
 
 import logging
 from django.db import IntegrityError, transaction
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from apps.applications.models import Applicant
 from apps.applications.throttles import (
     ApplicationSubmissionIPThrottle,
     ApplicationValidationIPThrottle,
-    ApplicationStatusRateThrottle,
 )
 from apps.applications.serializers import (
     ApplicantSerializer,
     ApplicantCreateResponseSerializer,
     FileValidationRequestSerializer,
     ContactValidationRequestSerializer,
-    ApplicationStatusSerializer,
 )
 from services.duplication_service import DuplicationService
 from apps.applications.tasks import send_application_confirmation_email
@@ -289,26 +286,3 @@ def validate_contact(request):
         },
         status=status.HTTP_200_OK
     )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-@throttle_classes([ApplicationStatusRateThrottle])
-def get_application_status(request, application_id):
-    """
-    Get application status by ID.
-
-    Used for post-submission confirmation page.
-    Requires authentication to prevent IDOR attacks.
-    Returns only non-PII fields (status, submitted_at).
-    Rate limited to prevent enumeration attacks.
-    """
-    try:
-        applicant = Applicant.objects.select_related('job_listing').get(id=application_id)
-        serializer = ApplicationStatusSerializer(applicant)
-        return Response(serializer.data)
-    except Applicant.DoesNotExist:
-        return Response(
-            {'error': 'not_found', 'message': 'Application not found.'},
-            status=status.HTTP_404_NOT_FOUND
-        )

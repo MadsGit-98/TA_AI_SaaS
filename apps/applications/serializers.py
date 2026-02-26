@@ -148,24 +148,54 @@ class ApplicantSerializer(serializers.ModelSerializer):
         job_listing = attrs.get('job_listing_id')
         screening_answers = attrs.get('screening_answers')
 
-        if job_listing and screening_answers:
-            # Get all required questions for this job
-            required_questions = ScreeningQuestion.objects.filter(
+        if not job_listing:
+            return attrs
+
+        # Get all required questions for this job
+        required_questions = list(
+            ScreeningQuestion.objects.filter(
                 job_listing=job_listing,
                 required=True
             ).values_list('id', flat=True)
+        )
 
-            # Get answered question IDs
-            answered_question_ids = {
-                answer['question_id'].id if hasattr(answer['question_id'], 'id') else answer['question_id']
-                for answer in screening_answers
-            }
+        # If there are required questions, screening_answers must be present and non-empty
+        if required_questions:
+            if not screening_answers:
+                raise serializers.ValidationError({
+                    'screening_answers': 'This job listing has required screening questions that must be answered.'
+                })
+
+            # Extract question IDs from answers (handle both dict with object or id)
+            answered_question_ids = set()
+            for answer in screening_answers:
+                # Handle question_id as dict with 'id' key, object with 'id' attribute, or raw UUID
+                if isinstance(answer, dict):
+                    qid = answer.get('question_id')
+                    if isinstance(qid, dict) and 'id' in qid:
+                        qid = qid['id']
+                    elif hasattr(qid, 'id'):
+                        qid = qid.id
+                elif hasattr(answer, 'question_id'):
+                    qid = answer.question_id
+                    if hasattr(qid, 'id'):
+                        qid = qid.id
+                else:
+                    qid = answer
+
+                # Verify the question belongs to this job_listing
+                if qid:
+                    if not ScreeningQuestion.objects.filter(id=qid, job_listing=job_listing).exists():
+                        raise serializers.ValidationError({
+                            'screening_answers': f'Question {qid} does not belong to this job listing or does not exist.'
+                        })
+                    answered_question_ids.add(qid)
 
             # Check for missing required questions
-            missing_questions = set(required_questions) - set(answered_question_ids)
+            missing_questions = set(required_questions) - answered_question_ids
             if missing_questions:
                 raise serializers.ValidationError({
-                    'screening_answers': f"Missing required answers for questions: {missing_questions}"
+                    'screening_answers': f'Missing required answers for questions: {missing_questions}'
                 })
 
         return attrs
