@@ -241,7 +241,8 @@ class ConfidentialInfoFilterDOBTests(SimpleTestCase):
         self.assertIn("12345", result)
 
     def test_redact_multiple_dobs_different_formats(self):
-        """Test multiple DOBs in different formats."""
-        text = "Person1: 01/15/1990, Person2: 1985-06-20, Person3: March 10, 1988"
+        """Test multiple DOBs in different formats with proper context prefixes."""
+        # DOB pattern now requires context prefix to avoid false positives
+        text = "Person1 DOB: 01/15/1990, Person2 DOB: 1985-06-20, Person3 Born: March 10, 1988"
         result = ConfidentialInfoFilter.redact(text)
         self.assertEqual(result.count("[DOB_REDACTED]"), 3)

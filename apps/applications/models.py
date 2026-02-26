@@ -1,5 +1,5 @@
 import uuid
-from django.db import models
+from django.db import models, IntegrityError
 import secrets
 import string
 
@@ -82,12 +82,48 @@ class Applicant(models.Model):
         ]
     
     def save(self, *args, **kwargs):
-        """Auto-generate reference_number and access_token if not set."""
-        if not self.reference_number:
-            self.reference_number = generate_reference_number()
-        if not self.access_token:
-            self.access_token = uuid.uuid4()
-        super().save(*args, **kwargs)
+        """
+        Auto-generate reference_number and access_token if not set.
+        
+        Retries up to 5 times if reference_number collision occurs.
+        """
+        max_attempts = 5
+        last_error = None
+        
+        for attempt in range(max_attempts):
+            try:
+                # Generate reference_number if not set
+                if not self.reference_number:
+                    self.reference_number = generate_reference_number()
+                
+                # Generate access_token if not set
+                if not self.access_token:
+                    self.access_token = uuid.uuid4()
+                
+                # Save the model
+                super().save(*args, **kwargs)
+                return  # Success - exit the method
+                
+            except IntegrityError as e:
+                # Check if this is specifically a reference_number uniqueness error
+                error_message = str(e).lower()
+                if 'reference_number' in error_message:
+                    # Store the error for potential re-raise
+                    last_error = e
+                    # Clear reference_number to force regeneration on next attempt
+                    self.reference_number = None
+                    # Continue to next retry attempt
+                    continue
+                else:
+                    # Not a reference_number error (e.g., email, phone, resume constraints)
+                    # Re-raise immediately without retry
+                    raise
+        
+        # All retry attempts exhausted - re-raise the last IntegrityError
+        if last_error:
+            raise IntegrityError(
+                f"Failed to generate unique reference_number after {max_attempts} attempts"
+            ) from last_error
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.job_listing.title}"
