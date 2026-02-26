@@ -80,7 +80,6 @@ MIDDLEWARE = [
     'apps.accounts.middleware.SessionTimeoutMiddleware',  # Session timeout middleware
     'social_django.middleware.SocialAuthExceptionMiddleware',  # Social auth middleware
     'apps.accounts.middleware.RBACMiddleware',  # Role-Based Access Control middleware
-    'apps.applications.middleware.rate_limit.RateLimitMiddleware',  # Rate limiting for applications
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -136,6 +135,10 @@ REST_FRAMEWORK = {
         'password_reset': '3/min',  # 3 password reset attempts per minute per IP+email
         'password_reset_confirm': '5/min',  # 5 password reset confirmation attempts per minute per IP
         'activation_attempts': '5/min',  # 5 activation attempts per minute per IP+UID
+        # Application submission throttles
+        'application_submission': '5/hour',  # 5 job applications per hour per IP
+        'application_validation': '30/hour',  # 30 validation requests per hour per IP
+        'application_status': '30/hour',  # 30 status checks per hour per user
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
@@ -404,11 +407,6 @@ else:
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
-
-# Rate Limiting Configuration
-RATE_LIMIT_WINDOW = env.int('RATE_LIMIT_WINDOW', default=3600)  # 1 hour in seconds
-RATE_LIMIT_MAX = env.int('RATE_LIMIT_MAX', default=5)  # 5 submissions per window
-
 
 # Logging configuration
 LOGGING = {

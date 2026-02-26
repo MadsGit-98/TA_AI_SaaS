@@ -13,8 +13,12 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.throttling import UserRateThrottle
 from apps.applications.models import Applicant
+from apps.applications.throttles import (
+    ApplicationSubmissionIPThrottle,
+    ApplicationValidationIPThrottle,
+    ApplicationStatusRateThrottle,
+)
 from apps.applications.serializers import (
     ApplicantSerializer,
     ApplicantCreateResponseSerializer,
@@ -29,24 +33,9 @@ from services.resume_parsing_service import ResumeParserService
 logger = logging.getLogger(__name__)
 
 
-class ApplicationStatusRateThrottle(UserRateThrottle):
-    """Custom throttle for application status endpoint to prevent enumeration."""
-    rate = '30/hour'  # Limit to 30 status checks per hour per user
-
-
-class ApplicationSubmissionRateThrottle(UserRateThrottle):
-    """Custom throttle for application submission endpoint to prevent spam."""
-    rate = '10/hour'  # Limit to 10 submissions per hour per user
-
-
-class ApplicationValidationRateThrottle(UserRateThrottle):
-    """Custom throttle for validation endpoints to prevent enumeration attacks."""
-    rate = '30/hour'  # Limit to 30 validation requests per hour per user
-
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@throttle_classes([ApplicationSubmissionRateThrottle])
+@throttle_classes([ApplicationSubmissionIPThrottle])
 def submit_application(request):
     """
     Submit a new application (public endpoint).
@@ -142,7 +131,7 @@ def submit_application(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@throttle_classes([ApplicationValidationRateThrottle])
+@throttle_classes([ApplicationValidationIPThrottle])
 def validate_file(request):
     """
     Validate uploaded file and check for duplicates.
@@ -225,7 +214,7 @@ def validate_file(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@throttle_classes([ApplicationValidationRateThrottle])
+@throttle_classes([ApplicationValidationIPThrottle])
 def validate_contact(request):
     """
     Validate contact information and check for duplicates.
