@@ -165,7 +165,13 @@ class DuplicationIntegrationTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.data.get('error'), 'duplicate_detected')
+        # Verify generic duplicate response (privacy-preserving, doesn't reveal which field)
+        self.assertEqual(response.data.get('valid'), False)
+        self.assertTrue(response.data.get('checks', {}).get('duplicate_detected'))
+        errors = response.data.get('errors', [])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].get('code'), 'duplicate_detected')
+        self.assertIn('similar contact information', errors[0].get('message', ''))
 
 
 if __name__ == '__main__':

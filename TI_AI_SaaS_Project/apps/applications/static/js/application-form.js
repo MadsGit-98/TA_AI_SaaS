@@ -32,11 +32,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize country code selector (sync select with hidden input)
     if (countryCodeSelect && countryCodeInput) {
+        // Sync on change
         countryCodeSelect.addEventListener('change', function() {
             countryCodeInput.value = countryCodeSelect.value;
         });
-        // Set initial value
-        countryCodeInput.value = countryCodeSelect.value;
+        // Initialize hidden input from selected option on page load
+        countryCodeInput.value = countryCodeSelect.value || '';
     }
 
     // File validation constants
@@ -299,6 +300,22 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function validateForm() {
         let isValid = true;
+
+        // Validate country code selector (ensure it's not the placeholder option)
+        if (countryCodeSelect && countryCodeInput) {
+            if (!countryCodeSelect.value || countryCodeSelect.value === '') {
+                isValid = false;
+                const countryError = document.getElementById('country_code-error');
+                if (countryError) {
+                    countryError.textContent = 'Please select a country';
+                }
+                countryCodeSelect.classList.remove('border-code-block-bg');
+                countryCodeSelect.classList.add('border-red-600');
+            } else {
+                // Ensure hidden input matches selected option
+                countryCodeInput.value = countryCodeSelect.value;
+            }
+        }
 
         // Validate all required fields
         const requiredFields = form.querySelectorAll('[required]');

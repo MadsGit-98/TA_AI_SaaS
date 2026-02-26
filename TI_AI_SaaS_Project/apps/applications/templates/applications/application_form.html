@@ -133,7 +133,7 @@
                                 <select id="country_code_select"
                                     class="w-40 px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base"
                                     aria-label="Country code">
-                                    <option value="" disabled>Select country</option>
+                                    <option value="" disabled {% if not default_country_code %}selected{% endif %}>Select country</option>
                                     <!-- North America -->
                                     <option value="US" data-dial-code="+1" {% if default_country_code == 'US' %}selected{% endif %}>🇺🇸 US +1</option>
                                     <option value="CA" data-dial-code="+1" {% if default_country_code == 'CA' %}selected{% endif %}>🇨🇦 CA +1</option>
@@ -214,7 +214,7 @@
                                     class="flex-1 px-4 py-3 border-2 border-code-block-bg rounded focus:outline-none focus:border-accent-cta text-primary-text bg-primary-bg text-base"
                                     placeholder="Enter phone number">
                             </div>
-                            <input type="hidden" id="country_code" name="country_code" value="{{ default_country_code|default:'US' }}">
+                            <input type="hidden" id="country_code" name="country_code" value="">
                             <span class="error-message text-red-600 text-sm mt-1 block" id="phone-error"></span>
                         </div>
                     </div>

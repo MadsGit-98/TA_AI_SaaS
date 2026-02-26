@@ -58,12 +58,15 @@ class ResumeParserService:
             if paragraph.text.strip():
                 text += paragraph.text + "\n"
         # Extract text from tables
+        # Use a set to track exact cell values seen (not substring matching)
+        seen_cells = set()
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     cell_text = cell.text.strip()
-                    if cell_text and cell_text not in text:
+                    if cell_text and cell_text not in seen_cells:
                         text += cell_text + "\n"
+                        seen_cells.add(cell_text)
         return text.strip()
     
     @staticmethod
@@ -92,9 +95,10 @@ class ConfidentialInfoFilter:
     # Email pattern
     EMAIL_PATTERN = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     
-    # Phone pattern - comprehensive regex to capture various formats
+    # Phone pattern - comprehensive regex to capture various formats with extensions
     # This is used as a first pass, then validated with phonenumbers library
     PHONE_PATTERN = (
+        r'(?:'
         # International format: +1 123 456 7890, +1-123-456-7890, +44 20 7946 0958
         r'\+\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}'
         r'|'
@@ -106,9 +110,10 @@ class ConfidentialInfoFilter:
         r'|'
         # Alphanumeric toll-free: 1-800-FLOWERS, 1-888-CALL-NOW
         r'1-\d{3}-[A-Z]{4,10}'
+        r')'
+        # Optional extension: x123, ext. 456, extension 789
+        r'(?:\s*(?:x|ext\.?|extension)\s*\d+)?'
     )
-    # Optional extension pattern (applied after main pattern match)
-    PHONE_EXTENSION_PATTERN = r'(?:\s*(?:x|ext\.?|extension)\s*\d+)'
     
     # SSN pattern (matches XXX-XX-XXXX, XXX XX XXXX, or XXXXXXXXXX)
     SSN_PATTERN = r'\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b'
@@ -116,12 +121,16 @@ class ConfidentialInfoFilter:
     # Month names for date patterns
     MONTH_NAMES = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
 
-    # Date of birth pattern - matches multiple formats:
-    # - MM/DD/YYYY or MM-DD-YYYY (US format)
-    # - YYYY-MM-DD (ISO format)
-    # - Month DD, YYYY or DD Month YYYY (written month format)
+    # Contextual prefix for DOB detection
+    # Matches: DOB, Date of Birth, Born, Birthday, D.O.B. (with optional punctuation/spaces)
+    DOB_CONTEXT_PREFIX = r'(?:DOB|Date\s+of\s+Birth|Born|Birthday|D\.?\s*O\.?\s*B\.?)[:.]?\s*'
+
+    # Date of birth pattern - matches multiple formats ONLY when preceded by DOB context:
+    # - DOB: MM/DD/YYYY or DOB: MM-DD-YYYY (US format)
+    # - DOB: YYYY-MM-DD (ISO format)
+    # - DOB: Month DD, YYYY or DOB: DD Month YYYY (written month format)
     DOB_PATTERN = (
-        r'\b(?:'
+        r'\b' + DOB_CONTEXT_PREFIX + r'(?:'
         # MM/DD/YYYY or MM-DD-YYYY
         r'(0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])[-/](19|20)\d{2}'
         r'|'
@@ -239,55 +248,50 @@ class ConfidentialInfoFilter:
     def _redact_phones(cls, text: str) -> str:
         """
         Redact phone numbers using regex pattern with phonenumbers library validation.
-        
+
         Supports:
         - US local formats: (123) 456-7890, 123-456-7890, 123.456.7890
         - International formats: +44 20 7946 0958, +91 98765 43210
-        - Extensions: x123, ext. 456, extension 789
+        - Extensions: x123, ext. 456, extension 789 (captured with phone)
         - Alphanumeric: 1-800-FLOWERS
         - Toll-free: 1-800-555-1234
-        
+
         Args:
             text: Raw text containing phone numbers
-            
+
         Returns:
-            Text with phone numbers redacted
+            Text with phone numbers redacted (including extensions)
         """
         def replace_phone(match):
             """Validate and replace phone numbers."""
             phone_str = match.group(0)
-            
+
             # For alphanumeric numbers (1-800-FLOWERS), redact directly
             if re.search(r'[A-Za-z]', phone_str):
                 return '[PHONE_REDACTED]'
-            
-            # Try to find and include extension
-            ext_match = re.search(cls.PHONE_EXTENSION_PATTERN, phone_str, re.IGNORECASE)
-            extension = ext_match.group(0) if ext_match else ''
-            base_number = phone_str[:ext_match.start()] if ext_match else phone_str
-            
+
+            # Validate with phonenumbers library
             try:
                 # Try to parse with default region US
-                parsed = phonenumbers.parse(base_number, "US")
-                # Use is_possible_number instead of is_valid_number to catch
-                # phone-like patterns (since resumes may contain fake/test numbers)
+                parsed = phonenumbers.parse(phone_str, "US")
+                # Use is_possible_number to catch phone-like patterns
                 if phonenumbers.is_possible_number(parsed):
-                    return '[PHONE_REDACTED]' + extension
+                    return '[PHONE_REDACTED]'
             except phonenumbers.NumberParseException:
                 pass
-            
+
             # Try parsing as international format (add + if missing)
-            if not base_number.startswith('+'):
+            if not phone_str.startswith('+'):
                 try:
-                    parsed = phonenumbers.parse('+' + base_number.replace('+', ''), "US")
+                    parsed = phonenumbers.parse('+' + phone_str.replace('+', ''), "US")
                     if phonenumbers.is_possible_number(parsed):
-                        return '[PHONE_REDACTED]' + extension
+                        return '[PHONE_REDACTED]'
                 except phonenumbers.NumberParseException:
                     pass
-            
+
             # If validation fails, return original string
             return phone_str
-        
+
         return re.sub(cls.PHONE_PATTERN, replace_phone, text, flags=re.IGNORECASE)
     
     @classmethod

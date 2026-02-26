@@ -71,4 +71,15 @@ Python 3.11: Follow standard conventions
 
 
 <!-- MANUAL ADDITIONS START -->
+- Always make sure that the urls paths in any of the tests match the configured urls in the urls.py of the application.
+- If there are some ratelimits that hinders the integration tests or any other tests use a teardown method that clears the cache so the rate limits are not reached during the testing
+- views.py must not contain APIs or endpoints it must only render views, APIs must be defined in api.py
+- Loggiing anywhere within the project must not contain any confidential information of users such as e-mail. Follow PII best practice.
+- JS are not to be embedded within HTML 
+- All code must comply with PEP 8 standards, with 90% unit test coverage minimum using Python's unittest module. [No imports are to be within the python functions]
+- Integration tests are not to use Mocks in any ways it must test integrating the newly implemented unit interactions with the old implemented units.
+- Tests must fall with their intended sub-directories.
+- Strictly use the django template language (DTL) in developing html pages.
+- Check imports before adding them if they already exist.
+
 <!-- MANUAL ADDITIONS END -->

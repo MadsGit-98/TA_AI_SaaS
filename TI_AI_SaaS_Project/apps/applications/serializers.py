@@ -27,51 +27,40 @@ class ApplicationAnswerSerializer(serializers.ModelSerializer):
         fields = ['id', 'question_id', 'answer_text', 'created_at']
         read_only_fields = ['id', 'created_at']
 
-    def to_internal_value(self, data):
-        """Parse and validate nested serializer data."""
-        # Initialize question instance attribute
-        self._question_instance = None
-        return super().to_internal_value(data)
-
     def validate_question_id(self, value):
         """Validate that the question exists."""
         try:
             question = ScreeningQuestion.objects.get(id=value)
-            # Store the question instance for use in validate_answer_text
-            self._question_instance = question
             return question
         except ScreeningQuestion.DoesNotExist:
             raise serializers.ValidationError("Question not found.")
 
     def validate_answer_text(self, value):
-        """Validate answer length based on question type."""
+        """Validate basic answer constraints (non-empty, max length)."""
         if not value or len(value.strip()) == 0:
             raise serializers.ValidationError("Answer cannot be empty.")
         if len(value) > 5000:
             raise serializers.ValidationError("Answer cannot exceed 5000 characters.")
-
-        # Get the question object from instance attribute (set by validate_question_id)
-        question = getattr(self, '_question_instance', None)
-        
-        # Fallback: try to get question from initial_data
-        if not question and hasattr(self, 'initial_data') and isinstance(self.initial_data, dict):
-            question_id = self.initial_data.get('question_id')
-            if question_id and hasattr(question_id, 'id'):
-                question = question_id
-
-        # Short answer types that don't require minimum length (only need to be non-empty)
-        # These match the QUESTION_TYPE_CHOICES in ScreeningQuestion model
-        short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD']
-        
-        if question and question.question_type in short_answer_types:
-            # Short answer types only need to be non-empty (already checked above)
-            pass
-        else:
-            # TEXT type requires minimum 10 characters (temporarily lowered for testing)
-            if len(value) < 10:
-                raise serializers.ValidationError("Answer must be at least 10 characters.")
-
         return value
+
+    def validate(self, attrs):
+        """Validate answer length based on question type."""
+        question = attrs.get('question_id')
+        answer_text = attrs.get('answer_text')
+
+        if question and answer_text:
+            # Short answer types that don't require minimum length (only need to be non-empty)
+            # These match the QUESTION_TYPE_CHOICES in ScreeningQuestion model
+            short_answer_types = ['YES_NO', 'CHOICE', 'MULTIPLE_CHOICE', 'FILE_UPLOAD']
+
+            if question.question_type not in short_answer_types:
+                # TEXT type requires minimum 10 characters
+                if len(answer_text) < 10:
+                    raise serializers.ValidationError({
+                        'answer_text': "Answer must be at least 10 characters."
+                    })
+
+        return attrs
 
 
 class ApplicantSerializer(serializers.ModelSerializer):
@@ -225,12 +214,6 @@ class ApplicantSerializer(serializers.ModelSerializer):
         for answer_data in screening_answers:
             question = answer_data['question_id']
             answer_text = answer_data['answer_text']
-
-            # Handle FILE_UPLOAD questions - store file path or placeholder
-            if answer_data.get('file_upload'):
-                # For file upload questions, store a reference to the uploaded file
-                # The actual file is stored in FormData and should be handled separately
-                answer_text = f"[File uploaded for question {question.id}]"
 
             ApplicationAnswer.objects.create(
                 applicant=applicant,

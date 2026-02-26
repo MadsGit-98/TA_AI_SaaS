@@ -351,7 +351,7 @@ async function loadQuestionData(questionId) {
                             }
                             return null;
                         })
-                        .filter(text => text !== ''); // Remove empty/null strings
+                        .filter(Boolean); // Remove all falsy values (null, undefined, empty strings)
 
                     if (validChoices.length > 0) {
                         const choicesText = validChoices.join('\n');

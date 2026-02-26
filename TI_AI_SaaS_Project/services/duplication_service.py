@@ -113,6 +113,16 @@ class DuplicationService:
             'file_extension': None
         }
 
+        # Early guard: Validate file_content is not None and is bytes
+        if file_content is None or not isinstance(file_content, (bytes, bytearray)):
+            result['valid'] = False
+            result['errors'].append({
+                'field': 'resume',
+                'code': 'invalid_file_content',
+                'message': 'Invalid file content. Please upload a valid file.'
+            })
+            return result
+
         # Get file extension using robust method
         file_extension = os.path.splitext(filename)[1].lstrip('.').lower() if filename else ''
         result['file_extension'] = file_extension
