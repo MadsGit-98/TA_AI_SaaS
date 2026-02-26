@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'apps.analysis',
     'apps.subscription',
     'django_extensions',
+    'storages',  # For S3/GCS storage support
 ]
 
 MIDDLEWARE = [
@@ -134,6 +135,9 @@ REST_FRAMEWORK = {
         'password_reset': '3/min',  # 3 password reset attempts per minute per IP+email
         'password_reset_confirm': '5/min',  # 5 password reset confirmation attempts per minute per IP
         'activation_attempts': '5/min',  # 5 activation attempts per minute per IP+UID
+        # Application submission throttles
+        'application_submission': '5/hour',  # 5 job applications per hour per IP
+        'application_validation': '30/hour',  # 30 validation requests per hour per IP
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
@@ -370,8 +374,65 @@ CSP_FORM_ACTION = ("'self'",)
 # For Develeopment Testing Purposes, To be removed at production
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = '127.0.0.1'
-EMAIL_PORT = 1025 # MailHog's port
+EMAIL_PORT = 1025 # MailHog's default port
 
+# Django Storages Configuration (S3/GCS compatible)
+# Default to local filesystem storage for development
+STORAGE_BACKEND = env('STORAGE_BACKEND', default='local')  # 'local', 's3', or 'gcs'
+
+# Django 4.2+ uses STORAGES dictionary instead of DEFAULT_FILE_STORAGE
+if STORAGE_BACKEND == 's3':
+    # S3 backend configuration
+    AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='')
+    AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='us-east-1')
+    AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
+    AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    AWS_LOCATION = 'applications/resumes'
+    
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+elif STORAGE_BACKEND == 'gcs':
+    # Google Cloud Storage backend configuration
+    GS_BUCKET_NAME = env('GS_BUCKET_NAME', default='')
+    GS_PROJECT_ID = env('GS_PROJECT_ID', default='')
+    GS_CREDENTIALS = None  # Will use default credentials from environment
+    GS_LOCATION = 'applications/resumes'
+    
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.gcloud.GoogleCloudStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+else:
+    # Local filesystem storage for development
+    MEDIA_ROOT = BASE_DIR / 'media'
+    MEDIA_URL = '/media/'
+    
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
+# File Upload Settings
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB max
 
 # Logging configuration
 LOGGING = {

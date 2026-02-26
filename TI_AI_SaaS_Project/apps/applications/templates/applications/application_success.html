@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Application Submitted - {{ job.title }}{% endblock %}
+
+{% block content %}
+<div class="success-container">
+    <div class="success-icon">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#080707" stroke-width="2" role="img" aria-label="Success checkmark">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+    </div>
+    
+    <h1>Application Submitted Successfully!</h1>
+    
+    <p class="success-message">
+        Thank you, {{ applicant.first_name }}! Your application for the position of 
+        <strong>{{ job.title }}</strong> has been received.
+    </p>
+    
+    <div class="confirmation-details">
+        <h2>Confirmation Details</h2>
+        <div class="detail-row">
+            <span class="label">Reference Number:</span>
+            <span class="value">{{ applicant.reference_number }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Position:</span>
+            <span class="value">{{ job.title }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Submitted:</span>
+            <span class="value">{{ applicant.submitted_at|date:"F d, Y \a\t H:i" }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Confirmation Email:</span>
+            <span class="value">Sent to {{ applicant.email }}</span>
+        </div>
+    </div>
+    
+    <div class="next-steps">
+        <h2>What Happens Next?</h2>
+        <ol class="steps-list">
+            <li>
+                <strong>Application Review</strong>
+                <p>Our AI system analyzes your resume against the job requirements</p>
+            </li>
+            <li>
+                <strong>Specialist Review</strong>
+                <p>Our Talent Acquisition Specialist reviews qualified candidates</p>
+            </li>
+            <li>
+                <strong>Next Steps</strong>
+                <p>Selected candidates will be contacted for interviews</p>
+            </li>
+        </ol>
+    </div>
+    
+    <div class="contact-info">
+        <p>
+            We've sent a confirmation email to <strong>{{ applicant.email }}</strong>. 
+            If you don't receive it within a few minutes, please check your spam folder.
+        </p>
+    </div>
+    
+    <div class="action-buttons">
+        <a href="/" class="btn btn-primary">Return to Home</a>
+        <a href="{% url 'dashboard_jobs:dashboard' %}" class="btn btn-secondary">View Job Listings</a>
+    </div>
+</div>
+{% endblock %}

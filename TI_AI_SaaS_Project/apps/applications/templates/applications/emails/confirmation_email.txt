@@ -1,0 +1,29 @@
+APPLICATION RECEIVED
+====================
+
+Dear {{ applicant.first_name }} {{ applicant.last_name }},
+
+Thank you for applying! We have successfully received your application for the position of {{ job_listing.title }}.
+
+APPLICATION DETAILS
+-------------------
+Position: {{ job_listing.title }}
+Submitted: {{ submitted_at|date:"F d, Y at H:i" }}
+Reference Number: {{ applicant.reference_number }}
+
+Our team will review your application carefully. If your qualifications match our requirements, we will contact you at the email or phone number you provided.
+
+WHAT HAPPENS NEXT?
+------------------
+1. Our AI system analyzes your resume against the job requirements
+2. Our Talent Acquisition Specialist reviews qualified candidates
+3. Selected candidates will be contacted for the next steps
+
+Thank you for your interest in joining our team!
+
+Best regards,
+The Recruitment Team
+
+---
+This is an automated message. Please do not reply to this email.
+© {% now "Y" %} X-Crewter. All rights reserved.

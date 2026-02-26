@@ -1,0 +1,86 @@
+/* Application Form Custom Styles */
+/* Minimal overrides - most styling handled by Tailwind CSS */
+
+.file-upload-area.drag-over {
+    border-color: #080707;
+    background-color: #FAFAFA;
+}
+
+.error-message:empty {
+    display: none;
+}
+
+.success-message:empty {
+    display: none;
+}
+
+/* Modal animation */
+#duplicate-modal {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Custom scrollbar for textarea */
+textarea {
+    scrollbar-width: thin;
+    scrollbar-color: #E0E0E0 #FFFFFF;
+}
+
+textarea::-webkit-scrollbar {
+    width: 8px;
+}
+
+textarea::-webkit-scrollbar-track {
+    background: #FFFFFF;
+}
+
+textarea::-webkit-scrollbar-thumb {
+    background-color: #E0E0E0;
+    border-radius: 4px;
+}
+
+/* Loading spinner */
+.spinner {
+    border: 3px solid #E0E0E0;
+    border-top: 3px solid #080707;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Form field focus states */
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: #080707;
+    box-shadow: 0 0 0 3px rgba(8, 7, 7, 0.2);
+}
+
+/* Disabled state */
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Radio button custom styling */
+input[type="radio"]:checked {
+    accent-color: #080707;
+}
+
+/* File input focus */
+input[type="file"]:focus {
+    outline: 2px solid #080707;
+    outline-offset: 2px;
+}

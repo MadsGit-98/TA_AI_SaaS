@@ -200,7 +200,8 @@ function displayScreeningQuestions(questions) {
 
             question.choices.forEach(choice => {
                 const choiceItem = document.createElement('li');
-                choiceItem.textContent = choice.text; // Safe assignment
+                // Handle both string choices and object choices (with text property)
+                choiceItem.textContent = typeof choice === 'string' ? choice : (choice.text || '');
                 choicesList.appendChild(choiceItem);
             });
 

@@ -213,3 +213,5 @@ APS_Requirements/
 node_modules/
 package-lock.json
 yarn.lock
+
+media/

@@ -21,9 +21,14 @@ app.conf.beat_schedule = {
         'task': 'apps.accounts.tasks.monitor_and_refresh_tokens',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
-    # New task for job status checks
+    # Job status checks
     'check-job-statuses': {
         'task': 'apps.jobs.tasks.check_job_statuses',
         'schedule': 60.0,  # Every 60 seconds
+    },
+    # Application cleanup - delete expired applications (90-day retention)
+    'cleanup-expired-applications': {
+        'task': 'apps.applications.tasks.cleanup_expired_applications',
+        'schedule': crontab(hour=2, minute=0),  # Daily at 2:00 AM
     },
 }
