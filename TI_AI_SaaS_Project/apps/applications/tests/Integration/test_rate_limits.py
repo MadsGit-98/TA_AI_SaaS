@@ -161,32 +161,6 @@ class ApplicationValidationRateLimitTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
 
-class ApplicationStatusRateLimitTest(TestCase):
-    """Tests for ApplicationStatusRateThrottle (30/hour)"""
-
-    def setUp(self):
-        self.client = Client()
-        self.user = User.objects.create_user(username='testuser3', email='test3@example.com', password='pass123')
-        self.job = JobListing.objects.create(
-            title='Test Job', description='Desc', required_skills=['Python'],
-            required_experience=3, job_level='Entry', start_date=timezone.now(),
-            expiration_date=timezone.now() + timedelta(days=30), status='Active', created_by=self.user
-        )
-        self.applicant = Applicant.objects.create(
-            job_listing=self.job, first_name='John', last_name='Doe',
-            email='john@gmail.com', phone='+12025559999',
-            resume_file_hash='hash123', resume_parsed_text='Test'
-        )
-
-    def tearDown(self):
-        cache.clear()
-
-    def test_status_requires_authentication(self):
-        """Status endpoint requires authentication"""
-        response = self.client.get(f'/api/applications/{self.applicant.id}/')
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-
 class RateLimitEdgeCasesTest(TestCase):
     """Edge case tests for rate limiting"""
 

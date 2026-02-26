@@ -160,32 +160,5 @@ class ApplicationValidationIPThrottle(SimpleRateThrottle):
                         return True
             except ValueError:
                 continue
-        
+
         return False
-
-
-class ApplicationStatusRateThrottle(SimpleRateThrottle):
-    """
-    Throttle for application status endpoint.
-    
-    Limits to 30 status checks per hour to prevent enumeration attacks.
-    Note: This endpoint requires authentication (IsAuthenticated).
-    """
-    
-    rate = '30/hour'
-    
-    def get_cache_key(self, request, view):
-        """
-        Generate cache key based on user ID (authenticated) or IP (fallback).
-        """
-        # For authenticated users, use user ID
-        if request.user and request.user.is_authenticated:
-            ident = request.user.pk
-        else:
-            # Fallback to IP for unauthenticated (shouldn't happen due to permissions)
-            ident = request.META.get('REMOTE_ADDR', 'unknown')
-        
-        return self.cache_format % {
-            'scope': 'application_status',
-            'ident': ident
-        }
