@@ -1,10 +1,10 @@
 """
 Integration Tests for Rate Limiting
 
-Tests for:
-- ApplicationStatusRateThrottle (30/hour)
-- ApplicationSubmissionRateThrottle (10/hour)
-- ApplicationValidationRateThrottle (30/hour)
+Tests for DRF throttle classes:
+- ApplicationSubmissionIPThrottle (5/hour per IP)
+- ApplicationValidationIPThrottle (30/hour per IP)
+- ApplicationStatusRateThrottle (30/hour per user)
 """
 
 import json
@@ -33,7 +33,7 @@ def create_minimal_resume(unique_id='0'):
 
 
 class ApplicationSubmissionRateLimitTest(TestCase):
-    """Tests for ApplicationSubmissionRateThrottle (10/hour)"""
+    """Tests for ApplicationSubmissionIPThrottle (5/hour per IP)"""
 
     def setUp(self):
         self.client = Client()
@@ -69,10 +69,10 @@ class ApplicationSubmissionRateLimitTest(TestCase):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_submission_exceeds_rate_limit(self):
-        """Submissions exceeding limit are forbidden"""
-        for i in range(10):
+        """Submissions exceeding limit (5/hour) are forbidden"""
+        for i in range(5):
             self.submit(i)
-        response = self.submit(10)
+        response = self.submit(5)
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
 
@@ -208,7 +208,7 @@ class RateLimitEdgeCasesTest(TestCase):
     def test_rate_limit_applies_to_invalid_requests(self):
         """Rate limiting applies even to invalid requests"""
         rate_limited = False
-        for i in range(15):
+        for i in range(10):
             response = self.client.post('/api/applications/', {'bad': 'data'}, format='multipart')
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited = True
@@ -217,7 +217,7 @@ class RateLimitEdgeCasesTest(TestCase):
 
     def test_rate_limit_error_format(self):
         """Test rate limit error response"""
-        for i in range(10):
+        for i in range(5):
             self.client.post('/api/applications/', {
                 'job_listing_id': str(self.job.id),
                 'first_name': 'John', 'last_name': 'Doe',
@@ -232,8 +232,8 @@ class RateLimitEdgeCasesTest(TestCase):
         response = self.client.post('/api/applications/', {
             'job_listing_id': str(self.job.id),
             'first_name': 'John', 'last_name': 'Doe',
-            'email': 'e10@gmail.com', 'phone': '+1202555410',
-            'country_code': 'US', 'resume': create_minimal_resume('e10'),
+            'email': 'e5@gmail.com', 'phone': '+1202555405',
+            'country_code': 'US', 'resume': create_minimal_resume('e5'),
             'screening_answers': json.dumps([{
                 'question_id': str(self.question.id),
                 'answer_text': 'Three years experience'
