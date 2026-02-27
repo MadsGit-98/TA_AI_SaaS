@@ -20,9 +20,12 @@ logger = logging.getLogger(__name__)
 @app.task
 def monitor_and_refresh_tokens():
     """
-    Celery task to monitor user tokens and refresh them before expiration.
-    This task identifies tokens that are about to expire and initiates refresh process.
-    Modified to handle Remember Me sessions differently.
+    Monitor Redis-stored token expirations and trigger refresh or logout actions for users.
+    
+    Scans Redis for token expiry entries, and for each token nearing expiration it either enqueues a token refresh (for users with recent activity or an active Remember Me session) or triggers a logout notification (for inactive standard sessions). Enqueues refresh_user_token Celery tasks and notifies clients via TokenNotificationConsumer; respects Remember Me sessions by preferring refresh over logout.
+    
+    Raises:
+        RedisConnectionError: If a Redis client cannot be acquired.
     """
 
     logger.info("Starting token monitoring task")
@@ -156,9 +159,19 @@ def monitor_and_refresh_tokens():
 @app.task
 def refresh_user_token(user_id, remember_me=False):
     """
-    Refresh the token for a specific user
-    If remember_me is True, create auto-refresh entry in Redis
-    This is a server-side operation that could be triggered when needed
+    Refreshes and stores new JWT tokens for the specified user and optionally creates a Remember Me auto-refresh session.
+    
+    Parameters:
+        user_id (int | str): The ID of the user whose tokens should be refreshed.
+        remember_me (bool): If True, create a persistent Remember Me entry so the user can be auto-refreshed.
+    
+    Returns:
+        dict: On success, returns {
+            'user_id': str(user_id),
+            'token_refreshed': True,
+            'expires_at': ISO-8601 timestamp of the new token expiry,
+            'remember_me': bool
+        }. On failure, returns a dict with an 'error' key describing the problem (for example when the user is not found or a runtime error occurs).
     """
     logger.info(f"Refreshing token for user ID: {user_id}, remember_me: {remember_me}")
 
@@ -232,8 +245,20 @@ def refresh_user_token(user_id, remember_me=False):
 @app.task
 def get_tokens_by_reference(user_id):
     """
-    Retrieve tokens using the user ID from secure storage.
-    This provides a secure way to access the tokens that were generated in the background.
+    Retrieve and consume a one-time token payload for the given user from Redis.
+    
+    Reads the JSON payload stored at key `temp_tokens:<user_id>`, deletes that key (one-time retrieval), and returns the contained token fields. If Redis is unavailable the RedisConnectionError raised by the Redis client is propagated.
+    
+    Returns:
+        dict: On success, a dictionary with keys:
+            - `user_id`: the user identifier (as stored)
+            - `access_token`: the access JWT
+            - `refresh_token`: the refresh JWT
+            - `expires_at`: expiration timestamp from the stored payload
+        On failure, a dictionary with an `error` key describing the problem (e.g., `{'error': 'Token data not found or expired'}`).
+    
+    Raises:
+        RedisConnectionError: If a Redis client cannot be obtained.
     """
     logger.info(f"Retrieving tokens for user ID: {user_id}")
 

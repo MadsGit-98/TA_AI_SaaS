@@ -43,7 +43,9 @@ class TestSessionHandlingFunctionality(TestCase):
     
     def setUp(self):
         """
-        Set up test user
+        Create a test user and assign it to self.user.
+        
+        Creates a CustomUser with username 'testuser', email 'test@example.com', and password 'testpass123' for use by the test methods.
         """
         self.user = CustomUser.objects.create_user(
             username='testuser',

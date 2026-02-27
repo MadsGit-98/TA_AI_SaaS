@@ -34,7 +34,10 @@ let refreshPromise = null; // Promise to deduplicate concurrent refresh attempts
 let retryCount = 0;
 const maxRetries = 5; // Max retry attempts
 
-// Function to get CSRF token from cookie or meta tag
+/**
+ * Retrieve the CSRF token from the document's meta tag or from the `csrftoken` cookie.
+ * @returns {string|undefined} The CSRF token string if found, `undefined` otherwise.
+ */
 function getCsrfToken() {
     // Try to get from meta tag first
     let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -58,7 +61,13 @@ function getCsrfToken() {
     return token;
 }
 
-// Check if tokens are about to expire and refresh them automatically
+/**
+ * Trigger a server-side activity refresh by requesting the current user's profile.
+ *
+ * If the page is hidden, the function exits without making a request.
+ * Errors are caught and logged; they result in a `false` return value.
+ * @returns {boolean} `true` if the request returned HTTP 200, `false` otherwise.
+ */
 async function checkAndRefreshToken() {
     // Don't refresh if page is hidden (tab switched or minimized)
     if (document.hidden) {
@@ -84,7 +93,15 @@ async function checkAndRefreshToken() {
     }
 }
 
-// Function to set remember me status
+/**
+ * Update the "remember me" setting and enable or disable the periodic token-refresh interval.
+ *
+ * When enabled, the function persists the setting to localStorage, updates the in-memory flag,
+ * and starts the interval-based refresh. When disabled, it persists the setting, updates the
+ * in-memory flag, and clears any existing refresh interval.
+ *
+ * @param {boolean} rememberMe - True to enable remember-me behavior and start periodic refresh; false to disable it and stop any active periodic refresh.
+ */
 function setRememberMeStatus(rememberMe) {
     isRememberMeChecked = rememberMe;
     localStorage.setItem('isRememberMeChecked', rememberMe.toString());
@@ -105,7 +122,11 @@ function setRememberMeStatus(rememberMe) {
 // Make the function globally accessible so it can be called from other scripts
 window.setRememberMeStatus = setRememberMeStatus;
 
-// Start interval-based refresh for remember me sessions
+/**
+ * Starts a periodic token-refresh task used when "remember me" is enabled.
+ *
+ * Clears any existing remember-me interval, schedules recurring calls to refresh server-side session state at intervals defined by REMEMBER_ME_REFRESH_INTERVAL, and updates the in-memory and localStorage lastActivity timestamp after each successful refresh.
+ */
 function startRememberMeRefreshInterval() {
     // Clear any existing interval
     if (window.rememberMeInterval) {
@@ -125,6 +146,15 @@ function startRememberMeRefreshInterval() {
     console.log('Started interval-based token refresh for remember me sessions');
 }
 
+/**
+ * Handle a user activity event by updating last-activity state and conditionally refreshing the auth token.
+ *
+ * If "remember me" is enabled, updates the stored lastActivity and relies on the interval-based refresh mechanism.
+ * Otherwise, when the time since the previous activity is greater than or equal to ACTIVITY_TIMEOUT and less than accessTokenExpiry,
+ * attempts to refresh the token and updates lastActivity on success.
+ *
+ * Side effects: updates `lastActivity` (in memory and localStorage), may invoke `checkAndRefreshToken()`, and logs errors without throwing.
+ */
 async function handleUserActivity() {
     const now = Date.now();
 
@@ -155,7 +185,13 @@ async function handleUserActivity() {
 
 }
 
-// Add event listeners for user activities
+/**
+ * Attach listeners that detect user activity and notify the activity handler.
+ *
+ * Registers capture-phase listeners for common user interaction events and adds a visibilitychange listener that treats the page becoming visible as activity.
+ *
+ * The monitored events are: 'load', 'mousedown', 'click', 'keydown', 'touchstart', and 'scroll'.
+ */
 function setupActivityListeners() {
     // Events that count as user activity
     const events = ['load', 'mousedown', 'click', 'keydown', 'touchstart', 'scroll'];
@@ -173,6 +209,18 @@ function setupActivityListeners() {
     });
 }
 
+/**
+ * Initialize and manage the WebSocket connection used for token refresh and logout notifications.
+ *
+ * Establishes a single ws/wss connection to /ws/token-notifications/, avoids duplicate connections,
+ * updates the global `wsSocket`, and attaches handlers to:
+ * - process server messages that trigger token refresh or logout,
+ * - reset retry state on successful open,
+ * - perform exponential-backoff reconnects (capped at 30s) for unintentional closes up to `maxRetryAttempts`,
+ * - respect `intentionalDisconnect` to skip reconnection attempts.
+ *
+ * Side effects: creates/updates `wsSocket`, schedules/clears `retryTimer`, and mutates `retryAttempts`.
+ */
 function initWebSocket() {
     // Check if there's already an active connection and return early to avoid multiple connections
     if (wsSocket && (wsSocket.readyState === WebSocket.CONNECTING || wsSocket.readyState === WebSocket.OPEN)) {
@@ -259,7 +307,13 @@ function closeWebSocket() {
     }
 }
 
-// Function to handle user logout and redirect to login
+/**
+ * Log the user out, clean up session state, and redirect to the login page.
+ *
+ * Removes activity and remember-me state, closes the WebSocket connection, attempts a server-side logout,
+ * and then navigates to /login/ with an optional reason query parameter.
+ * @param {string} [logoutReason='inactive'] - Reason to append to the login URL as `?reason=...` for logout context.
+ */
 async function logoutAndRedirect(logoutReason = 'inactive') {
     // Clear the remember me interval before logging out
     if (window.rememberMeInterval) {
@@ -295,6 +349,16 @@ async function logoutAndRedirect(logoutReason = 'inactive') {
 
 
 
+/**
+ * Refreshes authentication tokens by contacting the server and applies retry/backoff logic on failure.
+ *
+ * Deduplicates concurrent refresh attempts by returning the same in-flight promise to callers.
+ * On success resets internal retry counters. On repeated failures or on receiving 401/403 from the server
+ * it triggers logout and redirect. For network errors, applies a more tolerant retry policy when "Remember Me"
+ * is active.
+ *
+ * @returns {Promise<import('axios').AxiosResponse|undefined>} The Axios response from a successful refresh, or `undefined` if the refresh resulted in a logout or failed without a response.
+ */
 async function refreshTokenFromServer() {
     // Deduplicate concurrent refresh attempts by returning the same promise if one is in flight
     if (refreshPromise) {

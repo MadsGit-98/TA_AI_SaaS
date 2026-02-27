@@ -692,7 +692,9 @@ def password_reset_request(request):
 @throttle_classes([AnonRateThrottle, LoginAttemptThrottle])  # Apply rate limiting
 def login(request):
     """
-    Login endpoint for users
+    Authenticate credentials from the request, establish a session, set JWT tokens in HttpOnly cookies, and return serialized user data with a post-login redirect URL.
+    
+    On success, logs the user in, schedules a background token-refresh task (respecting an optional `remember_me` flag), and sets access and refresh tokens in HttpOnly cookies; the response body contains the serialized user and a `redirect_url`. On failure, returns validation errors or a `non_field_errors` message for invalid credentials or inactive accounts with HTTP 400 status.
     """
     logger.info(f"Login attempt from IP: {get_client_ip(request)}")
 
@@ -797,7 +799,15 @@ def get_redirect_url_after_login(user):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Logout endpoint that blacklists the refresh token and clears authentication cookies
+    Log out the current user, invalidate their refresh token if present, and clear authentication cookies.
+    
+    Performs these actions as side effects: blacklists the refresh token from the request cookies when available, logs out the session, clears user activity and expiry tokens, terminates any active "Remember Me" sessions for the user, and ensures authentication cookies are removed.
+    
+    Parameters:
+        request (rest_framework.request.Request): Incoming request containing cookies and the authenticated user (if any).
+    
+    Returns:
+        rest_framework.response.Response: A 204 No Content response on successful logout; a 400 Bad Request response with an error message if token blacklisting or validation fails. Authentication cookies are cleared in all cases.
     """
     try:
         # Get refresh token from cookies if available
@@ -1120,8 +1130,18 @@ def social_login_jwt(request):
 @throttle_classes([AnonRateThrottle])  # Apply rate limiting similar to login
 def cookie_token_refresh(request):
     """
-    Refresh JWT token endpoint using cookies
-    Extracts refresh token from cookies and returns new tokens in cookies
+    Refreshes a user's JWT tokens using the refresh token stored in cookies.
+    
+    Attempts to read 'refresh_token' from request.COOKIES, validate it, and issue new access/refresh tokens set in HttpOnly cookies. First tries to obtain pre-generated tokens by reference and, if available, uses them; otherwise falls back to creating new tokens for the user. The endpoint verifies the user is active, blacklists the incoming refresh token when appropriate, and triggers an asynchronous task to update token expiration state while preserving any "remember me" session flag.
+    
+    Parameters:
+        request: DRF `Request` containing cookies; expected to include a 'refresh_token' cookie.
+    
+    Returns:
+        DRF `Response`:
+          - 200 with {'detail': 'Token refreshed successfully'} on success (and sets new tokens in cookies).
+          - 400 with {'error': 'Refresh token not found in cookies'} if no refresh token cookie is present.
+          - 200 with {'detail': 'Invalid or expired refresh token'} when the provided token is invalid or expired.
     """
     # For additional CSRF protection, we can require the referer header or a custom header
     # Since this is an API endpoint, we'll rely primarily on SameSite cookie attribute
@@ -1252,5 +1272,4 @@ def cookie_token_refresh(request):
             {'detail': 'Invalid or expired refresh token'},
             status=status.HTTP_200_OK
         )
-
 

@@ -136,6 +136,13 @@ async function handleRegister(e) {
     }
 }
 
+/**
+ * Handle login form submission by sending credentials (including a remember_me flag) to the authentication API, applying the server response (navigate on success, show error messages on failure).
+ *
+ * On success, if a global `window.setRememberMeStatus` function exists it will be called with the remember-me value; navigation will use a server-provided whitelisted redirect URL or fall back to `/landing/`. On failure, the server-provided error or a generic message is displayed.
+ *
+ * @param {Event} e - Submit event from the login form.
+ */
 async function handleLogin(e) {
     e.preventDefault();
 
@@ -273,4 +280,3 @@ async function handlePasswordReset(e) {
         submitBtn.textContent = 'Send Reset Link';
     }
 }
-
