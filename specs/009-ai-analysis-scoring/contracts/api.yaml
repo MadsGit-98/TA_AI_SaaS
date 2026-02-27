@@ -1,0 +1,685 @@
+# API Contracts: AI Analysis & Scoring
+
+**Feature**: 009-ai-analysis-scoring  
+**Date**: 2026-02-28  
+**Version**: 1.0.0  
+**Base Path**: `/api`
+
+---
+
+## Overview
+
+This document defines the REST API contracts for the AI Analysis & Scoring feature. All endpoints require authentication via JWT token (except where noted).
+
+### Authentication
+
+All endpoints require Bearer token authentication:
+
+```http
+Authorization: Bearer <jwt_access_token>
+```
+
+### Response Format
+
+All responses follow standard JSON format:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "message": "Optional message"
+}
+```
+
+### Error Format
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": { ... }
+  }
+}
+```
+
+---
+
+## Endpoints
+
+### 1. Initiate AI Analysis
+
+**Initiates bulk AI analysis for all applicants of a job listing.**
+
+```http
+POST /api/jobs/{job_id}/analysis/initiate/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Request Body
+
+```json
+{
+  "dry_run": false
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| dry_run | Boolean | No | false | If true, validate prerequisites without starting analysis |
+
+#### Success Response (202 Accepted)
+
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "started",
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "applicant_count": 45,
+    "estimated_duration_seconds": 270
+  }
+}
+```
+
+#### Conflict Response (409 Conflict)
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ANALYSIS_ALREADY_RUNNING",
+    "message": "Analysis is already in progress for this job listing"
+  }
+}
+```
+
+#### Bad Request Responses
+
+**Job Still Active (400 Bad Request)**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "JOB_STILL_ACTIVE",
+    "message": "AI analysis can only be initiated after job expiration or manual deactivation",
+    "details": {
+      "expiration_date": "2026-03-15T23:59:59Z",
+      "current_status": "Active",
+      "is_expired": false
+    }
+  }
+}
+```
+
+**No Applicants (400 Bad Request)**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NO_APPLICANTS",
+    "message": "Cannot initiate analysis: job listing has no applicants"
+  }
+}
+```
+
+**Job Not Found (404 Not Found)**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "JOB_NOT_FOUND",
+    "message": "Job listing not found"
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.change_joblisting`
+
+#### Validation Rules
+
+1. Job listing must exist
+2. Job listing must be expired (`expiration_date < now`) OR manually deactivated (`status = 'Inactive'`)
+3. Job listing must have at least one applicant
+4. No other analysis task currently running for this job (Redis lock check)
+
+---
+
+### 2. Get Analysis Status
+
+**Retrieves the current progress status of an AI analysis task.**
+
+```http
+GET /api/jobs/{job_id}/analysis/status/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Success Response (200 OK)
+
+**Analysis In Progress**
+
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "status": "processing",
+    "progress_percentage": 60,
+    "processed_count": 27,
+    "total_count": 45,
+    "started_at": "2026-02-28T10:30:00Z",
+    "estimated_completion": "2026-02-28T10:34:30Z"
+  }
+}
+```
+
+**Analysis Completed**
+
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "status": "completed",
+    "progress_percentage": 100,
+    "processed_count": 45,
+    "total_count": 45,
+    "started_at": "2026-02-28T10:30:00Z",
+    "completed_at": "2026-02-28T10:34:15Z",
+    "results_summary": {
+      "analyzed_count": 43,
+      "unprocessed_count": 2,
+      "best_match_count": 5,
+      "good_match_count": 18,
+      "partial_match_count": 15,
+      "mismatched_count": 5,
+      "average_score": 72
+    }
+  }
+}
+```
+
+**Analysis Not Started**
+
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "status": "not_started",
+    "progress_percentage": 0,
+    "processed_count": 0,
+    "total_count": 45
+  }
+}
+```
+
+#### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `not_started` | No analysis has been initiated |
+| `pending` | Analysis queued, waiting for worker |
+| `processing` | Analysis in progress |
+| `completed` | Analysis completed successfully |
+| `failed` | Analysis failed (system error) |
+| `cancelled` | Analysis was cancelled by user |
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.view_joblisting`
+
+---
+
+### 3. Get Analysis Results
+
+**Retrieves all AI analysis results for a job listing.**
+
+```http
+GET /api/jobs/{job_id}/analysis/results/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| category | String | No | All | Filter by category (Best Match, Good Match, Partial Match, Mismatched, Unprocessed) |
+| status | String | No | Analyzed | Filter by status (Analyzed, Unprocessed) |
+| min_score | Integer | No | 0 | Minimum overall score filter |
+| max_score | Integer | No | 100 | Maximum overall score filter |
+| page | Integer | No | 1 | Page number for pagination |
+| page_size | Integer | No | 20 | Number of results per page (max 100) |
+| ordering | String | No | -overall_score | Ordering field (-overall_score, overall_score, submitted_at, -submitted_at) |
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "total_count": 45,
+    "filtered_count": 43,
+    "page": 1,
+    "page_size": 20,
+    "total_pages": 3,
+    "results": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440010",
+        "applicant_id": "550e8400-e29b-41d4-a716-446655440020",
+        "applicant_name": "John Doe",
+        "reference_number": "XC-A1B2C3",
+        "submitted_at": "2026-02-25T14:30:00Z",
+        "overall_score": 95,
+        "category": "Best Match",
+        "status": "Analyzed",
+        "metrics": {
+          "education": 90,
+          "skills": 95,
+          "experience": 98,
+          "supplemental": 85
+        },
+        "justifications": {
+          "overall": "Exceptional candidate with strong alignment to job requirements..."
+        }
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440011",
+        "applicant_id": "550e8400-e29b-41d4-a716-446655440021",
+        "applicant_name": "Jane Smith",
+        "reference_number": "XC-D4E5F6",
+        "submitted_at": "2026-02-26T09:15:00Z",
+        "overall_score": 78,
+        "category": "Good Match",
+        "status": "Analyzed",
+        "metrics": {
+          "education": 85,
+          "skills": 75,
+          "experience": 75,
+          "supplemental": 70
+        },
+        "justifications": {
+          "overall": "Strong candidate with solid qualifications..."
+        }
+      }
+    ]
+  }
+}
+```
+
+#### Not Found Response (404 Not Found)
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "JOB_NOT_FOUND",
+    "message": "Job listing not found"
+  }
+}
+```
+
+#### Analysis Not Complete (400 Bad Request)
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ANALYSIS_NOT_COMPLETE",
+    "message": "Analysis results not yet available. Please check status endpoint."
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.view_joblisting`
+
+---
+
+### 4. Get Detailed Analysis Result
+
+**Retrieves detailed analysis result for a specific applicant, including all justifications.**
+
+```http
+GET /api/analysis/results/{result_id}/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| result_id | UUID | Yes | Unique identifier of the analysis result |
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440010",
+    "applicant": {
+      "id": "550e8400-e29b-41d4-a716-446655440020",
+      "name": "John Doe",
+      "reference_number": "XC-A1B2C3",
+      "email": "john.doe@example.com",
+      "phone": "+1-555-123-4567",
+      "submitted_at": "2026-02-25T14:30:00Z"
+    },
+    "job_listing": {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "title": "Senior Software Engineer"
+    },
+    "scores": {
+      "education": {
+        "score": 90,
+        "justification": "Candidate holds a Master's degree in Computer Science from a top-tier university, which strongly aligns with the preferred qualifications. Additional certifications in cloud architecture demonstrate commitment to continuous learning."
+      },
+      "skills": {
+        "score": 95,
+        "justification": "Exceptional match on technical skills. Proficient in Python, Django, and AWS as required. Additional expertise in Kubernetes and microservices architecture exceeds requirements. 5+ years of hands-on experience with all core technologies listed."
+      },
+      "experience": {
+        "score": 98,
+        "justification": "Outstanding career progression. 7 years of relevant experience exceeds the 5-year requirement. Promoted from Junior to Senior Engineer at current company. Led multiple high-impact projects with measurable results (40% performance improvement, $500K cost savings)."
+      },
+      "supplemental": {
+        "score": 85,
+        "justification": "Strong supplemental profile. Active contributor to open-source projects with 500+ GitHub stars. Regular speaker at tech conferences. No publications but demonstrates thought leadership through blog posts with significant engagement."
+      },
+      "overall": {
+        "score": 95,
+        "category": "Best Match",
+        "justification": "Exceptional candidate across all evaluation dimensions. Technical skills and experience significantly exceed requirements. Educational background is ideal. Strong cultural indicators through open-source contributions and community involvement. Highly recommended for interview process."
+      }
+    },
+    "status": "Analyzed",
+    "created_at": "2026-02-28T10:34:15Z",
+    "updated_at": "2026-02-28T10:34:15Z"
+  }
+}
+```
+
+#### Unprocessed Result Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440015",
+    "applicant": {
+      "id": "550e8400-e29b-41d4-a716-446655440025",
+      "name": "Bob Wilson",
+      "reference_number": "XC-G7H8I9"
+    },
+    "status": "Unprocessed",
+    "category": "Unprocessed",
+    "error_message": "Failed to parse resume: PDF file appears to be corrupted or password-protected",
+    "created_at": "2026-02-28T10:34:20Z"
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `analysis.view_aianalysisresult`
+
+---
+
+### 5. Cancel Analysis
+
+**Cancels a running AI analysis task. Preserves results for already-processed applicants.**
+
+```http
+POST /api/jobs/{job_id}/analysis/cancel/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "cancelled",
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "preserved_count": 15,
+    "message": "Analysis cancelled. Results for 15 applicants have been preserved."
+  }
+}
+```
+
+#### Bad Request Response (400 Bad Request)
+
+**No Analysis Running**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NO_ANALYSIS_RUNNING",
+    "message": "No analysis is currently running for this job listing"
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.change_joblisting`
+
+---
+
+### 6. Re-run Analysis
+
+**Re-runs AI analysis for a job listing. Deletes previous results and starts fresh analysis.**
+
+```http
+POST /api/jobs/{job_id}/analysis/re-run/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Request Body
+
+```json
+{
+  "confirm": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| confirm | Boolean | Yes | Must be true to confirm re-run (acknowledges previous results will be deleted) |
+
+#### Success Response (202 Accepted)
+
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "550e8400-e29b-41d4-a716-446655440099",
+    "status": "started",
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "previous_results_deleted": 45,
+    "applicant_count": 47,
+    "message": "Previous analysis results deleted. New analysis started for 47 applicants."
+  }
+}
+```
+
+#### Bad Request Response (400 Bad Request)
+
+**Confirmation Missing**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CONFIRMATION_REQUIRED",
+    "message": "Must set 'confirm': true to re-run analysis (this will delete previous results)"
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.change_joblisting`
+
+---
+
+### 7. Get Analysis Statistics
+
+**Retrieves aggregate statistics for AI analysis results.**
+
+```http
+GET /api/jobs/{job_id}/analysis/statistics/
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| job_id | UUID | Yes | Unique identifier of the job listing |
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440001",
+    "total_applicants": 45,
+    "analyzed_count": 43,
+    "unprocessed_count": 2,
+    "category_distribution": {
+      "Best Match": 5,
+      "Good Match": 18,
+      "Partial Match": 15,
+      "Mismatched": 5,
+      "Unprocessed": 2
+    },
+    "category_percentages": {
+      "Best Match": 11.6,
+      "Good Match": 41.9,
+      "Partial Match": 34.9,
+      "Mismatched": 11.6,
+      "Unprocessed": 4.7
+    },
+    "score_statistics": {
+      "average": 72.3,
+      "median": 74,
+      "min": 32,
+      "max": 98,
+      "std_deviation": 15.2
+    },
+    "metric_averages": {
+      "education": 78.5,
+      "skills": 71.2,
+      "experience": 69.8,
+      "supplemental": 65.4
+    },
+    "processing_stats": {
+      "started_at": "2026-02-28T10:30:00Z",
+      "completed_at": "2026-02-28T10:34:15Z",
+      "duration_seconds": 255,
+      "resumes_per_minute": 10.6
+    }
+  }
+}
+```
+
+#### Authorization
+
+- **Required**: Yes
+- **Roles**: Talent Acquisition Specialist (TAS)
+- **Permission**: `jobs.view_joblisting`
+
+---
+
+## Error Codes Reference
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `JOB_NOT_FOUND` | 404 | Job listing does not exist |
+| `JOB_STILL_ACTIVE` | 400 | Job has not expired and is not deactivated |
+| `NO_APPLICANTS` | 400 | Job listing has no applicants |
+| `ANALYSIS_ALREADY_RUNNING` | 409 | Another analysis task is already running |
+| `ANALYSIS_NOT_COMPLETE` | 400 | Analysis results not yet available |
+| `NO_ANALYSIS_RUNNING` | 400 | No analysis is currently running to cancel |
+| `CONFIRMATION_REQUIRED` | 400 | Re-run requires explicit confirmation |
+| `UNAUTHORIZED` | 401 | Authentication required |
+| `FORBIDDEN` | 403 | User lacks permission |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
+
+---
+
+## Rate Limiting
+
+| Endpoint | Rate Limit |
+|----------|------------|
+| POST /initiate/ | 10 requests per minute |
+| GET /status/ | 30 requests per minute |
+| GET /results/ | 60 requests per minute |
+| GET /statistics/ | 30 requests per minute |
+| POST /cancel/ | 5 requests per minute |
+| POST /re-run/ | 5 requests per minute |
+
+Rate limit headers included in responses:
+
+```http
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+X-RateLimit-Reset: 1677580800
+```
+
+---
+
+## Next Steps
+
+1. **Quickstart**: Write setup and usage guide in `quickstart.md`
+2. **Agent Context**: Update `.qwen/QWEN.md` with new API patterns
+3. **Implementation**: Create API endpoints in `apps/analysis/api.py`
