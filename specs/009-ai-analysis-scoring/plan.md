@@ -116,6 +116,8 @@ TI_AI_SaaS_Project/
 
 **Structure Decision**: Single project structure (Option 1 from template) - Django monolith with decoupled services in `services/` directory per Constitution §4.
 
+**Terminology Note**: "AIAnalysisResult" (camelCase) is used for the model class name and technical references. "AI Analysis Result" (spaced) is used only in user-facing text and documentation.
+
 ---
 
 ## Complexity Tracking

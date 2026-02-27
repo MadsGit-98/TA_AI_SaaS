@@ -123,9 +123,9 @@ As a Talent Acquisition Specialist, I want to access the AI analysis results in 
 
 - **FR-002**: System MUST classify fetched applicant data into structured categories: Professional Experience & History, Education & Credentials, Skills & Competencies, and Supplemental Information.
 
-- **FR-003**: System MUST generate a numerical score between 0-100 for each key metric (Education, Skills, Experience) extracted from the parsed resume text for each applicant.
+- **FR-003**: System MUST generate a numerical score between 0-100 for each key metric (Education, Skills, Experience, Supplemental Information) extracted from the parsed resume text for each applicant.
 
-- **FR-004**: System MUST calculate an overall score using a weighted formula: Experience (50%), Skills (30%), Education (20%). The result MUST be rounded down (floored) to the nearest integer before category assignment.
+- **FR-004**: System MUST calculate an overall score using a weighted formula: Experience (50%), Skills (30%), Education (20%). Supplemental Information score is tracked separately and NOT included in the weighted overall score. The result MUST be rounded down (floored) to the nearest integer before category assignment.
 
 - **FR-005**: System MUST assign one of four match categories to each applicant based on the floored overall score:
   - Best Match: 90-100 overall score
@@ -149,7 +149,7 @@ As a Talent Acquisition Specialist, I want to access the AI analysis results in 
 
 - **FR-013**: System MUST display a "Done" tag on the job listing card in the Dashboard view when AI analysis is complete.
 
-- **FR-014**: System MUST display a "Done" tag on the single job listing view when AI analysis is complete.
+- **FR-014**: System MUST display a "Done" tag on the single job listing view when AI analysis is complete. When a job listing is reactivated after analysis completion, the "Done" tag MUST remain visible and a warning message MUST inform users that new applicants may not be included in the completed analysis.
 
 - **FR-015**: System MUST display a visible AI Disclaimer as a passive notice (no acknowledgment required) on all pages showing AI analysis results, specifying that AI results are supplementary and should not be relied upon solely.
 
