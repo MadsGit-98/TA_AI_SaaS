@@ -105,6 +105,16 @@ function createJobElement(job, container) {
     expDateTag.textContent = 'Expires: ' + expirationDate;
     tagsContainer.appendChild(expDateTag);
 
+    // AI Analysis Done tag (if analysis is complete)
+    if (job.analysis_complete) {
+        const doneTag = document.createElement('span');
+        doneTag.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 border-l-[3px] border-[#00ff00] rounded font-mono text-xs font-semibold text-gray-900 shadow-sm';
+        doneTag.title = 'AI Analysis Complete';
+        doneTag.innerHTML = '<span class="inline-flex items-center justify-center w-4 h-4 bg-[#00ff00] text-gray-900 rounded-full text-[10px] font-bold">✓</span>' +
+            '<span class="text-gray-900 tracking-wide uppercase">Analysis Done</span>';
+        tagsContainer.appendChild(doneTag);
+    }
+
     leftSide.appendChild(tagsContainer);
 
     // Right side buttons

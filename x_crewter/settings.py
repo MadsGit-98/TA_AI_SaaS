@@ -138,6 +138,8 @@ REST_FRAMEWORK = {
         # Application submission throttles
         'application_submission': '5/hour',  # 5 job applications per hour per IP
         'application_validation': '30/hour',  # 30 validation requests per hour per IP
+        # AI Analysis throttles
+        'analysis': '10/hour',  # 10 analysis requests per hour per IP
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
@@ -278,6 +280,10 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# OLLAMA LLM Configuration
+OLLAMA_BASE_URL = env('OLLAMA_BASE_URL', default='http://localhost:11434')
+OLLAMA_MODEL = env('OLLAMA_MODEL', default='llama2:7b')
 
 # Celery Beat Configuration for periodic tasks
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

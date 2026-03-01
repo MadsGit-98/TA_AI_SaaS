@@ -1,0 +1,9 @@
+{# Done Tag Component - Displays when AI analysis is complete #}
+{# Usage: Include in job card or job detail view #}
+
+{% if analysis_complete %}
+<div class="analysis-done-tag inline-flex items-center gap-1.5 px-3 py-1.5 bg-code-block-bg border-l-[3px] border-[#00ff00] rounded font-mono text-xs font-semibold text-primary-text shadow-sm hover:-translate-y-0.5 hover:shadow-md transition" title="AI Analysis Complete">
+    <span class="done-icon inline-flex items-center justify-center w-4 h-4 bg-[#00ff00] text-primary-text rounded-full text-[10px] font-bold">✓</span>
+    <span class="done-text text-primary-text tracking-wide uppercase">Analysis Done</span>
+</div>
+{% endif %}

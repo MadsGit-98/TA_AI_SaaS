@@ -1,0 +1,66 @@
+{# Comparison View Mode #}
+{# Side-by-side applicant cards with score radar charts #}
+
+<div class="comparison-view-container bg-white rounded-lg p-5">
+    <div class="comparison-header mb-6">
+        <h3 class="text-xl font-semibold text-primary-text mb-2">Candidate Comparison</h3>
+        <p class="text-sm text-secondary-text">Top {{ results|length }} candidates side-by-side</p>
+    </div>
+
+    <div class="comparison-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for result in results|slice:":6" %}
+        <div class="comparison-card relative p-5 bg-white border border-secondary-text rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all" data-rank="{{ forloop.counter }}">
+            <div class="card-rank absolute top-3 right-3 w-8 h-8 bg-accent-cta text-cta-text rounded-full flex items-center justify-center font-mono font-bold text-sm">
+                #{{ forloop.counter }}
+            </div>
+
+            <div class="card-applicant mb-3">
+                <h4 class="text-base font-semibold text-primary-text mb-1">{{ result.applicant.first_name }} {{ result.applicant.last_name }}</h4>
+                <p class="card-reference font-mono text-xs text-secondary-text">{{ result.applicant.reference_number }}</p>
+            </div>
+
+            <div class="card-category mb-4">
+                <span class="category-badge inline-block px-3 py-1.5 rounded-full text-xs font-semibold font-mono category-{{ result.category|slugify }}">
+                    {{ result.category }}
+                </span>
+            </div>
+
+            <div class="card-score text-center p-4 bg-code-block-bg rounded-lg mb-4">
+                <div class="score-large font-mono text-5xl font-bold text-primary-text">{{ result.overall_score }}</div>
+                <span class="score-label font-sans text-xs text-secondary-text">Overall</span>
+            </div>
+
+            <div class="card-metrics mb-4">
+                <div class="metric-row flex items-center gap-2 mb-2">
+                    <span class="metric-name font-sans text-xs text-primary-text w-20">Education</span>
+                    <div class="metric-bar flex-1 h-3 bg-code-block-bg rounded-full overflow-hidden">
+                        <div class="metric-fill h-full bg-accent-cta rounded-full transition-all duration-300" style="width: {{ result.education_score }}%;"></div>
+                    </div>
+                    <span class="metric-value font-mono text-xs font-bold text-primary-text w-7 text-right">{{ result.education_score }}</span>
+                </div>
+                <div class="metric-row flex items-center gap-2 mb-2">
+                    <span class="metric-name font-sans text-xs text-primary-text w-20">Skills</span>
+                    <div class="metric-bar flex-1 h-3 bg-code-block-bg rounded-full overflow-hidden">
+                        <div class="metric-fill h-full bg-accent-cta rounded-full transition-all duration-300" style="width: {{ result.skills_score }}%;"></div>
+                    </div>
+                    <span class="metric-value font-mono text-xs font-bold text-primary-text w-7 text-right">{{ result.skills_score }}</span>
+                </div>
+                <div class="metric-row flex items-center gap-2">
+                    <span class="metric-name font-sans text-xs text-primary-text w-20">Experience</span>
+                    <div class="metric-bar flex-1 h-3 bg-code-block-bg rounded-full overflow-hidden">
+                        <div class="metric-fill h-full bg-accent-cta rounded-full transition-all duration-300" style="width: {{ result.experience_score }}%;"></div>
+                    </div>
+                    <span class="metric-value font-mono text-xs font-bold text-primary-text w-7 text-right">{{ result.experience_score }}</span>
+                </div>
+            </div>
+
+            <div class="card-justification pt-3 border-t border-secondary-text">
+                <h5 class="text-xs font-semibold text-primary-text mb-2">Overall Justification</h5>
+                <p class="justification-text font-sans text-xs leading-relaxed text-secondary-text">{{ result.overall_justification|truncatechars:150 }}</p>
+            </div>
+        </div>
+        {% empty %}
+        <p class="no-results text-center text-secondary-text col-span-full">No candidates to compare</p>
+        {% endfor %}
+    </div>
+</div>

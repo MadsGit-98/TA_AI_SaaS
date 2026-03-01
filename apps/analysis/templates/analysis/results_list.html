@@ -1,0 +1,183 @@
+{# AI Analysis Results List Page #}
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}AI Analysis Results - {{ job_listing.title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/analysis.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Results Header -->
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Results</h1>
+        <h2 class="text-lg text-secondary-text mb-4">{{ job_listing.title }}</h2>
+
+        <div class="flex gap-3">
+            <a href="{% url 'jobs:job_detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
+                ← Back to Job
+            </a>
+            <button id="refresh-results" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition" type="button">
+                Refresh Results
+            </button>
+        </div>
+    </div>
+
+    {# AI Disclaimer - Per Constitution §1 #}
+    {% include 'analysis/_ai_disclaimer.html' %}
+
+    {# Statistics Panel #}
+    {% include 'analysis/_statistics_panel.html' with statistics=statistics %}
+
+    {# Filter Controls #}
+    <div class="flex gap-4 items-end mb-6 p-4 bg-code-block-bg rounded-lg">
+        <div class="flex flex-col gap-1">
+            <label for="category-filter" class="text-xs font-semibold text-primary-text">Category:</label>
+            <select id="category-filter" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white">
+                <option value="">All Categories</option>
+                <option value="Best Match">Best Match (90-100)</option>
+                <option value="Good Match">Good Match (70-89)</option>
+                <option value="Partial Match">Partial Match (50-69)</option>
+                <option value="Mismatched">Mismatched (0-49)</option>
+                <option value="Unprocessed">Unprocessed</option>
+            </select>
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <label for="min-score" class="text-xs font-semibold text-primary-text">Min Score:</label>
+            <input type="number" id="min-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="0" />
+        </div>
+
+        <div class="flex flex-col gap-1">
+            <label for="max-score" class="text-xs font-semibold text-primary-text">Max Score:</label>
+            <input type="number" id="max-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="100" />
+        </div>
+
+        <button id="apply-filters" class="bg-accent-cta text-cta-text px-5 py-2 rounded text-sm font-medium hover:brightness-110 transition" type="button">Apply Filters</button>
+    </div>
+
+    {# Results Table #}
+    <div class="overflow-x-auto rounded-lg border border-secondary-text">
+        <table class="w-full border-collapse bg-white">
+            <thead>
+                <tr>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Applicant</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Reference #</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Submitted</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Overall Score</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Category</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Metrics</th>
+                    <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="results-tbody">
+                {% for result in results %}
+                <tr class="hover:bg-gray-50 {% if result.status == 'Unprocessed' %}bg-red-50{% endif %}">
+                    <td class="p-3 border-b border-secondary-text">
+                        <div class="font-medium text-primary-text">
+                            {{ result.applicant.first_name }} {{ result.applicant.last_name }}
+                        </div>
+                    </td>
+                    <td class="p-3 border-b border-secondary-text font-mono text-sm">{{ result.applicant.reference_number }}</td>
+                    <td class="p-3 border-b border-secondary-text text-sm">{{ result.applicant.submitted_at|date:"M d, Y" }}</td>
+                    <td class="p-3 border-b border-secondary-text">
+                        <div class="font-mono font-bold text-base {% if result.status == 'Analyzed' %}text-primary-text{% else %}text-secondary-text{% endif %}">
+                            {% if result.status == 'Analyzed' %}
+                                {{ result.overall_score }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="p-3 border-b border-secondary-text">
+                        {% if result.status == 'Analyzed' %}
+                            <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold font-mono category-badge category-{{ result.category|slugify }}">
+                                {{ result.category }}
+                            </span>
+                        {% else %}
+                            <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold font-mono bg-secondary-text text-cta-text">
+                                Unprocessed
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 border-b border-secondary-text">
+                        {% if result.status == 'Analyzed' %}
+                            <div class="flex gap-2 font-mono text-xs">
+                                <span class="bg-code-block-bg px-2 py-1 rounded" title="Education">E: {{ result.education_score }}</span>
+                                <span class="bg-code-block-bg px-2 py-1 rounded" title="Skills">S: {{ result.skills_score }}</span>
+                                <span class="bg-code-block-bg px-2 py-1 rounded" title="Experience">X: {{ result.experience_score }}</span>
+                            </div>
+                        {% else %}
+                            <span class="text-red-600 text-xs" title="{{ result.error_message }}">
+                                Error
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 border-b border-secondary-text">
+                        <div class="flex gap-2">
+                            {% if result.status == 'Analyzed' %}
+                                <button class="bg-accent-cta text-cta-text px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-800 transition btn-view-detail" data-result-id="{{ result.id }}" type="button">
+                                    View Details
+                                </button>
+                            {% else %}
+                                <span class="text-red-600 text-xs" title="{{ result.error_message }}">
+                                    ⚠️ {{ result.error_message|truncatechars:50 }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center p-10 text-secondary-text">
+                        No analysis results found. Start the analysis to see results.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# Pagination #}
+    {% if page_obj %}
+    <div class="flex justify-between items-center mt-6 p-4">
+        <span class="text-sm text-secondary-text">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+        <div class="flex gap-2">
+            {% if page_obj.has_previous %}
+                <a href="?page=1" class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">First</a>
+                <a href="?page={{ page_obj.previous_page_number }}" class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Previous</a>
+            {% endif %}
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}" class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}" class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Last</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# Result Detail Modal #}
+<div id="result-detail-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;">
+    <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center p-5 border-b border-secondary-text">
+            <h3 class="text-xl font-semibold text-primary-text">Analysis Details</h3>
+            <button class="modal-close text-2xl text-secondary-text hover:text-primary-text transition" type="button">&times;</button>
+        </div>
+        <div class="p-6" id="modal-body-content">
+            {# Content loaded via AJAX #}
+        </div>
+    </div>
+</div>
+
+{% include 'analysis/_justifications.html' %}
+{% include 'analysis/_score_bars.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/analysis.js' %}"></script>
+{% endblock %}

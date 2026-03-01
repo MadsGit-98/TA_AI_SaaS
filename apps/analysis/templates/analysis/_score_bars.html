@@ -1,0 +1,44 @@
+{# Score Visualization Component #}
+{# Horizontal progress bars for each metric #}
+
+<div class="score-bars-container flex flex-col gap-3 p-4 bg-white rounded-lg" id="score-bars-{{ result.id|default:'detail' }}">
+    <div class="score-bar-item flex flex-col gap-1.5">
+        <div class="score-bar-label flex justify-between items-center">
+            <span class="label-text font-sans text-sm font-semibold text-primary-text">Education</span>
+            <span class="label-value font-mono text-sm font-bold text-primary-text">{{ education_score|default:0 }}</span>
+        </div>
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+            <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ education_score|default:0 }}%;" data-score="{{ education_score|default:0 }}"></div>
+        </div>
+    </div>
+
+    <div class="score-bar-item flex flex-col gap-1.5">
+        <div class="score-bar-label flex justify-between items-center">
+            <span class="label-text font-sans text-sm font-semibold text-primary-text">Skills</span>
+            <span class="label-value font-mono text-sm font-bold text-primary-text">{{ skills_score|default:0 }}</span>
+        </div>
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+            <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ skills_score|default:0 }}%;" data-score="{{ skills_score|default:0 }}"></div>
+        </div>
+    </div>
+
+    <div class="score-bar-item flex flex-col gap-1.5">
+        <div class="score-bar-label flex justify-between items-center">
+            <span class="label-text font-sans text-sm font-semibold text-primary-text">Experience</span>
+            <span class="label-value font-mono text-sm font-bold text-primary-text">{{ experience_score|default:0 }}</span>
+        </div>
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+            <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ experience_score|default:0 }}%;" data-score="{{ experience_score|default:0 }}"></div>
+        </div>
+    </div>
+
+    <div class="score-bar-item flex flex-col gap-1.5">
+        <div class="score-bar-label flex justify-between items-center">
+            <span class="label-text font-sans text-sm font-semibold text-primary-text">Supplemental</span>
+            <span class="label-value font-mono text-sm font-bold text-primary-text">{{ supplemental_score|default:0 }}</span>
+        </div>
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+            <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ supplemental_score|default:0 }}%;" data-score="{{ supplemental_score|default:0 }}"></div>
+        </div>
+    </div>
+</div>

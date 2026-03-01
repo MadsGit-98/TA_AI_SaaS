@@ -1,0 +1,106 @@
+{# Statistics Dashboard Panel #}
+{# Charts/cards showing category distribution and score statistics #}
+
+<div class="statistics-panel bg-white rounded-lg mb-6 border border-secondary-text p-5">
+    <div class="stats-header">
+        <h3 class="text-lg font-semibold text-primary-text mb-5">Analysis Statistics</h3>
+    </div>
+
+    <div class="stats-grid grid grid-cols-1 md:grid-cols-3 gap-5">
+        {# Category Distribution #}
+        <div class="stat-card category-distribution p-4 bg-code-block-bg rounded-lg">
+            <h4 class="text-sm font-semibold text-primary-text mb-4">Category Distribution</h4>
+            <div class="category-bars">
+                <div class="category-bar-item mb-3">
+                    <div class="category-bar-label flex justify-between mb-1">
+                        <span class="cat-name text-sm font-semibold text-primary-text">Best Match</span>
+                        <span class="cat-count font-mono text-sm text-primary-text">{{ statistics.best_match_count|default:0 }}</span>
+                    </div>
+                    <div class="category-bar-track w-full h-4 bg-gray-300 rounded-full overflow-hidden">
+                        <div class="category-bar-fill best-match h-full bg-[#00ff00] rounded-full transition-all duration-500" style="width: {{ statistics.best_match_percentage|default:0 }}%;"></div>
+                    </div>
+                    <span class="cat-percentage block text-right font-mono text-xs text-secondary-text mt-0.5">{{ statistics.best_match_percentage|default:0 }}%</span>
+                </div>
+
+                <div class="category-bar-item mb-3">
+                    <div class="category-bar-label flex justify-between mb-1">
+                        <span class="cat-name text-sm font-semibold text-primary-text">Good Match</span>
+                        <span class="cat-count font-mono text-sm text-primary-text">{{ statistics.good_match_count|default:0 }}</span>
+                    </div>
+                    <div class="category-bar-track w-full h-4 bg-gray-300 rounded-full overflow-hidden">
+                        <div class="category-bar-fill good-match h-full bg-[#7fff00] rounded-full transition-all duration-500" style="width: {{ statistics.good_match_percentage|default:0 }}%;"></div>
+                    </div>
+                    <span class="cat-percentage block text-right font-mono text-xs text-secondary-text mt-0.5">{{ statistics.good_match_percentage|default:0 }}%</span>
+                </div>
+
+                <div class="category-bar-item mb-3">
+                    <div class="category-bar-label flex justify-between mb-1">
+                        <span class="cat-name text-sm font-semibold text-primary-text">Partial Match</span>
+                        <span class="cat-count font-mono text-sm text-primary-text">{{ statistics.partial_match_count|default:0 }}</span>
+                    </div>
+                    <div class="category-bar-track w-full h-4 bg-gray-300 rounded-full overflow-hidden">
+                        <div class="category-bar-fill partial-match h-full bg-[#ffcc00] rounded-full transition-all duration-500" style="width: {{ statistics.partial_match_percentage|default:0 }}%;"></div>
+                    </div>
+                    <span class="cat-percentage block text-right font-mono text-xs text-secondary-text mt-0.5">{{ statistics.partial_match_percentage|default:0 }}%</span>
+                </div>
+
+                <div class="category-bar-item">
+                    <div class="category-bar-label flex justify-between mb-1">
+                        <span class="cat-name text-sm font-semibold text-primary-text">Mismatched</span>
+                        <span class="cat-count font-mono text-sm text-primary-text">{{ statistics.mismatched_count|default:0 }}</span>
+                    </div>
+                    <div class="category-bar-track w-full h-4 bg-gray-300 rounded-full overflow-hidden">
+                        <div class="category-bar-fill mismatched h-full bg-[#ff6666] rounded-full transition-all duration-500" style="width: {{ statistics.mismatched_percentage|default:0 }}%;"></div>
+                    </div>
+                    <span class="cat-percentage block text-right font-mono text-xs text-secondary-text mt-0.5">{{ statistics.mismatched_percentage|default:0 }}%</span>
+                </div>
+            </div>
+        </div>
+
+        {# Score Statistics #}
+        <div class="stat-card score-stats p-4 bg-code-block-bg rounded-lg">
+            <h4 class="text-sm font-semibold text-primary-text mb-4">Score Statistics</h4>
+            <div class="stats-metrics grid grid-cols-2 gap-3">
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Average Score</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.average_score|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Median Score</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.median_score|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Highest Score</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.max_score|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Lowest Score</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.min_score|default:0 }}</span>
+                </div>
+            </div>
+        </div>
+
+        {# Processing Stats #}
+        <div class="stat-card processing-stats p-4 bg-code-block-bg rounded-lg">
+            <h4 class="text-sm font-semibold text-primary-text mb-4">Processing</h4>
+            <div class="stats-metrics grid grid-cols-2 gap-3">
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Total Applicants</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.total_applicants|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Analyzed</span>
+                    <span class="metric-value analyzed font-mono text-2xl font-bold text-green-600">{{ statistics.analyzed_count|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Unprocessed</span>
+                    <span class="metric-value unprocessed font-mono text-2xl font-bold text-red-600">{{ statistics.unprocessed_count|default:0 }}</span>
+                </div>
+                <div class="stat-metric flex flex-col gap-1 p-3 bg-white rounded">
+                    <span class="metric-label text-xs text-secondary-text uppercase tracking-wide">Success Rate</span>
+                    <span class="metric-value font-mono text-2xl font-bold text-primary-text">{{ statistics.success_rate|default:0 }}%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

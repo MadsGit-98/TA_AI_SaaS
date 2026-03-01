@@ -1,0 +1,79 @@
+{# Result Card Component #}
+{# Displays applicant name, overall score, category badge, and brief summary #}
+
+<div class="result-card bg-white border border-secondary-text rounded-lg p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all {% if status == 'Unprocessed' %}result-card-unprocessed bg-red-50 border-red-200{% endif %}" data-result-id="{{ id }}">
+    <div class="card-header flex justify-between items-start mb-4 pb-4 border-b border-secondary-text">
+        <div class="applicant-info">
+            <h4 class="applicant-name font-sans text-base font-semibold text-primary-text mb-1">{{ applicant_name }}</h4>
+            <p class="applicant-reference font-mono text-xs text-secondary-text">{{ reference_number }}</p>
+        </div>
+        <div class="category-section">
+            {% if status == 'Analyzed' %}
+            <span class="category-badge inline-block px-3 py-1.5 rounded-full text-xs font-semibold font-mono category-{{ category|slugify }}">
+                {{ category }}
+            </span>
+            {% else %}
+            <span class="category-badge inline-block px-3 py-1.5 rounded-full text-xs font-semibold font-mono bg-secondary-text text-cta-text">
+                Unprocessed
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card-body">
+        {% if status == 'Analyzed' %}
+        <div class="overall-score-display text-center mb-5">
+            <div class="score-circle relative w-25 h-25 mx-auto mb-2">
+                <svg viewBox="0 0 36 36" class="circular-chart block mx-auto max-w-full max-h-full -rotate-90">
+                    <path class="circle-bg"
+                        d="M18 2.0845
+                          a 15.9155 15.9155 0 0 1 0 31.831
+                          a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="#E0E0E0"
+                        stroke-width="2"
+                    />
+                    <path class="circle"
+                        stroke-dasharray="{{ overall_score }}, 100"
+                        d="M18 2.0845
+                          a 15.9155 15.9155 0 0 1 0 31.831
+                          a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="#080707"
+                        stroke-width="2"
+                    />
+                </svg>
+                <span class="score-number absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-3xl font-bold text-primary-text">{{ overall_score }}</span>
+            </div>
+            <span class="score-label font-sans text-xs text-secondary-text">Overall Score</span>
+        </div>
+
+        <div class="metrics-preview flex justify-around mb-5 p-3 bg-code-block-bg rounded-lg">
+            <div class="metric-preview-item flex flex-col items-center gap-1">
+                <span class="metric-label font-sans text-xs text-secondary-text uppercase">Education</span>
+                <span class="metric-value font-mono text-lg font-bold text-primary-text">{{ education_score }}</span>
+            </div>
+            <div class="metric-preview-item flex flex-col items-center gap-1">
+                <span class="metric-label font-sans text-xs text-secondary-text uppercase">Skills</span>
+                <span class="metric-value font-mono text-lg font-bold text-primary-text">{{ skills_score }}</span>
+            </div>
+            <div class="metric-preview-item flex flex-col items-center gap-1">
+                <span class="metric-label font-sans text-xs text-secondary-text uppercase">Experience</span>
+                <span class="metric-value font-mono text-lg font-bold text-primary-text">{{ experience_score }}</span>
+            </div>
+        </div>
+
+        <div class="card-actions text-center">
+            <button class="btn-view-details bg-accent-cta text-cta-text px-5 py-2.5 rounded font-sans text-sm font-semibold hover:bg-gray-800 transition" data-result-id="{{ id }}" type="button">
+                View Full Details
+            </button>
+        </div>
+
+        {% else %}
+        <div class="unprocessed-info text-center p-5">
+            <div class="error-icon text-3xl mb-3">⚠️</div>
+            <p class="error-message font-sans text-sm text-secondary-text">{{ error_message|default:"Analysis failed to process this applicant" }}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

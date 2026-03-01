@@ -1,0 +1,194 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ job.title }} - X-Crewter</title>
+    <!-- Initialize Tailwind CSS with custom configuration -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-bg': '#FFFFFF',
+                        'primary-text': '#000000',
+                        'secondary-text': '#A0A0A0',
+                        'accent-cta': '#080707',
+                        'code-block-bg': '#E0E0E0',
+                        'cta-text': '#FFFFFF',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <!-- Pass job ID to JavaScript -->
+    <script>
+        window.JOB_DETAIL_CONFIG = {
+            jobId: '{{ job.id }}'
+        };
+    </script>
+    <!-- Page-specific styles -->
+    <link rel="stylesheet" href="{% static 'css/job_detail.css' %}">
+</head>
+<body class="bg-primary-bg text-primary-text min-h-screen flex flex-col">
+    <header class="bg-primary-bg shadow-sm border-b border-secondary-text">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex-shrink-0 flex items-center">
+                        <img src="{% static 'images/logo_header.png' %}" alt="X-Crewter Logo" class="h-10 max-w-[200px] w-auto">
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="{% url 'jobs:dashboard' %}" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Back to Dashboard</a>
+                    <a href="#" id="logout-link" class="text-secondary-text hover:text-accent-cta px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Job Header -->
+            <div class="mb-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h1 class="text-3xl font-bold text-primary-text mb-2">{{ job.title }}</h1>
+                        <div class="flex gap-2 mb-4">
+                            <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">{{ job.job_level }}</span>
+                            <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">{{ job.required_experience }}+ years experience</span>
+                            <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-semibold">{{ job.status }}</span>
+                        </div>
+                        
+                        <!-- AI Analysis Done Tag -->
+                        {% if analysis_complete %}
+                        <div class="mb-4">
+                            <div class="analysis-done-tag" title="AI Analysis Complete">
+                                <span class="done-icon">✓</span>
+                                <span class="done-text">Analysis Done</span>
+                            </div>
+                            <a href="{% url 'analysis:reporting_page' job.id %}" class="ml-4 text-accent-cta hover:underline text-sm font-medium">View Analysis Results →</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="flex flex-col space-y-2">
+                        <a href="{% url 'jobs:edit-job' job.id %}" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition text-center">Edit Job</a>
+                        <button type="button" onclick="copyApplicationLink('{{ job.application_link }}')" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Copy Application Link</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reactivation Warning (T053b) -->
+            {% if show_reactivation_warning %}
+            <div class="reactivation-warning mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-semibold text-yellow-800">Analysis May Be Incomplete</h3>
+                        <p class="mt-1 text-sm text-yellow-700">
+                            This job was reactivated after AI analysis completion. New applicants who applied after the analysis was completed are not included in the results. Consider re-running the analysis to include all applicants.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Job Description -->
+            <section class="mb-8 pb-6 border-b border-secondary-text">
+                <h2 class="text-2xl font-semibold text-primary-text mb-4">About the Role</h2>
+                <p class="text-secondary-text leading-relaxed">{{ job.description }}</p>
+            </section>
+
+            <!-- Required Skills -->
+            <section class="mb-8">
+                <h2 class="text-2xl font-semibold text-primary-text mb-4">Required Skills</h2>
+                <div class="flex flex-wrap gap-2">
+                    {% for skill in job.required_skills %}
+                    <span class="bg-code-block-bg text-primary-text px-4 py-2 rounded-full text-sm">{{ skill }}</span>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <!-- Job Details -->
+            <section class="mb-8 p-6 bg-code-block-bg rounded-lg">
+                <h2 class="text-xl font-semibold text-primary-text mb-4">Job Details</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-secondary-text">Start Date</p>
+                        <p class="text-primary-text font-semibold">{{ job.start_date|date:"M d, Y"|default:"Not set" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-secondary-text">Expiration Date</p>
+                        <p class="text-primary-text font-semibold">{{ job.expiration_date|date:"M d, Y"|default:"Not set" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-secondary-text">Created</p>
+                        <p class="text-primary-text font-semibold">{{ job.created_at|date:"M d, Y" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-secondary-text">Applicants</p>
+                        <p class="text-primary-text font-semibold">{{ job.applicants.count }}</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AI Analysis Actions -->
+            {% if analysis_complete %}
+            <section class="mb-8 p-6 bg-code-block-bg rounded-lg">
+                <h2 class="text-xl font-semibold text-primary-text mb-4">AI Analysis</h2>
+                <div class="flex gap-4">
+                    <a href="{% url 'analysis:reporting_page' job.id %}" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">View Full Report</a>
+                    <button type="button" onclick="openRerunModal()" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Re-run Analysis</button>
+                </div>
+            </section>
+            {% else %}
+            <section class="mb-8 p-6 bg-code-block-bg rounded-lg">
+                <h2 class="text-xl font-semibold text-primary-text mb-4">AI Analysis</h2>
+                {% if job.status == 'Inactive' or job.expiration_date < now %}
+                <p class="text-secondary-text mb-4">AI analysis can be initiated for this job listing.</p>
+                <button type="button" onclick="initiateAnalysis()" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">Start AI Analysis</button>
+                {% else %}
+                <p class="text-secondary-text">AI analysis can only be initiated after the job expires or is manually deactivated.</p>
+                {% endif %}
+            </section>
+            {% endif %}
+        </div>
+    </main>
+
+    <!-- Re-run Analysis Confirmation Modal (T055) -->
+    <div id="rerun-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;">
+        <div class="bg-white rounded-lg max-w-md w-full mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-semibold text-primary-text mb-4">Re-run AI Analysis?</h3>
+                <p class="text-secondary-text mb-6">
+                    This will delete all previous analysis results and start a fresh analysis. This action cannot be undone.
+                </p>
+                <div class="flex gap-4">
+                    <button type="button" onclick="closeRerunModal()" class="flex-1 bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Cancel</button>
+                    <button type="button" onclick="confirmRerunAnalysis()" class="flex-1 bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">Re-run Analysis</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% include 'components/legal_footer.html' %}
+
+    {% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+    <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    <script src="{% static 'js/job_detail.js' %}"></script>
+    {% endblock %}
+</body>
+</html>
