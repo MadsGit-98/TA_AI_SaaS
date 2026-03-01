@@ -1,12 +1,13 @@
 from rest_framework import serializers
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
+from apps.analysis.models import AIAnalysisResult
 
 
 class DateValidationMixin:
     """
     Mixin to provide date validation for serializers that have start_date and expiration_date fields.
     """
-    def validate_dates(self, data):
+    def validate(self, data):
         """
         Validates that expiration date is after start date, considering existing instance values for partial updates.
         """
@@ -52,11 +53,19 @@ class CommonScreeningQuestionSerializer(serializers.ModelSerializer):
 
 class JobListingSerializer(serializers.ModelSerializer):
     screening_questions = ScreeningQuestionSerializer(many=True, read_only=True)
-    
+    analysis_complete = serializers.SerializerMethodField()
+
     class Meta:
         model = JobListing
         fields = '__all__'
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'created_by', 'modification_date')
+
+    def get_analysis_complete(self, obj):
+        """Check if AI analysis has been completed for this job listing."""
+        return AIAnalysisResult.objects.filter(
+            job_listing=obj,
+            status='Analyzed'
+        ).exists()
 
 
 class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerializer):
@@ -69,10 +78,9 @@ class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerialize
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'modification_date')
 
     def validate(self, data):
-        # Call the parent validate method if it exists
+        # Call the parent validate method
         data = super().validate(data)
-        # Apply date validation
-        return self.validate_dates(data)
+        return data
 
 
 class JobListingUpdateSerializer(DateValidationMixin, serializers.ModelSerializer):
@@ -84,7 +92,6 @@ class JobListingUpdateSerializer(DateValidationMixin, serializers.ModelSerialize
         ]
 
     def validate(self, data):
-        # Call the parent validate method if it exists
+        # Call the parent validate method
         data = super().validate(data)
-        # Apply date validation
-        return self.validate_dates(data)
+        return data

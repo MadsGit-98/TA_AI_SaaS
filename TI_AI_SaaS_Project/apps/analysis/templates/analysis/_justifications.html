@@ -1,0 +1,54 @@
+{# Justifications Accordion Component #}
+{# Collapsible sections for each metric justification #}
+
+<div class="justifications-accordion flex flex-col gap-2 p-4 bg-white rounded-lg" id="justifications-{{ result.id|default:'detail' }}">
+    <div class="accordion-item border border-secondary-text rounded overflow-hidden">
+        <button class="accordion-header w-full flex justify-between items-center p-3 bg-code-block-bg border-none cursor-pointer hover:bg-gray-300 transition" type="button" data-accordion="education">
+            <span class="accordion-title font-sans text-sm font-semibold text-primary-text text-left">Education Justification</span>
+            <span class="accordion-icon text-xs text-secondary-text transition-transform">▼</span>
+        </button>
+        <div class="accordion-content p-4 bg-white border-t border-secondary-text" id="accordion-education" style="display: none;">
+            <p class="justification-text font-sans text-sm leading-relaxed text-secondary-text">{{ education_justification|default:"No justification available." }}</p>
+        </div>
+    </div>
+
+    <div class="accordion-item border border-secondary-text rounded overflow-hidden">
+        <button class="accordion-header w-full flex justify-between items-center p-3 bg-code-block-bg border-none cursor-pointer hover:bg-gray-300 transition" type="button" data-accordion="skills">
+            <span class="accordion-title font-sans text-sm font-semibold text-primary-text text-left">Skills Justification</span>
+            <span class="accordion-icon text-xs text-secondary-text transition-transform">▼</span>
+        </button>
+        <div class="accordion-content p-4 bg-white border-t border-secondary-text" id="accordion-skills" style="display: none;">
+            <p class="justification-text font-sans text-sm leading-relaxed text-secondary-text">{{ skills_justification|default:"No justification available." }}</p>
+        </div>
+    </div>
+
+    <div class="accordion-item border border-secondary-text rounded overflow-hidden">
+        <button class="accordion-header w-full flex justify-between items-center p-3 bg-code-block-bg border-none cursor-pointer hover:bg-gray-300 transition" type="button" data-accordion="experience">
+            <span class="accordion-title font-sans text-sm font-semibold text-primary-text text-left">Experience Justification</span>
+            <span class="accordion-icon text-xs text-secondary-text transition-transform">▼</span>
+        </button>
+        <div class="accordion-content p-4 bg-white border-t border-secondary-text" id="accordion-experience" style="display: none;">
+            <p class="justification-text font-sans text-sm leading-relaxed text-secondary-text">{{ experience_justification|default:"No justification available." }}</p>
+        </div>
+    </div>
+
+    <div class="accordion-item border border-secondary-text rounded overflow-hidden">
+        <button class="accordion-header w-full flex justify-between items-center p-3 bg-code-block-bg border-none cursor-pointer hover:bg-gray-300 transition" type="button" data-accordion="supplemental">
+            <span class="accordion-title font-sans text-sm font-semibold text-primary-text text-left">Supplemental Justification</span>
+            <span class="accordion-icon text-xs text-secondary-text transition-transform">▼</span>
+        </button>
+        <div class="accordion-content p-4 bg-white border-t border-secondary-text" id="accordion-supplemental" style="display: none;">
+            <p class="justification-text font-sans text-sm leading-relaxed text-secondary-text">{{ supplemental_justification|default:"No justification available." }}</p>
+        </div>
+    </div>
+
+    <div class="accordion-item border border-secondary-text rounded overflow-hidden">
+        <button class="accordion-header w-full flex justify-between items-center p-3 bg-code-block-bg border-none cursor-pointer hover:bg-gray-300 transition" type="button" data-accordion="overall">
+            <span class="accordion-title font-sans text-sm font-semibold text-primary-text text-left">Overall Justification</span>
+            <span class="accordion-icon text-xs text-secondary-text transition-transform">▼</span>
+        </button>
+        <div class="accordion-content p-4 bg-white border-t border-secondary-text" id="accordion-overall" style="display: none;">
+            <p class="justification-text overall font-sans text-sm leading-relaxed text-primary-text font-medium">{{ overall_justification|default:"No justification available." }}</p>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,158 @@
+/* ==========================================================================
+   AI Analysis Module Custom Styles
+   Minimal custom CSS - most styling done via Tailwind utility classes
+   ========================================================================== */
+
+/* ==========================================================================
+   Category Badge Colors
+   ========================================================================== */
+
+.category-best-match {
+    background: #00ff00;
+    color: #000000;
+}
+
+.category-good-match {
+    background: #7fff00;
+    color: #000000;
+}
+
+.category-partial-match {
+    background: #ffcc00;
+    color: #000000;
+}
+
+.category-mismatched {
+    background: #ff6666;
+    color: #000000;
+}
+
+/* ==========================================================================
+   Circular Score Chart
+   ========================================================================== */
+
+.score-circle {
+    position: relative;
+    width: 100px;
+    height: 100px;
+}
+
+.circular-chart {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.circle-bg {
+    stroke: #E0E0E0;
+}
+
+.circle {
+    stroke: #080707;
+    transition: stroke-dasharray 0.5s ease;
+}
+
+/* ==========================================================================
+   Animations
+   ========================================================================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+@keyframes pulse-done {
+    0%, 100% {
+        box-shadow: 0 2px 4px rgba(0, 255, 0, 0.2);
+    }
+    50% {
+        box-shadow: 0 2px 12px rgba(0, 255, 0, 0.4);
+    }
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+    .report-actions, .view-toggle, .action-buttons, .results-filters {
+        display: none !important;
+    }
+
+    .result-card, .stat-card {
+        break-inside: avoid;
+    }
+
+    .comparison-card {
+        break-inside: avoid;
+    }
+}
+
+/* ==========================================================================
+   Terminal Loading Indicator Custom Styles
+   ========================================================================== */
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+/* Scrollbar styling for terminal output */
+.terminal-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-output::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 4px;
+}
+
+.terminal-output::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.terminal-output::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* ==========================================================================
+   Unprocessed Row Styling
+   ========================================================================== */
+
+.result-card-unprocessed {
+    background: #fff5f5;
+    border-color: #ffcccc;
+}
+
+.unprocessed-row {
+    background: #fff5f5;
+}
