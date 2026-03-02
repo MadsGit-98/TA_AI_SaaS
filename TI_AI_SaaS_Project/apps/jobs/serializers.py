@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Exists, OuterRef
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 
@@ -61,10 +62,19 @@ class JobListingSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'created_by', 'modification_date')
 
     def get_analysis_complete(self, obj):
-        """Check if AI analysis has been completed for this job listing."""
+        """Check if AI analysis has been completed for this job listing.
+        
+        Reads from 'analysis_complete' annotation if available (set by view using Exists),
+        otherwise falls back to database query.
+        """
+        # Check if the view annotated the queryset with analysis_complete
+        if hasattr(obj, 'analysis_complete'):
+            return obj.analysis_complete
+        
+        # Fallback: query the database (for backwards compatibility)
         return AIAnalysisResult.objects.filter(
             job_listing=obj,
-            status='Analyzed'
+            status=AIAnalysisResult.STATUS_ANALYZED
         ).exists()
 
 

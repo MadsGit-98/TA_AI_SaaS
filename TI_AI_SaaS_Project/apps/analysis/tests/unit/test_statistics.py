@@ -144,17 +144,19 @@ class AnalysisResultsAPITest(TestCase):
     def test_ordering(self):
         """Test ordering results."""
         url = f'/api/jobs/{self.job.id}/analysis/results/'
-        
+
         # Default ordering (-overall_score)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        
+
         results = response.data['data']['results']
         scores = [r['overall_score'] for r in results]
         self.assertEqual(scores, sorted(scores, reverse=True))
-        
+
         # Ascending ordering
         response = self.client.get(url, {'ordering': 'overall_score'})
+        self.assertEqual(response.status_code, 200)
+        
         results = response.data['data']['results']
         scores = [r['overall_score'] for r in results]
         self.assertEqual(scores, sorted(scores))

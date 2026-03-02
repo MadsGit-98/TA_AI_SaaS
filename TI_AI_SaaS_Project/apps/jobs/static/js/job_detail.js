@@ -35,22 +35,39 @@
      * Open re-run analysis modal
      */
     function openRerunModal() {
-        document.getElementById('rerun-modal').style.display = 'flex';
+        var modal = document.getElementById('rerun-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+        } else {
+            console.warn('Rerun modal element not found');
+        }
     }
 
     /**
      * Close re-run analysis modal
      */
     function closeRerunModal() {
-        document.getElementById('rerun-modal').style.display = 'none';
+        var modal = document.getElementById('rerun-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        } else {
+            console.warn('Rerun modal element not found');
+        }
     }
 
     /**
      * Confirm re-run analysis
      */
     function confirmRerunAnalysis() {
+        // Validate JOB_DETAIL_CONFIG exists and has jobId
+        if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
+            console.error('Job ID not found in JOB_DETAIL_CONFIG');
+            alert('Error: Job information is not available. Please refresh the page and try again.');
+            return;
+        }
+
         var jobId = window.JOB_DETAIL_CONFIG.jobId;
-        
+
         fetch('/dashboard/jobs/' + jobId + '/analysis/re-run/', {
             method: 'POST',
             headers: {
@@ -82,8 +99,15 @@
      * Initiate AI analysis
      */
     function initiateAnalysis() {
+        // Validate JOB_DETAIL_CONFIG exists and has jobId
+        if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
+            console.error('Job ID not found in JOB_DETAIL_CONFIG');
+            alert('Error: Job information is not available. Please refresh the page and try again.');
+            return;
+        }
+
         var jobId = window.JOB_DETAIL_CONFIG.jobId;
-        
+
         fetch('/dashboard/jobs/' + jobId + '/analysis/initiate/', {
             method: 'POST',
             headers: {
@@ -124,6 +148,15 @@
      * Initialize job detail page
      */
     function init() {
+        // Attach copy link button handler
+        var copyLinkBtn = document.getElementById('copy-link-btn');
+        if (copyLinkBtn) {
+            copyLinkBtn.addEventListener('click', function() {
+                var link = this.dataset.applicationLink;
+                copyApplicationLink(link);
+            });
+        }
+
         // Attach modal outside click handler
         var modal = document.getElementById('rerun-modal');
         if (modal) {
@@ -138,8 +171,7 @@
         init();
     }
 
-    // Expose functions globally
-    window.copyApplicationLink = copyApplicationLink;
+    // Expose functions globally (for potential external use)
     window.openRerunModal = openRerunModal;
     window.closeRerunModal = closeRerunModal;
     window.confirmRerunAnalysis = confirmRerunAnalysis;

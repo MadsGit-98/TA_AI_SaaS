@@ -39,17 +39,31 @@
         const applyFiltersBtn = document.getElementById('apply-filters');
         if (applyFiltersBtn) {
             applyFiltersBtn.addEventListener('click', function() {
-                const category = document.getElementById('category-filter').value;
-                const minScore = document.getElementById('min-score').value;
-                const maxScore = document.getElementById('max-score').value;
+                // Safely get filter elements with null checks
+                var categoryEl = document.getElementById('category-filter');
+                var minScoreEl = document.getElementById('min-score');
+                var maxScoreEl = document.getElementById('max-score');
 
-                let url = new URL(window.location.href);
-                if (category) url.searchParams.set('category', category);
-                else url.searchParams.delete('category');
-                if (minScore) url.searchParams.set('min_score', minScore);
-                else url.searchParams.delete('min_score');
-                if (maxScore) url.searchParams.set('max_score', maxScore);
-                else url.searchParams.delete('max_score');
+                var category = categoryEl ? categoryEl.value : '';
+                var minScore = minScoreEl ? minScoreEl.value : '';
+                var maxScore = maxScoreEl ? maxScoreEl.value : '';
+
+                var url = new URL(window.location.href);
+                if (category) {
+                    url.searchParams.set('category', category);
+                } else {
+                    url.searchParams.delete('category');
+                }
+                if (minScore) {
+                    url.searchParams.set('min_score', minScore);
+                } else {
+                    url.searchParams.delete('min_score');
+                }
+                if (maxScore) {
+                    url.searchParams.set('max_score', maxScore);
+                } else {
+                    url.searchParams.delete('max_score');
+                }
 
                 window.location.href = url.toString();
             });
@@ -88,6 +102,9 @@
      * @param {string} resultId - The result ID to fetch details for
      */
     function openResultDetail(resultId) {
+        var modalBody = document.getElementById('modal-body-content');
+        var modal = document.getElementById('result-detail-modal');
+
         fetch('/analysis/api/analysis/results/' + resultId + '/')
             .then(function(response) {
                 if (!response.ok) {
@@ -97,12 +114,19 @@
             })
             .then(function(data) {
                 if (data.success) {
-                    const content = buildDetailContent(data.data);
-                    const modalBody = document.getElementById('modal-body-content');
+                    var content = buildDetailContent(data.data);
                     if (modalBody) {
                         modalBody.innerHTML = content;
                     }
-                    const modal = document.getElementById('result-detail-modal');
+                    if (modal) {
+                        modal.style.display = 'flex';
+                    }
+                } else {
+                    // Show API error message to user
+                    var errorMsg = data.error && data.error.message ? data.error.message : 'Failed to load result details';
+                    if (modalBody) {
+                        modalBody.innerHTML = '<div class="error-message"><p>Error: ' + escapeHtml(errorMsg) + '</p></div>';
+                    }
                     if (modal) {
                         modal.style.display = 'flex';
                     }
@@ -110,6 +134,13 @@
             })
             .catch(function(error) {
                 console.error('Error loading result detail:', error);
+                // Show network error message to user
+                if (modalBody) {
+                    modalBody.innerHTML = '<div class="error-message"><p>Error: Unable to load result details. Please try again.</p></div>';
+                }
+                if (modal) {
+                    modal.style.display = 'flex';
+                }
             });
     }
 
@@ -119,6 +150,30 @@
      * @returns {string} HTML string
      */
     function buildDetailContent(data) {
+        // Safe accessor for nested score values with defaults
+        function getScore(value) {
+            if (value === null || value === undefined || value === '') {
+                return 'N/A';
+            }
+            return escapeHtml(String(value));
+        }
+
+        // Extract scores with null-safe access
+        var scores = data.scores || {};
+        var overall = scores.overall || {};
+        var education = scores.education || {};
+        var skills = scores.skills || {};
+        var experience = scores.experience || {};
+        var supplemental = scores.supplemental || {};
+
+        var overallScore = getScore(overall.score);
+        var overallCategory = getScore(overall.category);
+        var educationScore = getScore(education.score);
+        var skillsScore = getScore(skills.score);
+        var experienceScore = getScore(experience.score);
+        var supplementalScore = getScore(supplemental.score);
+        var overallJustification = overall.justification ? escapeHtml(overall.justification) : 'N/A';
+
         return [
             '<div class="detail-header">',
             '    <h4>' + escapeHtml(data.applicant.name) + '</h4>',
@@ -129,26 +184,26 @@
             '<div class="detail-scores">',
             '    <div class="score-card">',
             '        <h5>Overall Score</h5>',
-            '        <div class="overall-score">' + data.scores.overall.score + '</div>',
-            '        <div class="category">' + escapeHtml(data.scores.overall.category) + '</div>',
+            '        <div class="overall-score">' + overallScore + '</div>',
+            '        <div class="category">' + overallCategory + '</div>',
             '    </div>',
             '',
             '    <div class="metrics-grid">',
             '        <div class="metric-card">',
             '            <h6>Education</h6>',
-            '            <div class="metric-score">' + data.scores.education.score + '</div>',
+            '            <div class="metric-score">' + educationScore + '</div>',
             '        </div>',
             '        <div class="metric-card">',
             '            <h6>Skills</h6>',
-            '            <div class="metric-score">' + data.scores.skills.score + '</div>',
+            '            <div class="metric-score">' + skillsScore + '</div>',
             '        </div>',
             '        <div class="metric-card">',
             '            <h6>Experience</h6>',
-            '            <div class="metric-score">' + data.scores.experience.score + '</div>',
+            '            <div class="metric-score">' + experienceScore + '</div>',
             '        </div>',
             '        <div class="metric-card">',
             '            <h6>Supplemental</h6>',
-            '            <div class="metric-score">' + data.scores.supplemental.score + '</div>',
+            '            <div class="metric-score">' + supplementalScore + '</div>',
             '        </div>',
             '    </div>',
             '</div>',
@@ -157,7 +212,7 @@
             '    <h5>Justifications</h5>',
             '    <div class="justification-item">',
             '        <strong>Overall:</strong>',
-            '        <p>' + escapeHtml(data.scores.overall.justification) + '</p>',
+            '        <p>' + overallJustification + '</p>',
             '    </div>',
             '</div>'
         ].join('\n');
@@ -219,6 +274,7 @@
     function initAccordions() {
         document.querySelectorAll('.accordion-header').forEach(function(header) {
             header.addEventListener('click', function() {
+                // data-accordion now contains the full unique ID (e.g., "education-abc123")
                 const contentId = 'accordion-' + this.dataset.accordion;
                 const content = document.getElementById(contentId);
                 const isActive = this.classList.contains('active');
@@ -226,6 +282,7 @@
                 // Close all accordions
                 document.querySelectorAll('.accordion-header').forEach(function(h) {
                     h.classList.remove('active');
+                    h.setAttribute('aria-expanded', 'false');
                 });
                 document.querySelectorAll('.accordion-content').forEach(function(c) {
                     c.style.display = 'none';
@@ -234,6 +291,7 @@
                 // Toggle current
                 if (!isActive && content) {
                     this.classList.add('active');
+                    this.setAttribute('aria-expanded', 'true');
                     content.style.display = 'block';
                 }
             });
@@ -270,6 +328,15 @@
 
         this.pollingInterval = null;
         this.jobId = null;
+        this.displayedMilestones = new Set();
+
+        // Bind cancel button click handler once in constructor
+        var self = this;
+        if (this.cancelBtn) {
+            this.cancelBtn.addEventListener('click', function() {
+                self.cancelAnalysis();
+            });
+        }
     }
 
     /**
@@ -278,18 +345,12 @@
      */
     AnalysisLoadingIndicator.prototype.show = function(jobId) {
         this.jobId = jobId;
+        this.displayedMilestones.clear();
         if (this.container) {
             this.container.style.display = 'block';
         }
         this.addTerminalLine('Starting analysis for job ' + jobId + '...');
         this.startPolling();
-
-        var self = this;
-        if (this.cancelBtn) {
-            this.cancelBtn.addEventListener('click', function() {
-                self.cancelAnalysis();
-            });
-        }
     };
 
     /**
@@ -328,10 +389,18 @@
         }
 
         // Add status updates at milestones
-        if (percentage === 25 || percentage === 50 || percentage === 75) {
-            this.addTerminalLine('Processing... ' + percentage + '% complete');
-        } else if (percentage >= 90 && percentage < 100) {
+        if (percentage === 25 && !this.displayedMilestones.has('25')) {
+            this.addTerminalLine('Processing... 25% complete');
+            this.displayedMilestones.add('25');
+        } else if (percentage === 50 && !this.displayedMilestones.has('50')) {
+            this.addTerminalLine('Processing... 50% complete');
+            this.displayedMilestones.add('50');
+        } else if (percentage === 75 && !this.displayedMilestones.has('75')) {
+            this.addTerminalLine('Processing... 75% complete');
+            this.displayedMilestones.add('75');
+        } else if (percentage >= 90 && percentage < 100 && !this.displayedMilestones.has('finalizing')) {
             this.addTerminalLine('Finalizing analysis...');
+            this.displayedMilestones.add('finalizing');
         }
     };
 
@@ -428,6 +497,9 @@
             }
         })
         .then(function(response) {
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.status + ' ' + response.statusText);
+            }
             return response.json();
         })
         .then(function(data) {

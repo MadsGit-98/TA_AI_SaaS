@@ -13,7 +13,8 @@ This service handles:
 
 import redis
 import math
-from typing import Dict, Any
+import uuid
+from typing import Dict, Any, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
 
@@ -38,51 +39,86 @@ def get_redis_client() -> redis.Redis:
     return redis.from_url(redis_url)
 
 
-def acquire_analysis_lock(job_id: str, ttl_seconds: int = 300) -> bool:
+def acquire_analysis_lock(job_id: str, ttl_seconds: int = 300) -> Optional[str]:
     """
     Acquire distributed lock for analysis initiation.
-    
+
     Uses Redis SET NX EX pattern for atomic lock acquisition with automatic expiration.
-    
+    Stores a unique owner ID to enable safe lock release.
+
     Args:
         job_id: UUID of the job listing
         ttl_seconds: Time-to-live for the lock (default 5 minutes)
-    
+
     Returns:
-        True if lock acquired, False if already running
+        Owner ID string if lock acquired, None if already running
     """
     r = get_redis_client()
     lock_key = f"analysis_lock:{job_id}"
-    
+
+    # Generate unique owner ID for this lock acquisition
+    owner_id = str(uuid.uuid4())
+
     # SET NX EX: Set if Not eXists, with EXpiration
-    acquired = r.set(lock_key, "locked", nx=True, ex=ttl_seconds)
-    return bool(acquired)
+    # Store owner_id as the value so we can verify ownership on release
+    acquired = r.set(lock_key, owner_id, nx=True, ex=ttl_seconds)
+    
+    return owner_id if acquired else None
 
 
-def release_analysis_lock(job_id: str):
+def release_analysis_lock(job_id: str, owner_id: str) -> bool:
     """
     Release lock after analysis completion.
-    
+
+    Uses atomic compare-and-delete to ensure only the lock owner can release the lock.
+    This prevents one process from accidentally releasing another process's lock.
+
     Args:
         job_id: UUID of the job listing
+        owner_id: The owner ID returned from acquire_analysis_lock
+
+    Returns:
+        True if lock was released, False if lock didn't exist or owner didn't match
     """
     r = get_redis_client()
     lock_key = f"analysis_lock:{job_id}"
-    r.delete(lock_key)
+
+    # Lua script for atomic compare-and-delete
+    # Only deletes the key if the current value matches owner_id
+    lua_script = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+    else
+        return 0
+    end
+    """
+
+    # Execute the Lua script
+    result = r.eval(lua_script, 1, lock_key, owner_id)
+    return bool(result)
 
 
 def set_cancellation_flag(job_id: str, ttl_seconds: int = 60) -> bool:
     """
     Set cancellation flag for a running analysis.
-    
+
+    Only sets the flag if an analysis lock exists (i.e., analysis is actually running).
+    This prevents setting cancellation flags for analyses that don't exist or have completed.
+
     Args:
         job_id: UUID of the job listing
         ttl_seconds: Time-to-live for cancellation flag (default 60 seconds)
-    
+
     Returns:
-        True if flag was set, False if analysis not running
+        True if flag was set, False if no running analysis found (lock doesn't exist)
     """
     r = get_redis_client()
+    lock_key = f"analysis_lock:{job_id}"
+    
+    # Only set cancellation flag if analysis lock exists (analysis is running)
+    if not r.exists(lock_key):
+        return False
+    
     cancel_key = f"analysis_cancel:{job_id}"
     return r.setex(cancel_key, ttl_seconds, "cancelled")
 
@@ -117,7 +153,9 @@ def clear_cancellation_flag(job_id: str):
 def update_analysis_progress(job_id: str, processed_count: int, total_count: int):
     """
     Update progress counters for analysis.
-    
+
+    Uses Redis pipeline to ensure atomic update of both the hash values and TTL.
+
     Args:
         job_id: UUID of the job listing
         processed_count: Number of applicants processed so far
@@ -125,11 +163,15 @@ def update_analysis_progress(job_id: str, processed_count: int, total_count: int
     """
     r = get_redis_client()
     progress_key = f"analysis_progress:{job_id}"
-    r.hset(progress_key, mapping={
+    
+    # Use pipeline for atomic HSET + EXPIRE
+    pipe = r.pipeline()
+    pipe.hset(progress_key, mapping={
         'processed': processed_count,
         'total': total_count
     })
-    r.expire(progress_key, 600)  # 10 minute TTL
+    pipe.expire(progress_key, 600)  # 10 minute TTL
+    pipe.execute()
 
 
 def get_analysis_progress(job_id: str) -> Dict[str, int]:
@@ -188,21 +230,29 @@ def get_llm(temperature: float = 0.1, format: str = "json") -> OllamaLLM:
 def calculate_overall_score(experience: int, skills: int, education: int) -> int:
     """
     Calculate weighted overall score with floor rounding.
-    
+
     Weights (per specification):
     - Experience: 50%
     - Skills: 30%
     - Education: 20%
     - Supplemental: Not included in overall (tracked separately)
-    
+
     Args:
         experience: Experience score (0-100)
         skills: Skills score (0-100)
         education: Education score (0-100)
-    
+
     Returns:
         Floored integer score (0-100)
+
+    Raises:
+        ValueError: If any score is not a valid number
     """
+    # Validate and clamp each score to 0-100 range
+    experience = validate_score(experience, "experience")
+    skills = validate_score(skills, "skills")
+    education = validate_score(education, "education")
+
     weighted_sum = (experience * 0.50) + (skills * 0.30) + (education * 0.20)
     return math.floor(weighted_sum)
 

@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Exists, OuterRef
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -7,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from .serializers import JobListingSerializer, ScreeningQuestionSerializer, CommonScreeningQuestionSerializer, JobListingCreateSerializer, JobListingUpdateSerializer
+from apps.analysis.models import AIAnalysisResult
 
 
 from rest_framework.pagination import PageNumberPagination
@@ -17,7 +19,6 @@ class JobListingListPagination(PageNumberPagination):
     max_page_size = 100
 
 class JobListingListView(generics.ListCreateAPIView):
-    queryset = JobListing.objects.all()
     serializer_class = JobListingSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = JobListingListPagination
@@ -28,13 +29,23 @@ class JobListingListView(generics.ListCreateAPIView):
         return self.serializer_class
 
     def get_queryset(self):
-        queryset = JobListing.objects.filter(created_by=self.request.user)
-        
+        # Annotate with analysis_complete to avoid N+1 queries
+        queryset = JobListing.objects.filter(
+            created_by=self.request.user
+        ).annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        )
+
         # Apply status filter
         status_param = self.request.query_params.get('status', None)
         if status_param:
             queryset = queryset.filter(status=status_param)
-        
+
         # Apply date range filter
         date_range_param = self.request.query_params.get('date_range', None)
         if date_range_param:
@@ -47,21 +58,21 @@ class JobListingListView(generics.ListCreateAPIView):
                 queryset = queryset.filter(created_at__gte=start_of_week)
             elif date_range_param == 'month':
                 queryset = queryset.filter(created_at__year=now.year, created_at__month=now.month)
-        
+
         # Apply job level filter
         job_level_param = self.request.query_params.get('job_level', None)
         if job_level_param:
             queryset = queryset.filter(job_level=job_level_param)
-        
+
         # Apply search filter
         search_param = self.request.query_params.get('search', None)
         if search_param:
             from django.db.models import Q
             queryset = queryset.filter(
-                Q(title__icontains=search_param) | 
+                Q(title__icontains=search_param) |
                 Q(description__icontains=search_param)
             )
-        
+
         return queryset
 
     def perform_create(self, serializer):
@@ -69,21 +80,47 @@ class JobListingListView(generics.ListCreateAPIView):
 
 
 class JobListingDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = JobListing.objects.all()
     serializer_class = JobListingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # Annotate with analysis_complete to avoid N+1 queries
         # For update/delete, restrict to owned jobs; allow retrieve for all
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return JobListing.objects.filter(created_by=self.request.user)
-        return JobListing.objects.all()
+            return JobListing.objects.filter(
+                created_by=self.request.user
+            ).annotate(
+                analysis_complete=Exists(
+                    AIAnalysisResult.objects.filter(
+                        job_listing=OuterRef('pk'),
+                        status=AIAnalysisResult.STATUS_ANALYZED
+                    )
+                )
+            )
+        return JobListing.objects.all().annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def activate_job(request, pk):
-    job = get_object_or_404(JobListing, pk=pk)
+    job = get_object_or_404(
+        JobListing.objects.annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        ),
+        pk=pk
+    )
 
     # Check if the requesting user is the owner of the job
     if job.created_by != request.user:
@@ -101,7 +138,17 @@ def activate_job(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def deactivate_job(request, pk):
-    job = get_object_or_404(JobListing, pk=pk)
+    job = get_object_or_404(
+        JobListing.objects.annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        ),
+        pk=pk
+    )
 
     # Check if the requesting user is the owner of the job
     if job.created_by != request.user:
@@ -119,7 +166,17 @@ def deactivate_job(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def duplicate_job(request, pk):
-    original_job = get_object_or_404(JobListing, pk=pk)
+    original_job = get_object_or_404(
+        JobListing.objects.annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        ),
+        pk=pk
+    )
 
     # Check if the requesting user is the owner of the job
     if original_job.created_by != request.user:
