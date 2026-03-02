@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from apps.jobs.models import JobListing
@@ -26,6 +27,7 @@ from apps.analysis.models import AIAnalysisResult
 from apps.analysis.tasks import run_ai_analysis
 from services.ai_analysis_service import (
     acquire_analysis_lock,
+    release_analysis_lock,
     set_cancellation_flag,
     get_analysis_progress,
 )
@@ -71,6 +73,10 @@ def initiate_analysis(request, job_id):
         # Get job listing
         job = get_object_or_404(JobListing, id=job_id)
 
+        # Authorization check: only owner or staff can initiate analysis
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to initiate analysis for this job.")
+
         # Validate job is expired or deactivated
         now = timezone.now()
         is_expired = job.expiration_date < now
@@ -103,7 +109,8 @@ def initiate_analysis(request, job_id):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Try to acquire lock
-        if not acquire_analysis_lock(str(job_id), ttl_seconds=300):
+        owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
+        if not owner_id:
             return Response({
                 'success': False,
                 'error': {
@@ -113,7 +120,19 @@ def initiate_analysis(request, job_id):
             }, status=status.HTTP_409_CONFLICT)
 
         # Start Celery task
-        task = run_ai_analysis.delay(str(job_id))
+        try:
+            task = run_ai_analysis.delay(str(job_id), owner_id)
+        except Exception as dispatch_error:
+            # Release lock if task dispatch fails
+            release_analysis_lock(str(job_id), owner_id)
+            logger.error(f"Failed to dispatch analysis task for job {job_id}: {dispatch_error}")
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'TASK_DISPATCH_FAILED',
+                    'message': 'Failed to start analysis task. Please try again.'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
         estimated_duration = applicant_count * 6
@@ -135,7 +154,7 @@ def initiate_analysis(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -158,6 +177,10 @@ def analysis_status(request, job_id):
     """
     try:
         job = get_object_or_404(JobListing, id=job_id)
+
+        # Authorization check: only owner or staff can view analysis status
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view analysis status for this job.")
 
         # Get progress from Redis
         progress = get_analysis_progress(str(job_id))
@@ -215,7 +238,7 @@ def analysis_status(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -241,6 +264,10 @@ def analysis_results(request, job_id):
     try:
         job = get_object_or_404(JobListing, id=job_id)
 
+        # Authorization check: only owner or staff can view analysis results
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view analysis results for this job.")
+
         # Check if analysis has been run
         results = AIAnalysisResult.objects.filter(job_listing=job)
 
@@ -256,8 +283,8 @@ def analysis_results(request, job_id):
         # Apply filters
         category = request.query_params.get('category')
         status_filter = request.query_params.get('status')
-        min_score = request.query_params.get('min_score')
-        max_score = request.query_params.get('max_score')
+        min_score_param = request.query_params.get('min_score')
+        max_score_param = request.query_params.get('max_score')
 
         if category:
             results = results.filter(category=category)
@@ -265,21 +292,84 @@ def analysis_results(request, job_id):
         if status_filter:
             results = results.filter(status=status_filter)
 
-        if min_score:
-            results = results.filter(overall_score__gte=int(min_score))
+        # Validate and apply score filters
+        if min_score_param:
+            try:
+                min_score = int(min_score_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(overall_score__gte=min_score)
 
-        if max_score:
-            results = results.filter(overall_score__lte=int(max_score))
+        if max_score_param:
+            try:
+                max_score = int(max_score_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(overall_score__lte=max_score)
 
-        # Pagination
-        page = int(request.query_params.get('page', 1))
-        page_size = min(int(request.query_params.get('page_size', 20)), 100)
+        # Validate and apply pagination parameters
+        page_param = request.query_params.get('page', '1')
+        page_size_param = request.query_params.get('page_size', '20')
+
+        try:
+            page = int(page_param)
+        except ValueError:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_PARAMETER',
+                    'message': 'page must be a valid integer'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            page_size = int(page_size_param)
+        except ValueError:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_PARAMETER',
+                    'message': 'page_size must be a valid integer'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Enforce page_size cap
+        page_size = min(page_size, 100)
 
         total_count = results.count()
         total_pages = (total_count + page_size - 1) // page_size
 
-        # Apply ordering and pagination
-        ordering = request.query_params.get('ordering', '-overall_score')
+        # Validate and apply ordering
+        allowed_fields = {'overall_score', 'submitted_at', 'category', 'status'}
+        ordering_param = request.query_params.get('ordering', '-overall_score')
+
+        # Strip leading '-' to get field name
+        if ordering_param.startswith('-'):
+            field_name = ordering_param[1:]
+            prefix = '-'
+        else:
+            field_name = ordering_param
+            prefix = ''
+
+        # Validate field is in whitelist
+        if field_name in allowed_fields:
+            ordering = f'{prefix}{field_name}'
+        else:
+            # Fall back to default
+            ordering = '-overall_score'
+
         results = results.order_by(ordering)
 
         start_idx = (page - 1) * page_size
@@ -314,7 +404,7 @@ def analysis_results(request, job_id):
             'data': {
                 'job_id': str(job_id),
                 'total_count': total_count,
-                'filtered_count': len(results_data),
+                'filtered_count': total_count,
                 'page': page,
                 'page_size': page_size,
                 'total_pages': total_pages,
@@ -328,7 +418,7 @@ def analysis_results(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -346,6 +436,10 @@ def cancel_analysis(request, job_id):
     """
     try:
         job = get_object_or_404(JobListing, id=job_id)
+
+        # Authorization check: only owner or staff can cancel analysis
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to cancel analysis for this job.")
 
         # Set cancellation flag
         set_cancellation_flag(str(job_id), ttl_seconds=60)
@@ -372,7 +466,7 @@ def cancel_analysis(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -404,15 +498,16 @@ def rerun_analysis(request, job_id):
 
         job = get_object_or_404(JobListing, id=job_id)
 
-        # Delete previous results
-        previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
-        AIAnalysisResult.objects.filter(job_listing=job).delete()
+        # Authorization check: only owner or staff can re-run analysis
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to re-run analysis for this job.")
 
         # Get applicant count
         applicant_count = job.applicants.count()
 
-        # Try to acquire lock
-        if not acquire_analysis_lock(str(job_id), ttl_seconds=300):
+        # Try to acquire lock BEFORE deleting any data
+        owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
+        if not owner_id:
             return Response({
                 'success': False,
                 'error': {
@@ -421,8 +516,24 @@ def rerun_analysis(request, job_id):
                 }
             }, status=status.HTTP_409_CONFLICT)
 
+        # Lock acquired - now safe to delete previous results
+        previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
+        AIAnalysisResult.objects.filter(job_listing=job).delete()
+
         # Start Celery task
-        task = run_ai_analysis.delay(str(job_id))
+        try:
+            task = run_ai_analysis.delay(str(job_id), owner_id)
+        except Exception as dispatch_error:
+            # Release lock if task dispatch fails
+            release_analysis_lock(str(job_id), owner_id)
+            logger.error(f"Failed to dispatch analysis task for job {job_id}: {dispatch_error}")
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'TASK_DISPATCH_FAILED',
+                    'message': 'Failed to start analysis task. Please try again.'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({
             'success': True,
@@ -442,7 +553,7 @@ def rerun_analysis(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -463,6 +574,10 @@ def analysis_result_detail(request, result_id):
             AIAnalysisResult.objects.select_related('applicant', 'job_listing'),
             id=result_id
         )
+
+        # Authorization check: only owner or staff can view analysis result detail
+        if result.job_listing.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view this analysis result.")
 
         return Response({
             'success': True,
@@ -515,7 +630,7 @@ def analysis_result_detail(request, result_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -540,6 +655,10 @@ def analysis_statistics(request, job_id):
 
         job = get_object_or_404(JobListing, id=job_id)
 
+        # Authorization check: only owner or staff can view analysis statistics
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view analysis statistics for this job.")
+
         results = AIAnalysisResult.objects.filter(job_listing=job)
 
         total_applicants = job.applicants.count()
@@ -551,11 +670,14 @@ def analysis_statistics(request, job_id):
         category_distribution = {}
         category_percentages = {}
 
+        # Calculate analyzed total from category counts to ensure percentages sum to 100%
+        analyzed_total = sum(item['count'] for item in category_counts)
+
         for item in category_counts:
             cat = item['category']
             count = item['count']
             category_distribution[cat] = count
-            category_percentages[cat] = round((count / total_applicants * 100) if total_applicants > 0 else 0, 1)
+            category_percentages[cat] = round((count / analyzed_total * 100) if analyzed_total > 0 else 0, 1)
 
         # Score statistics (analyzed only)
         analyzed_results = results.filter(status='Analyzed')
@@ -608,6 +730,6 @@ def analysis_statistics(request, job_id):
             'success': False,
             'error': {
                 'code': 'INTERNAL_ERROR',
-                'message': str(e)
+                'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

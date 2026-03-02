@@ -24,7 +24,7 @@
         {% if status == 'Analyzed' %}
         <div class="overall-score-display text-center mb-5">
             <div class="score-circle relative w-25 h-25 mx-auto mb-2">
-                <svg viewBox="0 0 36 36" class="circular-chart block mx-auto max-w-full max-h-full -rotate-90">
+                <svg viewBox="0 0 36 36" class="circular-chart block mx-auto max-w-full max-h-full -rotate-90" role="img" aria-label="Overall score: {{ overall_score }} out of 100">
                     <path class="circle-bg"
                         d="M18 2.0845
                           a 15.9155 15.9155 0 0 1 0 31.831
@@ -43,7 +43,7 @@
                         stroke-width="2"
                     />
                 </svg>
-                <span class="score-number absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-3xl font-bold text-primary-text">{{ overall_score }}</span>
+                <span class="score-number absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-3xl font-bold text-primary-text" aria-hidden="true">{{ overall_score }}</span>
             </div>
             <span class="score-label font-sans text-xs text-secondary-text">Overall Score</span>
         </div>

@@ -7,7 +7,7 @@
             <span class="label-text font-sans text-sm font-semibold text-primary-text">Education</span>
             <span class="label-value font-mono text-sm font-bold text-primary-text">{{ education_score|default:0 }}</span>
         </div>
-        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text" role="progressbar" aria-valuenow="{{ education_score|default:0 }}" aria-valuemin="0" aria-valuemax="100" aria-label="Education score">
             <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ education_score|default:0 }}%;" data-score="{{ education_score|default:0 }}"></div>
         </div>
     </div>
@@ -17,7 +17,7 @@
             <span class="label-text font-sans text-sm font-semibold text-primary-text">Skills</span>
             <span class="label-value font-mono text-sm font-bold text-primary-text">{{ skills_score|default:0 }}</span>
         </div>
-        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text" role="progressbar" aria-valuenow="{{ skills_score|default:0 }}" aria-valuemin="0" aria-valuemax="100" aria-label="Skills score">
             <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ skills_score|default:0 }}%;" data-score="{{ skills_score|default:0 }}"></div>
         </div>
     </div>
@@ -27,7 +27,7 @@
             <span class="label-text font-sans text-sm font-semibold text-primary-text">Experience</span>
             <span class="label-value font-mono text-sm font-bold text-primary-text">{{ experience_score|default:0 }}</span>
         </div>
-        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text" role="progressbar" aria-valuenow="{{ experience_score|default:0 }}" aria-valuemin="0" aria-valuemax="100" aria-label="Experience score">
             <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ experience_score|default:0 }}%;" data-score="{{ experience_score|default:0 }}"></div>
         </div>
     </div>
@@ -37,7 +37,7 @@
             <span class="label-text font-sans text-sm font-semibold text-primary-text">Supplemental</span>
             <span class="label-value font-mono text-sm font-bold text-primary-text">{{ supplemental_score|default:0 }}</span>
         </div>
-        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text">
+        <div class="score-bar-track w-full h-5 bg-code-block-bg rounded-full overflow-hidden border border-secondary-text" role="progressbar" aria-valuenow="{{ supplemental_score|default:0 }}" aria-valuemin="0" aria-valuemax="100" aria-label="Supplemental score">
             <div class="score-bar-fill h-full bg-accent-cta rounded-full transition-all duration-500" style="width: {{ supplemental_score|default:0 }}%;" data-score="{{ supplemental_score|default:0 }}"></div>
         </div>
     </div>

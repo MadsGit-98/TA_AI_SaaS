@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ job.title }} - X-Crewter</title>
     <!-- Initialize Tailwind CSS with custom configuration -->
+    <!-- Note: Tailwind Play CDN is for development only. For production, use the Tailwind CLI build process. -->
+    <!-- SRI is not applicable for cdn.tailwindcss.com as it generates dynamic CSS based on page content -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -24,14 +26,14 @@
         }
     </script>
     <!-- Security Headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://cdnjs.cloudflare.com;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <!-- Pass job ID to JavaScript -->
     <script>
         window.JOB_DETAIL_CONFIG = {
-            jobId: '{{ job.id }}'
+            jobId: '{{ job.id|escapejs }}'
         };
     </script>
     <!-- Page-specific styles -->
@@ -81,7 +83,7 @@
                     
                     <div class="flex flex-col space-y-2">
                         <a href="{% url 'jobs:edit-job' job.id %}" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition text-center">Edit Job</a>
-                        <button type="button" onclick="copyApplicationLink('{{ job.application_link }}')" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Copy Application Link</button>
+                        <button type="button" id="copy-link-btn" data-application-link="{{ job.application_link }}" class="copy-link-btn bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Copy Application Link</button>
                     </div>
                 </div>
             </div>
@@ -186,7 +188,9 @@
     {% include 'components/legal_footer.html' %}
 
     {% block extra_js %}
-    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+    <!-- Axios with SRI integrity check -->
+    <!-- For production, consider hosting axios locally or verify SRI hash for your CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js" integrity="sha384-4E6+Dy4UWMvNFVHh0vXXbK1KwLkhspLLKuq5X6SFTZ9D8yq9Xa6cV5hXJyNn6fF+" crossorigin="anonymous"></script>
     <script src="{% static 'js/auth-interceptor.js' %}"></script>
     <script src="{% static 'js/job_detail.js' %}"></script>
     {% endblock %}

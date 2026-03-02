@@ -9,8 +9,13 @@ Tests cover:
 
 from django.test import TestCase
 from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+# Add project root to Python path for importing services module
+PROJECT_ROOT = Path(__file__).resolve().parents[4]  # Go up from apps/analysis/tests/unit/ to project root
 import sys
-sys.path.append('F:\\Micro-SaaS Projects\\X-Crewter\\Software\\TA_AI_SaaS\\TI_AI_SaaS_Project')
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from services.ai_analysis_service import (
     calculate_overall_score,

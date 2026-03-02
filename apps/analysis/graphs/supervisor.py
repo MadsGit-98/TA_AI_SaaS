@@ -266,28 +266,30 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
 def bulk_persistence_node(state: AnalysisState) -> dict:
     """
     Bulk persistence node: Save all results to the database.
-    
+
     Uses Django's bulk_create with update_conflicts for efficient persistence.
-    
+
     Args:
         state: Final analysis state with all results
-    
+
     Returns:
         Empty dict (end of workflow)
     """
     results = state.get('results', [])
     job_id = state['job_id']
-    
+    owner_id = state.get('owner_id')
+
     if not results:
         logger.info(f"No results to persist for job {job_id}")
-        release_analysis_lock(job_id)
+        if owner_id:
+            release_analysis_lock(job_id, owner_id)
         return {}
-    
+
     logger.info(f"Persisting {len(results)} analysis results for job {job_id}")
-    
+
     # Create AIAnalysisResult instances
     analysis_results = []
-    
+
     for result_data in results:
         try:
             analysis_result = AIAnalysisResult(
@@ -310,26 +312,31 @@ def bulk_persistence_node(state: AnalysisState) -> dict:
             analysis_results.append(analysis_result)
         except Exception as e:
             logger.error(f"Error creating AIAnalysisResult: {e}")
-    
-    # Bulk save with update on conflict
-    if analysis_results:
-        AIAnalysisResult.objects.bulk_create(
-            analysis_results,
-            batch_size=50,
-            update_conflicts=True,
-            update_fields=[
-                'education_score', 'skills_score', 'experience_score', 'supplemental_score',
-                'overall_score', 'category', 'status',
-                'education_justification', 'skills_justification', 'experience_justification',
-                'supplemental_justification', 'overall_justification', 'error_message',
-                'updated_at'
-            ],
-            unique_fields=['applicant_id']
-        )
-    
-    logger.info(f"Successfully persisted {len(analysis_results)} analysis results")
-    
-    # Release the lock
-    release_analysis_lock(job_id)
-    
+
+    # Bulk save with update on conflict - ensure lock is always released
+    try:
+        if analysis_results:
+            AIAnalysisResult.objects.bulk_create(
+                analysis_results,
+                batch_size=50,
+                update_conflicts=True,
+                update_fields=[
+                    'education_score', 'skills_score', 'experience_score', 'supplemental_score',
+                    'overall_score', 'category', 'status',
+                    'education_justification', 'skills_justification', 'experience_justification',
+                    'supplemental_justification', 'overall_justification', 'error_message',
+                    'updated_at', 'job_listing'
+                ],
+                unique_fields=['applicant_id', 'job_listing_id']
+            )
+
+        logger.info(f"Successfully persisted {len(analysis_results)} analysis results")
+    except Exception as e:
+        logger.error(f"Error persisting analysis results for job {job_id}: {e}")
+        raise
+    finally:
+        # Always release the lock, even if bulk_create fails
+        if owner_id:
+            release_analysis_lock(job_id, owner_id)
+
     return {}

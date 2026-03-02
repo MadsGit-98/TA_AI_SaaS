@@ -35,7 +35,8 @@ def _get_footer_context():
     try:
         currency_setting = SiteSetting.objects.get(setting_key='currency_display')
         currency_display = currency_setting.setting_value
-    except SiteSetting.DoesNotExist:
+    except (SiteSetting.DoesNotExist, DatabaseError, OperationalError) as e:
+        logger.error(f"Error fetching currency setting: {e}")
         currency_display = "USD, EUR, GBP"  # Default value
 
     return {
@@ -47,10 +48,10 @@ def _get_footer_context():
 def _calculate_median(values):
     """
     Calculate median from a list of values.
-    
+
     Args:
         values: List or queryset of numeric values
-        
+
     Returns:
         Median value or 0 if empty
     """
@@ -63,7 +64,7 @@ def _calculate_median(values):
     mid = n // 2
 
     if n % 2 == 0:
-        return (values_list[mid - 1] + values_list[mid]) // 2
+        return (values_list[mid - 1] + values_list[mid]) / 2.0
     else:
         return values_list[mid]
 
@@ -123,6 +124,11 @@ def reporting_page_view(request, job_id):
             statistics['good_match_percentage'] = round(statistics['good_match_count'] / total * 100, 1)
             statistics['partial_match_percentage'] = round(statistics['partial_match_count'] / total * 100, 1)
             statistics['mismatched_percentage'] = round(statistics['mismatched_count'] / total * 100, 1)
+        else:
+            statistics['best_match_percentage'] = 0.0
+            statistics['good_match_percentage'] = 0.0
+            statistics['partial_match_percentage'] = 0.0
+            statistics['mismatched_percentage'] = 0.0
 
         # Get footer context
         footer_context = _get_footer_context()

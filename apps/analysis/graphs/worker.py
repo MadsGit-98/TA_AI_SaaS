@@ -29,6 +29,7 @@ class WorkerState(TypedDict):
     applicant: Any  # Applicant instance
     job_listing: Any  # JobListing instance
     resume_text: str
+    job_requirements: Dict[str, Any]  # Job requirements from retrieval_node
     classified_data: Dict[str, Any]
     scores: Dict[str, int]
     overall_score: int
@@ -81,8 +82,23 @@ def retrieval_node(state: WorkerState) -> dict:
     Returns:
         Updated state with resume text and job data
     """
-    applicant = state['applicant']
-    job_listing = state['job_listing']
+    # Defensive access with validation
+    applicant = state.get('applicant')
+    job_listing = state.get('job_listing')
+
+    if not applicant:
+        logger.error("Missing 'applicant' in worker state")
+        return {
+            'status': 'Unprocessed',
+            'error_message': 'Internal error: missing applicant data',
+        }
+
+    if not job_listing:
+        logger.error("Missing 'job_listing' in worker state")
+        return {
+            'status': 'Unprocessed',
+            'error_message': 'Internal error: missing job listing data',
+        }
 
     # Get resume parsed text
     resume_text = applicant.resume_parsed_text or ''
@@ -196,9 +212,14 @@ Output ONLY valid JSON in this exact format:
         response = llm.invoke(classification_prompt)
 
         try:
-            classified_data = json.loads(response)
+            classified_data = json.loads(response.content)
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse classification JSON for applicant {state['applicant'].id}")
+            applicant_id = state.get('applicant')
+            if applicant_id:
+                applicant_id = getattr(applicant_id, 'id', 'unknown')
+            else:
+                applicant_id = 'unknown'
+            logger.warning(f"Failed to parse classification JSON for applicant {applicant_id}")
             # Return basic structure if parsing fails
             classified_data = {
                 'professional_experience': {'employers': [], 'job_titles': [], 'responsibilities': []},
@@ -212,7 +233,12 @@ Output ONLY valid JSON in this exact format:
         }
 
     except Exception as e:
-        logger.warning(f"Classification failed for applicant {state['applicant'].id}: {e}")
+        applicant_id = state.get('applicant')
+        if applicant_id:
+            applicant_id = getattr(applicant_id, 'id', 'unknown')
+        else:
+            applicant_id = 'unknown'
+        logger.warning(f"Classification failed for applicant {applicant_id}: {e}")
         return {
             'status': 'Unprocessed',
             'error_message': f'Classification failed: {str(e)}',
@@ -288,7 +314,7 @@ Output ONLY valid JSON in this exact format:
 
         # Parse JSON response
         try:
-            scores = json.loads(response)
+            scores = json.loads(response.content)
 
             # Validate scores are in 0-100 range
             for key in ['education', 'skills', 'experience', 'supplemental']:
@@ -298,7 +324,12 @@ Output ONLY valid JSON in this exact format:
                     scores[key] = max(0, min(100, int(scores[key])))
 
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            logger.warning(f"Failed to parse scoring JSON for applicant {state['applicant'].id}: {e}")
+            applicant_id = state.get('applicant')
+            if applicant_id:
+                applicant_id = getattr(applicant_id, 'id', 'unknown')
+            else:
+                applicant_id = 'unknown'
+            logger.warning(f"Failed to parse scoring JSON for applicant {applicant_id}: {e}")
             scores = {'education': 0, 'skills': 0, 'experience': 0, 'supplemental': 0}
 
         return {
@@ -306,7 +337,12 @@ Output ONLY valid JSON in this exact format:
         }
 
     except Exception as e:
-        logger.warning(f"Scoring failed for applicant {state['applicant'].id}: {e}")
+        applicant_id = state.get('applicant')
+        if applicant_id:
+            applicant_id = getattr(applicant_id, 'id', 'unknown')
+        else:
+            applicant_id = 'unknown'
+        logger.warning(f"Scoring failed for applicant {applicant_id}: {e}")
         return {
             'status': 'Unprocessed',
             'error_message': f'Scoring failed: {str(e)}',
@@ -397,7 +433,7 @@ def justification_node(state: WorkerState) -> dict:
         }
 
     try:
-        llm = get_llm(temperature=0.3, format="text")
+        llm = get_llm(temperature=0.3, format="json")
 
         justification_prompt = f"""
 You are an AI hiring assistant. Provide brief justifications for the following candidate scores.
@@ -437,9 +473,14 @@ Output ONLY valid JSON in this exact format:
 
         # Parse JSON response
         try:
-            justifications = json.loads(response)
+            justifications = json.loads(response.content)
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse justification JSON for applicant {state['applicant'].id}")
+            applicant_id = state.get('applicant')
+            if applicant_id:
+                applicant_id = getattr(applicant_id, 'id', 'unknown')
+            else:
+                applicant_id = 'unknown'
+            logger.warning(f"Failed to parse justification JSON for applicant {applicant_id}")
             justifications = {
                 'education': f"Score: {scores.get('education', 0)}/100",
                 'skills': f"Score: {scores.get('skills', 0)}/100",
@@ -454,7 +495,12 @@ Output ONLY valid JSON in this exact format:
         }
 
     except Exception as e:
-        logger.warning(f"Justification failed for applicant {state['applicant'].id}: {e}")
+        applicant_id = state.get('applicant')
+        if applicant_id:
+            applicant_id = getattr(applicant_id, 'id', 'unknown')
+        else:
+            applicant_id = 'unknown'
+        logger.warning(f"Justification failed for applicant {applicant_id}: {e}")
         return {
             'status': 'Unprocessed',
             'error_message': f'Justification failed: {str(e)}',

@@ -66,13 +66,13 @@ class AIAnalysisResult(models.Model):
     )
     
     # Relationships
-    applicant = models.OneToOneField(
+    applicant = models.ForeignKey(
         'applications.Applicant',
         on_delete=models.CASCADE,
-        related_name='ai_analysis_result',
+        related_name='ai_analysis_results',
         help_text="Applicant this analysis belongs to"
     )
-    
+
     job_listing = models.ForeignKey(
         'jobs.JobListing',
         on_delete=models.CASCADE,
@@ -83,28 +83,38 @@ class AIAnalysisResult(models.Model):
     # Individual Metric Scores (0-100)
     education_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
+        null=True,
+        blank=True,
         help_text="Education metric score (0-100)"
     )
-    
+
     skills_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
+        null=True,
+        blank=True,
         help_text="Skills metric score (0-100)"
     )
-    
+
     experience_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
+        null=True,
+        blank=True,
         help_text="Experience metric score (0-100)"
     )
-    
+
     supplemental_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        default=0,
+        null=True,
+        blank=True,
+        default=None,
         help_text="Supplemental information score (0-100) - tracked separately, not included in overall score"
     )
-    
+
     # Overall Score (weighted average, floored)
     overall_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
+        null=True,
+        blank=True,
         help_text="Weighted overall score (Experience 50%, Skills 30%, Education 20%), floored to integer"
     )
     
@@ -112,6 +122,9 @@ class AIAnalysisResult(models.Model):
     category = models.CharField(
         max_length=20,
         choices=CATEGORY_CHOICES,
+        null=True,
+        blank=True,
+        default=None,
         help_text="Match category based on overall score"
     )
     
@@ -190,6 +203,11 @@ class AIAnalysisResult(models.Model):
             models.Index(fields=['status']),
         ]
         constraints = [
+            # Ensure each applicant has only one analysis result per job listing
+            models.UniqueConstraint(
+                fields=['applicant', 'job_listing'],
+                name='unique_analysis_per_applicant_per_job'
+            ),
             # Ensure category is consistent with status
             models.CheckConstraint(
                 check=(
@@ -204,7 +222,8 @@ class AIAnalysisResult(models.Model):
         ]
     
     def __str__(self):
-        return f"AI Analysis for {self.applicant.first_name} {self.applicant.last_name} - {self.category}"
+        category_str = self.category if self.category else 'Pending'
+        return f"AI Analysis for {self.applicant.first_name} {self.applicant.last_name} - {category_str}"
     
     def clean(self):
         """
@@ -212,6 +231,20 @@ class AIAnalysisResult(models.Model):
         """
         # Validate overall score matches calculated weighted average
         if self.status == self.STATUS_ANALYZED:
+            # Check that all required scores are present for Analyzed status
+            if (self.experience_score is None or 
+                self.skills_score is None or 
+                self.education_score is None):
+                raise ValidationError({
+                    'status': 'All metric scores must be provided for Analyzed status'
+                })
+            
+            # Check that category is provided for Analyzed status
+            if self.category is None:
+                raise ValidationError({
+                    'category': 'Category must be provided for Analyzed status'
+                })
+            
             expected_overall = calculate_overall_score(
                 self.experience_score,
                 self.skills_score,
@@ -229,14 +262,29 @@ class AIAnalysisResult(models.Model):
                 raise ValidationError({
                     'category': f'Category must be {expected_category} for overall score {self.overall_score}'
                 })
+        
+        # Validate Unprocessed status has correct category
+        elif self.status == self.STATUS_UNPROCESSED:
+            if self.category is not None and self.category != self.CATEGORY_UNPROCESSED:
+                raise ValidationError({
+                    'category': 'Unprocessed results must have category "Unprocessed" or None'
+                })
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, run_full_clean=False, **kwargs):
         """
         Auto-calculate overall_score and category if metric scores are provided and status is Analyzed.
 
         Weighted formula:
         overall_score = floor((experience_score * 0.50) + (skills_score * 0.30) + (education_score * 0.20))
+
+        Args:
+            run_full_clean: If True, calls full_clean() to validate model constraints.
+                           Default is False to follow Django convention and support bulk operations.
         """
+        # Truncate error_message to 1000 characters (max_length is not enforced for TextField)
+        if self.error_message:
+            self.error_message = self.error_message[:1000]
+
         # Auto-calculate overall score if not explicitly set and we have metric scores
         if (self.overall_score is None and
             self.experience_score is not None and
@@ -254,8 +302,10 @@ class AIAnalysisResult(models.Model):
         if self.category is None and self.overall_score is not None and self.status == self.STATUS_ANALYZED:
             self.category = assign_category(self.overall_score)
 
-        # Call full_clean to enforce constraints
-        self.full_clean()
+        # Call full_clean only when explicitly requested
+        if run_full_clean:
+            self.full_clean()
+
         super().save(*args, **kwargs)
     
     @property
@@ -278,7 +328,7 @@ class AIAnalysisResult(models.Model):
             'supplemental': self.supplemental_score,
             'overall': self.overall_score,
         }
-    
+
     @property
     def justifications_dict(self) -> dict:
         """Return all justifications as a dictionary."""
