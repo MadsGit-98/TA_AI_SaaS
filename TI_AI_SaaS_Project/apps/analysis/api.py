@@ -20,11 +20,12 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.exceptions import PermissionDenied
+from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from apps.jobs.models import JobListing
 from apps.analysis.models import AIAnalysisResult
 from apps.analysis.tasks import run_ai_analysis
+from django.db.models import Avg, Count
 from services.ai_analysis_service import (
     acquire_analysis_lock,
     release_analysis_lock,
@@ -65,9 +66,12 @@ def initiate_analysis(request, job_id):
 
     Permissions:
     - Must be authenticated (TAS only)
-    - Job must be expired or manually deactivated
     - Job must have at least one applicant
     - No other analysis can be running for this job
+
+    Note: Expiration date and job deactivation are used to prevent new applications,
+    not to block analysis. Analysis can be initiated at any time as long as there
+    are applicants to analyze.
     """
     try:
         # Get job listing
@@ -76,25 +80,6 @@ def initiate_analysis(request, job_id):
         # Authorization check: only owner or staff can initiate analysis
         if job.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to initiate analysis for this job.")
-
-        # Validate job is expired or deactivated
-        now = timezone.now()
-        is_expired = job.expiration_date < now
-        is_deactivated = job.status == 'Inactive'
-
-        if not is_expired and not is_deactivated:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'JOB_STILL_ACTIVE',
-                    'message': 'AI analysis can only be initiated after job expiration or manual deactivation',
-                    'details': {
-                        'expiration_date': job.expiration_date.isoformat(),
-                        'current_status': job.status,
-                        'is_expired': is_expired,
-                    }
-                }
-            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Check for applicants
         applicant_count = job.applicants.count()
@@ -147,6 +132,24 @@ def initiate_analysis(request, job_id):
                 'estimated_duration_seconds': estimated_duration,
             }
         }, status=status.HTTP_202_ACCEPTED)
+
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
 
     except Exception as e:
         logger.error(f"Error initiating analysis for job {job_id}: {e}", exc_info=True)
@@ -231,6 +234,15 @@ def analysis_status(request, job_id):
                 'results_summary': results_summary,
             }
         })
+
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
 
     except Exception as e:
         logger.error(f"Error getting analysis status for job {job_id}: {e}", exc_info=True)
@@ -412,6 +424,24 @@ def analysis_results(request, job_id):
             }
         })
 
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
     except Exception as e:
         logger.error(f"Error getting analysis results for job {job_id}: {e}", exc_info=True)
         return Response({
@@ -459,6 +489,24 @@ def cancel_analysis(request, job_id):
                 'message': f'Analysis cancelled. Results for {preserved_count} applicants have been preserved.'
             }
         })
+
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
 
     except Exception as e:
         logger.error(f"Error cancelling analysis for job {job_id}: {e}", exc_info=True)
@@ -547,6 +595,24 @@ def rerun_analysis(request, job_id):
             }
         }, status=status.HTTP_202_ACCEPTED)
 
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
     except Exception as e:
         logger.error(f"Error re-running analysis for job {job_id}: {e}", exc_info=True)
         return Response({
@@ -624,6 +690,24 @@ def analysis_result_detail(request, result_id):
             }
         })
 
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Analysis result not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
     except Exception as e:
         logger.error(f"Error getting analysis result detail for {result_id}: {e}", exc_info=True)
         return Response({
@@ -651,7 +735,6 @@ def analysis_statistics(request, job_id):
     - Processing stats
     """
     try:
-        from django.db.models import Avg, Count, StdDev
 
         job = get_object_or_404(JobListing, id=job_id)
 

@@ -158,11 +158,11 @@
             {% else %}
             <section class="mb-8 p-6 bg-code-block-bg rounded-lg">
                 <h2 class="text-xl font-semibold text-primary-text mb-4">AI Analysis</h2>
-                {% if job.status == 'Inactive' or job.expiration_date < now %}
+                {% if job.applicants.count > 0 %}
                 <p class="text-secondary-text mb-4">AI analysis can be initiated for this job listing.</p>
                 <button type="button" onclick="initiateAnalysis()" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">Start AI Analysis</button>
                 {% else %}
-                <p class="text-secondary-text">AI analysis can only be initiated after the job expires or is manually deactivated.</p>
+                <p class="text-secondary-text">AI analysis requires at least one applicant. Wait for applicants to apply before starting analysis.</p>
                 {% endif %}
             </section>
             {% endif %}
