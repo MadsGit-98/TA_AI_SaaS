@@ -310,16 +310,16 @@ def validate_score(score: int, metric_name: str = "score") -> int:
 def classify_resume_data(resume_text: str) -> Dict[str, Any]:
     """
     Classify parsed resume text into structured categories.
-    
+
     Categories (per specification):
     1. Professional Experience & History
     2. Education & Credentials
     3. Skills & Competencies
     4. Supplemental Information
-    
+
     Args:
         resume_text: Raw parsed resume text
-    
+
     Returns:
         Dict with classified data:
         {
@@ -329,8 +329,8 @@ def classify_resume_data(resume_text: str) -> Dict[str, Any]:
             'supplemental': {...}
         }
     """
-    # This is a placeholder - actual classification will be done by LLM
-    # See apps/analysis/nodes/classification.py for implementation
+    # This is a placeholder - actual classification is done by LLM
+    # See apps/analysis/graphs/worker.py for classification_node implementation
     return {
         'professional_experience': {
             'employers': [],
