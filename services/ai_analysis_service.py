@@ -11,12 +11,14 @@ This service handles:
 5. Scoring utilities (weighted average, category assignment)
 """
 
-import redis
 import math
 import uuid
 from typing import Dict, Any, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
+
+# Import shared Redis utilities from accounts app to avoid code duplication
+from apps.accounts.redis_utils import get_redis_client, DummyRedisClient, RedisConnectionError
 
 
 # =============================================================================
@@ -26,17 +28,6 @@ from langchain_ollama import OllamaLLM
 class AnalysisLockError(Exception):
     """Custom exception for analysis lock errors."""
     pass
-
-
-def get_redis_client() -> redis.Redis:
-    """
-    Get Redis client from settings.
-    
-    Returns:
-        Redis client instance
-    """
-    redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
-    return redis.from_url(redis_url)
 
 
 def acquire_analysis_lock(job_id: str, ttl_seconds: int = 300) -> Optional[str]:
@@ -51,9 +42,14 @@ def acquire_analysis_lock(job_id: str, ttl_seconds: int = 300) -> Optional[str]:
         ttl_seconds: Time-to-live for the lock (default 5 minutes)
 
     Returns:
-        Owner ID string if lock acquired, None if already running
+        Owner ID string if lock acquired, None if already running or Redis unavailable
     """
-    r = get_redis_client()
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        r = DummyRedisClient()
+    
     lock_key = f"analysis_lock:{job_id}"
 
     # Generate unique owner ID for this lock acquisition
@@ -62,7 +58,7 @@ def acquire_analysis_lock(job_id: str, ttl_seconds: int = 300) -> Optional[str]:
     # SET NX EX: Set if Not eXists, with EXpiration
     # Store owner_id as the value so we can verify ownership on release
     acquired = r.set(lock_key, owner_id, nx=True, ex=ttl_seconds)
-    
+
     return owner_id if acquired else None
 
 
@@ -80,7 +76,12 @@ def release_analysis_lock(job_id: str, owner_id: str) -> bool:
     Returns:
         True if lock was released, False if lock didn't exist or owner didn't match
     """
-    r = get_redis_client()
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        r = DummyRedisClient()
+    
     lock_key = f"analysis_lock:{job_id}"
 
     # Lua script for atomic compare-and-delete
@@ -112,13 +113,18 @@ def set_cancellation_flag(job_id: str, ttl_seconds: int = 60) -> bool:
     Returns:
         True if flag was set, False if no running analysis found (lock doesn't exist)
     """
-    r = get_redis_client()
-    lock_key = f"analysis_lock:{job_id}"
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        r = DummyRedisClient()
     
+    lock_key = f"analysis_lock:{job_id}"
+
     # Only set cancellation flag if analysis lock exists (analysis is running)
     if not r.exists(lock_key):
         return False
-    
+
     cancel_key = f"analysis_cancel:{job_id}"
     return r.setex(cancel_key, ttl_seconds, "cancelled")
 
@@ -126,14 +132,19 @@ def set_cancellation_flag(job_id: str, ttl_seconds: int = 60) -> bool:
 def check_cancellation_flag(job_id: str) -> bool:
     """
     Check if cancellation was requested for an analysis.
-    
+
     Args:
         job_id: UUID of the job listing
-    
+
     Returns:
         True if cancellation requested, False otherwise
     """
-    r = get_redis_client()
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        r = DummyRedisClient()
+    
     cancel_key = f"analysis_cancel:{job_id}"
     return r.exists(cancel_key)
 
@@ -141,11 +152,16 @@ def check_cancellation_flag(job_id: str) -> bool:
 def clear_cancellation_flag(job_id: str):
     """
     Clear cancellation flag after handling.
-    
+
     Args:
         job_id: UUID of the job listing
     """
-    r = get_redis_client()
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        r = DummyRedisClient()
+    
     cancel_key = f"analysis_cancel:{job_id}"
     r.delete(cancel_key)
 
@@ -161,9 +177,14 @@ def update_analysis_progress(job_id: str, processed_count: int, total_count: int
         processed_count: Number of applicants processed so far
         total_count: Total number of applicants to process
     """
-    r = get_redis_client()
-    progress_key = f"analysis_progress:{job_id}"
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable - silently skip progress update
+        return
     
+    progress_key = f"analysis_progress:{job_id}"
+
     # Use pipeline for atomic HSET + EXPIRE
     pipe = r.pipeline()
     pipe.hset(progress_key, mapping={
@@ -177,20 +198,25 @@ def update_analysis_progress(job_id: str, processed_count: int, total_count: int
 def get_analysis_progress(job_id: str) -> Dict[str, int]:
     """
     Get current progress for an analysis.
-    
+
     Args:
         job_id: UUID of the job listing
-    
+
     Returns:
         Dict with 'processed' and 'total' counts
     """
-    r = get_redis_client()
-    progress_key = f"analysis_progress:{job_id}"
-    data = r.hgetall(progress_key)
-    
-    if not data:
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Return default progress when Redis is unavailable
         return {'processed': 0, 'total': 0}
     
+    progress_key = f"analysis_progress:{job_id}"
+    data = r.hgetall(progress_key)
+
+    if not data:
+        return {'processed': 0, 'total': 0}
+
     return {
         'processed': int(data.get(b'processed', 0)),
         'total': int(data.get(b'total', 0))

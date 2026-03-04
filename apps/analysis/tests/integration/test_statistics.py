@@ -1,5 +1,5 @@
 """
-Unit Tests for AI Analysis Results API
+Integration Tests for AI Analysis Results and Statistics API
 
 Tests cover:
 - Pagination
@@ -7,13 +7,15 @@ Tests cover:
 - Filtering by score range
 - Ordering
 - Statistics calculation
+
+These are integration tests that use the real implementation without mocks.
 """
 
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.core.cache import cache
-from unittest.mock import patch, MagicMock
+from rest_framework_simplejwt.tokens import RefreshToken
 from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.analysis.models import AIAnalysisResult
@@ -25,8 +27,8 @@ import json
 User = get_user_model()
 
 
-class AnalysisResultsAPITest(TestCase):
-    """Test cases for AnalysisResultsView API endpoint."""
+class AnalysisResultsAPIIntegrationTest(TestCase):
+    """Integration test cases for AnalysisResultsView API endpoint."""
 
     def setUp(self):
         """Set up test data."""
@@ -38,18 +40,12 @@ class AnalysisResultsAPITest(TestCase):
             email='tas@example.com',
             password='testpass123'
         )
-        
+
         # Create user profile (required by RBAC middleware)
         UserProfile.objects.create(
             user=self.user,
             is_talent_acquisition_specialist=True
         )
-
-        # Mock Redis to avoid connection timeouts
-        self.redis_patcher = patch('apps.accounts.redis_utils.get_redis_client')
-        self.mock_redis = self.redis_patcher.start()
-        self.mock_redis_client = MagicMock()
-        self.mock_redis.return_value = self.mock_redis_client
 
         # Login to get JWT cookies (using the actual login endpoint)
         login_response = self.client.post(
@@ -60,7 +56,7 @@ class AnalysisResultsAPITest(TestCase):
             }),
             content_type='application/json'
         )
-        
+
         # Verify login was successful
         self.assertEqual(login_response.status_code, 200)
         self.assertIn('access_token', self.client.cookies)
@@ -109,8 +105,7 @@ class AnalysisResultsAPITest(TestCase):
             )
 
     def tearDown(self):
-        """Clean up mocks and cache after each test."""
-        self.redis_patcher.stop()
+        """Clean up cache after each test."""
         # Clear cache to reset throttling counters
         cache.clear()
 
@@ -195,8 +190,8 @@ class AnalysisResultsAPITest(TestCase):
         self.assertEqual(scores, sorted(scores))
 
 
-class StatisticsAPITest(TestCase):
-    """Test cases for AnalysisStatisticsView API endpoint."""
+class StatisticsAPIIntegrationTest(TestCase):
+    """Integration test cases for AnalysisStatisticsView API endpoint."""
 
     def setUp(self):
         """Set up test data."""
@@ -208,18 +203,12 @@ class StatisticsAPITest(TestCase):
             email='tas@example.com',
             password='testpass123'
         )
-        
+
         # Create user profile (required by RBAC middleware)
         UserProfile.objects.create(
             user=self.user,
             is_talent_acquisition_specialist=True
         )
-
-        # Mock Redis to avoid connection timeouts
-        self.redis_patcher = patch('apps.accounts.redis_utils.get_redis_client')
-        self.mock_redis = self.redis_patcher.start()
-        self.mock_redis_client = MagicMock()
-        self.mock_redis.return_value = self.mock_redis_client
 
         # Login to get JWT cookies (using the actual login endpoint)
         login_response = self.client.post(
@@ -230,7 +219,7 @@ class StatisticsAPITest(TestCase):
             }),
             content_type='application/json'
         )
-        
+
         # Verify login was successful
         self.assertEqual(login_response.status_code, 200)
         self.assertIn('access_token', self.client.cookies)
@@ -277,8 +266,7 @@ class StatisticsAPITest(TestCase):
             )
 
     def tearDown(self):
-        """Clean up mocks and cache after each test."""
-        self.redis_patcher.stop()
+        """Clean up cache after each test."""
         # Clear cache to reset throttling counters
         cache.clear()
 

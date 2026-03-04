@@ -16,7 +16,6 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.contrib.auth import get_user_model
-
 from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.analysis.graphs.supervisor import create_supervisor_graph
