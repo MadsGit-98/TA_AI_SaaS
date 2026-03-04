@@ -15,7 +15,7 @@ Tests cover:
 """
 
 from django.test import TestCase
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 import json
 from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
