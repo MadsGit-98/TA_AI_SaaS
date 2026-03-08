@@ -10,57 +10,53 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Report Header -->
-    <div class="flex justify-between items-start mb-6 pb-6 border-b-2 border-secondary-text">
-        <div>
-            <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Report</h1>
-            <h2 class="text-lg text-secondary-text mb-2">{{ job_listing.title }}</h2>
-            <p class="text-sm text-secondary-text">Generated: {{ generated_at|date:"M d, Y H:i" }}</p>
-        </div>
-
-        <div class="flex gap-3">
-            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
-                ← Back to Job
-            </a>
-            <button onclick="window.print()" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">
-                📄 Print Report
-            </button>
-        </div>
+    <!-- Report Header (Screen) -->
+    <div class="screen-header mb-6 pb-6 border-b-2 border-secondary-text">
+        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Report</h1>
+        <h2 class="text-lg text-secondary-text mb-2">{{ job_listing.title }}</h2>
+        <p class="text-sm text-secondary-text">Generated: {{ generated_at|date:"M d, Y H:i" }}</p>
     </div>
 
-    {# AI Disclaimer #}
-    {% include 'analysis/_ai_disclaimer.html' %}
+    <!-- Report Header (Print - Hidden on Screen) -->
+    <div class="print-header" style="display: none;">
+        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Report</h1>
+        <h2 class="text-lg text-secondary-text mb-2">{{ job_listing.title }}</h2>
+        <p class="text-sm text-secondary-text">Generated: {{ generated_at|date:"M d, Y H:i" }}</p>
+    </div>
+
+    {# AI Disclaimer - Hidden in print #}
+    <div class="no-print">
+        {% include 'analysis/_ai_disclaimer.html' %}
+    </div>
 
     {# Statistics Overview #}
     {% include 'analysis/_statistics_panel.html' with statistics=statistics %}
 
-    {# Comparison View Toggle #}
-    <div class="text-right mb-4">
-        <button id="toggle-view-btn" class="bg-code-block-bg text-primary-text font-semibold px-5 py-2.5 rounded hover:bg-gray-300 transition" type="button" aria-pressed="false" aria-controls="table-view comparison-view">
-            Switch to Comparison View
-        </button>
-    </div>
-
     {# Table View (Default) #}
-    <div id="table-view">
+    <div id="table-view" class="w-full">
         {% include 'analysis/results_list.html' with results=results page_obj=page_obj %}
     </div>
 
     {# Comparison View #}
-    <div id="comparison-view" style="display: none;">
+    <div id="comparison-view" style="display: none;" class="w-full">
         {% include 'analysis/_comparison_view.html' with results=results %}
     </div>
 </div>
+
+<!-- Action Toolbar (Docked at bottom, above footer) -->
+<div class="border-t-2 border-secondary-text py-6 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {% include 'analysis/_toolbar.html' with job_listing=job_listing analysis_complete=analysis_complete analysis_rerunning=analysis_rerunning %}
+    </div>
+</div>
+
+<!-- AI Analysis Loading Indicator -->
+{% include 'analysis/_loading_indicator.html' %}
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
 <script src="{% static 'js/auth-interceptor.js' %}"></script>
 <script src="{% static 'js/analysis.js' %}"></script>
+<script src="{% static 'js/logout.js' %}"></script>
 {% endblock %}
-
-<!-- AI Analysis Loading Indicator -->
-{% include 'analysis/_loading_indicator.html' %}
-
-</body>
-</html>
