@@ -177,6 +177,8 @@ def analysis_status(request, job_id):
     - Processed count
     - Total count
     - Started/completed timestamps
+    
+    Note: Checks database first for completed analyses to avoid stale Redis data.
     """
     try:
         job = get_object_or_404(JobListing, id=job_id)
@@ -185,24 +187,55 @@ def analysis_status(request, job_id):
         if job.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to view analysis status for this job.")
 
-        # Get progress from Redis
+        # FIRST: Check database for completed analysis results
+        # This takes precedence over Redis to avoid stale data issues
+        results = AIAnalysisResult.objects.filter(job_listing=job)
+        db_result_count = results.count()
+
+        # Get applicant count for total
+        total_applicants = job.applicants.count()
+
+        # If we have results for all applicants in DB, analysis is complete
+        if db_result_count > 0 and db_result_count >= total_applicants:
+            analyzed_count = results.filter(status='Analyzed').count()
+            unprocessed_count = results.filter(status='Unprocessed').count()
+
+            return Response({
+                'success': True,
+                'data': {
+                    'job_id': str(job_id),
+                    'status': 'completed',
+                    'progress_percentage': 100,
+                    'processed_count': db_result_count,
+                    'total_count': total_applicants,
+                    'results_summary': {
+                        'analyzed_count': analyzed_count,
+                        'unprocessed_count': unprocessed_count,
+                        'best_match_count': results.filter(category='Best Match').count(),
+                        'good_match_count': results.filter(category='Good Match').count(),
+                        'partial_match_count': results.filter(category='Partial Match').count(),
+                        'mismatched_count': results.filter(category='Mismatched').count(),
+                    },
+                }
+            })
+
+        # SECOND: Check Redis for in-progress analysis
         progress = get_analysis_progress(str(job_id))
         processed_count = progress.get('processed', 0)
         total_count = progress.get('total', 0)
 
-        # Determine status
+        # Determine status from Redis data
         if total_count == 0:
-            # Check if analysis has been run before
-            has_results = AIAnalysisResult.objects.filter(
-                job_listing=job
-            ).exists()
-
-            if has_results:
-                status_text = 'completed'
-                progress_percentage = 100
+            # No Redis data and no DB results
+            if db_result_count > 0:
+                # Partial results exist
+                status_text = 'processing'
+                progress_percentage = int((db_result_count / total_applicants) * 100) if total_applicants > 0 else 0
             else:
                 status_text = 'not_started'
                 progress_percentage = 0
+            processed_count = db_result_count
+            total_count = total_applicants
         elif processed_count >= total_count:
             status_text = 'completed'
             progress_percentage = 100
@@ -213,7 +246,6 @@ def analysis_status(request, job_id):
         # Get summary if completed
         results_summary = None
         if status_text == 'completed':
-            results = AIAnalysisResult.objects.filter(job_listing=job)
             results_summary = {
                 'analyzed_count': results.filter(status='Analyzed').count(),
                 'unprocessed_count': results.filter(status='Unprocessed').count(),
