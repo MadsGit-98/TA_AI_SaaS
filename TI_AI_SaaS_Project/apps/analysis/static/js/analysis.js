@@ -29,6 +29,60 @@
                 }
             });
         }
+
+        // Rerun analysis button handler
+        const rerunBtn = document.getElementById('rerun-analysis-btn');
+        if (rerunBtn) {
+            rerunBtn.addEventListener('click', function() {
+                const jobId = this.dataset.jobId;
+                if (jobId && confirm('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.')) {
+                    rerunAnalysis(jobId);
+                }
+            });
+        }
+    }
+
+    /**
+     * Re-run AI analysis for a job
+     * @param {string} jobId - The job ID to re-run analysis for
+     */
+    function rerunAnalysis(jobId) {
+        // Get CSRF token
+        const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : null;
+
+        fetch('/api/analysis/jobs/' + jobId + '/analysis/re-run/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ confirm: true })
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                // Show loading indicator if available
+                if (window.AnalysisLoadingIndicator) {
+                    const indicator = new window.AnalysisLoadingIndicator();
+                    indicator.show(jobId);
+                } else {
+                    // Fallback: redirect to dashboard
+                    alert('Analysis re-run started! Redirecting to dashboard...');
+                    window.location.href = '/dashboard/';
+                }
+            } else {
+                const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to re-run analysis';
+                alert('Error: ' + errorMsg);
+            }
+        })
+        .catch(function(error) {
+            console.error('Error re-running analysis:', error);
+            alert('Failed to re-run analysis. Please try again.');
+        });
     }
 
     /**
@@ -48,21 +102,16 @@
                 var minScore = minScoreEl ? minScoreEl.value : '';
                 var maxScore = maxScoreEl ? maxScoreEl.value : '';
 
-                var url = new URL(window.location.href);
+                // Build URL with only non-empty filter values
+                var url = new URL(window.location.origin + window.location.pathname);
                 if (category) {
                     url.searchParams.set('category', category);
-                } else {
-                    url.searchParams.delete('category');
                 }
                 if (minScore) {
                     url.searchParams.set('min_score', minScore);
-                } else {
-                    url.searchParams.delete('min_score');
                 }
                 if (maxScore) {
                     url.searchParams.set('max_score', maxScore);
-                } else {
-                    url.searchParams.delete('max_score');
                 }
 
                 window.location.href = url.toString();
@@ -172,47 +221,107 @@
         var skillsScore = getScore(skills.score);
         var experienceScore = getScore(experience.score);
         var supplementalScore = getScore(supplemental.score);
+        
         var overallJustification = overall.justification ? escapeHtml(overall.justification) : 'N/A';
+        var educationJustification = education.justification ? escapeHtml(education.justification) : 'N/A';
+        var skillsJustification = skills.justification ? escapeHtml(skills.justification) : 'N/A';
+        var experienceJustification = experience.justification ? escapeHtml(experience.justification) : 'N/A';
+        var supplementalJustification = supplemental.justification ? escapeHtml(supplemental.justification) : 'N/A';
 
         return [
-            '<div class="detail-header">',
-            '    <h4>' + escapeHtml(data.applicant.name) + '</h4>',
-            '    <p>Reference: ' + escapeHtml(data.applicant.reference_number) + '</p>',
-            '    <p>Status: ' + escapeHtml(data.status) + '</p>',
-            '</div>',
-            '',
-            '<div class="detail-scores">',
-            '    <div class="score-card">',
-            '        <h5>Overall Score</h5>',
-            '        <div class="overall-score">' + overallScore + '</div>',
-            '        <div class="category">' + overallCategory + '</div>',
-            '    </div>',
-            '',
-            '    <div class="metrics-grid">',
-            '        <div class="metric-card">',
-            '            <h6>Education</h6>',
-            '            <div class="metric-score">' + educationScore + '</div>',
-            '        </div>',
-            '        <div class="metric-card">',
-            '            <h6>Skills</h6>',
-            '            <div class="metric-score">' + skillsScore + '</div>',
-            '        </div>',
-            '        <div class="metric-card">',
-            '            <h6>Experience</h6>',
-            '            <div class="metric-score">' + experienceScore + '</div>',
-            '        </div>',
-            '        <div class="metric-card">',
-            '            <h6>Supplemental</h6>',
-            '            <div class="metric-score">' + supplementalScore + '</div>',
+            '<div class="detail-container">',
+            '    <!-- Applicant Info Header -->',
+            '    <div class="detail-header mb-4 pb-4 border-b border-secondary-text">',
+            '        <h4 class="text-xl font-bold text-primary-text mb-2">' + escapeHtml(data.applicant.name) + '</h4>',
+            '        <div class="flex gap-4 text-sm text-secondary-text">',
+            '            <span>Reference: ' + escapeHtml(data.applicant.reference_number) + '</span>',
+            '            <span>Status: ' + escapeHtml(data.status) + '</span>',
             '        </div>',
             '    </div>',
-            '</div>',
             '',
-            '<div class="detail-justifications">',
-            '    <h5>Justifications</h5>',
-            '    <div class="justification-item">',
-            '        <strong>Overall:</strong>',
-            '        <p>' + overallJustification + '</p>',
+            '    <!-- Compact Score Summary -->',
+            '    <div class="detail-scores mb-4 p-4 bg-code-block-bg rounded-lg">',
+            '        <h5 class="text-sm font-semibold text-primary-text mb-3">Overall Assessment</h5>',
+            '        <div class="flex items-center gap-4 mb-3">',
+            '            <div class="text-center">',
+            '                <div class="text-3xl font-bold text-primary-text">' + overallScore + '</div>',
+            '                <div class="text-xs text-secondary-text">Overall Score</div>',
+            '            </div>',
+            '            <div class="text-center">',
+            '                <div class="text-lg font-semibold text-primary-text">' + overallCategory + '</div>',
+            '                <div class="text-xs text-secondary-text">Category</div>',
+            '            </div>',
+            '        </div>',
+            '        <div class="grid grid-cols-4 gap-2 text-center">',
+            '            <div class="p-2 bg-white rounded">',
+            '                <div class="text-xs text-secondary-text">Education</div>',
+            '                <div class="font-mono font-bold text-primary-text">' + educationScore + '</div>',
+            '            </div>',
+            '            <div class="p-2 bg-white rounded">',
+            '                <div class="text-xs text-secondary-text">Skills</div>',
+            '                <div class="font-mono font-bold text-primary-text">' + skillsScore + '</div>',
+            '            </div>',
+            '            <div class="p-2 bg-white rounded">',
+            '                <div class="text-xs text-secondary-text">Experience</div>',
+            '                <div class="font-mono font-bold text-primary-text">' + experienceScore + '</div>',
+            '            </div>',
+            '            <div class="p-2 bg-white rounded">',
+            '                <div class="text-xs text-secondary-text">Supplemental</div>',
+            '                <div class="font-mono font-bold text-primary-text">' + supplementalScore + '</div>',
+            '            </div>',
+            '        </div>',
+            '    </div>',
+            '',
+            '    <!-- Justifications Accordion -->',
+            '    <div class="detail-justifications">',
+            '        <h5 class="text-sm font-semibold text-primary-text mb-3">Detailed Justifications</h5>',
+            '        <div class="flex flex-col gap-2">',
+            '            <div class="border border-secondary-text rounded overflow-hidden">',
+            '                <button class="justification-toggle w-full flex justify-between items-center p-3 bg-code-block-bg text-left text-sm font-semibold text-primary-text" type="button" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'">',
+            '                    <span>📚 Education Justification</span>',
+            '                    <span class="text-xs">▼</span>',
+            '                </button>',
+            '                <div class="justification-content p-3 bg-white text-sm text-secondary-text" style="display: none;">',
+            '                    <p>' + educationJustification + '</p>',
+            '                </div>',
+            '            </div>',
+            '            <div class="border border-secondary-text rounded overflow-hidden">',
+            '                <button class="justification-toggle w-full flex justify-between items-center p-3 bg-code-block-bg text-left text-sm font-semibold text-primary-text" type="button" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'">',
+            '                    <span>🛠️ Skills Justification</span>',
+            '                    <span class="text-xs">▼</span>',
+            '                </button>',
+            '                <div class="justification-content p-3 bg-white text-sm text-secondary-text" style="display: none;">',
+            '                    <p>' + skillsJustification + '</p>',
+            '                </div>',
+            '            </div>',
+            '            <div class="border border-secondary-text rounded overflow-hidden">',
+            '                <button class="justification-toggle w-full flex justify-between items-center p-3 bg-code-block-bg text-left text-sm font-semibold text-primary-text" type="button" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'">',
+            '                    <span>💼 Experience Justification</span>',
+            '                    <span class="text-xs">▼</span>',
+            '                </button>',
+            '                <div class="justification-content p-3 bg-white text-sm text-secondary-text" style="display: none;">',
+            '                    <p>' + experienceJustification + '</p>',
+            '                </div>',
+            '            </div>',
+            '            <div class="border border-secondary-text rounded overflow-hidden">',
+            '                <button class="justification-toggle w-full flex justify-between items-center p-3 bg-code-block-bg text-left text-sm font-semibold text-primary-text" type="button" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'">',
+            '                    <span>➕ Supplemental Justification</span>',
+            '                    <span class="text-xs">▼</span>',
+            '                </button>',
+            '                <div class="justification-content p-3 bg-white text-sm text-secondary-text" style="display: none;">',
+            '                    <p>' + supplementalJustification + '</p>',
+            '                </div>',
+            '            </div>',
+            '            <div class="border border-secondary-text rounded overflow-hidden">',
+            '                <button class="justification-toggle w-full flex justify-between items-center p-3 bg-accent-cta text-left text-sm font-semibold text-cta-text" type="button" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'block\' : \'none\'">',
+            '                    <span>📊 Overall Justification</span>',
+            '                    <span class="text-xs">▼</span>',
+            '                </button>',
+            '                <div class="justification-content p-3 bg-white text-sm text-primary-text font-medium" style="display: block;">',
+            '                    <p>' + overallJustification + '</p>',
+            '                </div>',
+            '            </div>',
+            '        </div>',
             '    </div>',
             '</div>'
         ].join('\n');

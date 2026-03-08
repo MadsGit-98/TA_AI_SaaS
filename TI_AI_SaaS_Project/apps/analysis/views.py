@@ -15,6 +15,7 @@ from django.db.models import Avg, Max, Min
 from apps.jobs.models import JobListing
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import CardLogo, SiteSetting
+from services.ai_analysis_service import get_analysis_progress
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,12 @@ def reporting_page_view(request, job_id):
     - Statistics overview
     - Sortable results table
     - Comparison view toggle
-    
+    - Filter controls (category, min_score, max_score)
+
     Args:
         request: HTTP request object
         job_id: UUID of the job listing
-        
+
     Returns:
         Rendered reporting page template with analysis data
     """
@@ -97,9 +99,40 @@ def reporting_page_view(request, job_id):
         # Get all analysis results
         results = AIAnalysisResult.objects.filter(
             job_listing=job_listing
-        ).select_related('applicant', 'job_listing').order_by('-overall_score')
+        ).select_related('applicant', 'job_listing')
 
-        # Calculate statistics
+        # Apply filters from query parameters
+        category = request.GET.get('category')
+        min_score = request.GET.get('min_score')
+        max_score = request.GET.get('max_score')
+
+        # Track active filters for UI
+        active_filters = {}
+
+        if category:
+            results = results.filter(category=category)
+            active_filters['category'] = category
+
+        if min_score:
+            try:
+                min_score_int = int(min_score)
+                results = results.filter(overall_score__gte=min_score_int)
+                active_filters['min_score'] = min_score
+            except (ValueError, TypeError):
+                pass
+
+        if max_score:
+            try:
+                max_score_int = int(max_score)
+                results = results.filter(overall_score__lte=max_score_int)
+                active_filters['max_score'] = max_score
+            except (ValueError, TypeError):
+                pass
+
+        # Order by score (descending)
+        results = results.order_by('-overall_score')
+
+        # Calculate statistics (always based on filtered results)
         analyzed = results.filter(status='Analyzed')
         total = job_listing.applicants.count()
 
@@ -133,11 +166,21 @@ def reporting_page_view(request, job_id):
         # Get footer context
         footer_context = _get_footer_context()
 
+        # Check if analysis is complete
+        analysis_complete = results.filter(status='Analyzed').count() > 0 and results.filter(status='Analyzed').count() >= total
+        
+        # Check if analysis is currently running (Redis progress tracking)
+        progress = get_analysis_progress(str(job_id))
+        analysis_rerunning = progress.get('total', 0) > 0 and progress.get('processed', 0) < progress.get('total', 0)
+
         context = {
             'job_listing': job_listing,
             'results': results,
             'statistics': statistics,
             'generated_at': timezone.now(),
+            'active_filters': active_filters,
+            'analysis_complete': analysis_complete,
+            'analysis_rerunning': analysis_rerunning,
             **footer_context,
         }
 

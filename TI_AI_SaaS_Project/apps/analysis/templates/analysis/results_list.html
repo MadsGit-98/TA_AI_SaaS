@@ -1,65 +1,41 @@
-{# AI Analysis Results List Page #}
-{% extends 'accounts/base.html' %}
+{# AI Analysis Results List Partial Template #}
+{# Used by reporting_page.html - does not extend base.html #}
 {% load static %}
 {% load analysis_tags %}
 
-{% block title %}AI Analysis Results - {{ job_listing.title }}{% endblock %}
-
-{% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/analysis.css' %}">
-{% endblock %}
-
-{% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Results Header -->
-    <div class="mb-6">
-        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Results</h1>
-        <h2 class="text-lg text-secondary-text mb-4">{{ job_listing.title }}</h2>
-
-        <div class="flex gap-3">
-            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
-                ← Back to Job
-            </a>
-            <button id="refresh-results" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition" type="button">
-                Refresh Results
-            </button>
-        </div>
+{# Filter Controls #}
+<div class="filter-controls flex gap-4 items-end mb-6 p-4 bg-code-block-bg rounded-lg no-print">
+    <div class="flex flex-col gap-1">
+        <label for="category-filter" class="text-xs font-semibold text-primary-text">Category:</label>
+        <select id="category-filter" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white">
+            <option value="">All Categories</option>
+            <option value="Best Match" {% if active_filters.category == "Best Match" %}selected{% endif %}>Best Match (90-100)</option>
+            <option value="Good Match" {% if active_filters.category == "Good Match" %}selected{% endif %}>Good Match (70-89)</option>
+            <option value="Partial Match" {% if active_filters.category == "Partial Match" %}selected{% endif %}>Partial Match (50-69)</option>
+            <option value="Mismatched" {% if active_filters.category == "Mismatched" %}selected{% endif %}>Mismatched (0-49)</option>
+            <option value="Unprocessed" {% if active_filters.category == "Unprocessed" %}selected{% endif %}>Unprocessed</option>
+        </select>
     </div>
 
-    {# AI Disclaimer - Per Constitution §1 #}
-    {% include 'analysis/_ai_disclaimer.html' %}
+    <div class="flex flex-col gap-1">
+        <label for="min-score" class="text-xs font-semibold text-primary-text">Min Score:</label>
+        <input type="number" id="min-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="0" value="{{ active_filters.min_score|default:'' }}" />
+    </div>
 
-    {# Statistics Panel #}
-    {% include 'analysis/_statistics_panel.html' with statistics=statistics %}
+    <div class="flex flex-col gap-1">
+        <label for="max-score" class="text-xs font-semibold text-primary-text">Max Score:</label>
+        <input type="number" id="max-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="100" value="{{ active_filters.max_score|default:'' }}" />
+    </div>
 
-    {# Filter Controls #}
-    <div class="flex gap-4 items-end mb-6 p-4 bg-code-block-bg rounded-lg">
-        <div class="flex flex-col gap-1">
-            <label for="category-filter" class="text-xs font-semibold text-primary-text">Category:</label>
-            <select id="category-filter" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white">
-                <option value="">All Categories</option>
-                <option value="Best Match">Best Match (90-100)</option>
-                <option value="Good Match">Good Match (70-89)</option>
-                <option value="Partial Match">Partial Match (50-69)</option>
-                <option value="Mismatched">Mismatched (0-49)</option>
-                <option value="Unprocessed">Unprocessed</option>
-            </select>
-        </div>
-
-        <div class="flex flex-col gap-1">
-            <label for="min-score" class="text-xs font-semibold text-primary-text">Min Score:</label>
-            <input type="number" id="min-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="0" />
-        </div>
-
-        <div class="flex flex-col gap-1">
-            <label for="max-score" class="text-xs font-semibold text-primary-text">Max Score:</label>
-            <input type="number" id="max-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="100" />
-        </div>
-
+    <div class="flex gap-2">
         <button id="apply-filters" class="bg-accent-cta text-cta-text px-5 py-2 rounded text-sm font-medium hover:brightness-110 transition" type="button">Apply Filters</button>
+        {% if active_filters %}
+        <a href="{% url 'analysis:reporting_page' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2 rounded text-sm font-medium hover:bg-gray-300 transition" type="button">Clear Filters</a>
+        {% endif %}
     </div>
+</div>
 
-    {# Results Table #}
+{# Results Table #}
     <div class="overflow-x-auto rounded-lg border border-secondary-text">
         <table class="w-full border-collapse bg-white">
             <thead>
@@ -160,7 +136,6 @@
         </div>
     </div>
     {% endif %}
-</div>
 
 {# Result Detail Modal #}
 <div id="result-detail-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="analysis-details-title">
@@ -174,13 +149,3 @@
         </div>
     </div>
 </div>
-
-{% include 'analysis/_justifications.html' %}
-{% include 'analysis/_score_bars.html' %}
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
-<script src="{% static 'js/auth-interceptor.js' %}"></script>
-<script src="{% static 'js/analysis.js' %}"></script>
-{% endblock %}

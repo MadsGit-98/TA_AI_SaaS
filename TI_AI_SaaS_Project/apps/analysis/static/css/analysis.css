@@ -92,6 +92,80 @@
    ========================================================================== */
 
 @media print {
+    /* Hide non-essential elements */
+    header, footer, nav,
+    .analysis-toolbar,
+    #toggle-view-btn,
+    .filter-controls,
+    button,
+    .no-print,
+    #result-detail-modal {
+        display: none !important;
+    }
+
+    /* Ensure content is visible */
+    body, body * {
+        visibility: visible;
+    }
+
+    /* Main content area */
+    .max-w-7xl {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Statistics panel - ensure it prints */
+    .statistics-panel {
+        page-break-inside: avoid;
+        border: 1px solid #000 !important;
+    }
+
+    /* Results table - ensure it prints properly */
+    table {
+        page-break-inside: auto;
+        width: 100% !important;
+    }
+
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    /* Remove background colors for printing */
+    .bg-code-block-bg {
+        background: #f0f0f0 !important;
+    }
+
+    /* Ensure text is readable */
+    .text-primary-text {
+        color: #000 !important;
+    }
+
+    .text-secondary-text {
+        color: #333 !important;
+    }
+
+    /* Hide comparison view in print */
+    #comparison-view {
+        display: none !important;
+    }
+
+    /* Show only table view */
+    #table-view {
+        display: block !important;
+    }
+
+    /* Screen-only elements */
+    .screen-header, .no-print {
+        display: none !important;
+    }
+
+    /* Print-only elements */
+    .print-header {
+        display: block !important;
+    }
+
     .report-actions, .view-toggle, .action-buttons, .results-filters {
         display: none !important;
     }
