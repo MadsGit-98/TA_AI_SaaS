@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Count
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -29,7 +29,7 @@ class JobListingListView(generics.ListCreateAPIView):
         return self.serializer_class
 
     def get_queryset(self):
-        # Annotate with analysis_complete to avoid N+1 queries
+        # Annotate with analysis_complete and applicant_count to avoid N+1 queries
         queryset = JobListing.objects.filter(
             created_by=self.request.user
         ).annotate(
@@ -38,7 +38,8 @@ class JobListingListView(generics.ListCreateAPIView):
                     job_listing=OuterRef('pk'),
                     status=AIAnalysisResult.STATUS_ANALYZED
                 )
-            )
+            ),
+            applicant_count=Count('applicants')
         )
 
         # Apply status filter
@@ -161,64 +162,6 @@ def deactivate_job(request, pk):
     job.save()
     serializer = JobListingSerializer(job)
     return Response(serializer.data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def duplicate_job(request, pk):
-    original_job = get_object_or_404(
-        JobListing.objects.annotate(
-            analysis_complete=Exists(
-                AIAnalysisResult.objects.filter(
-                    job_listing=OuterRef('pk'),
-                    status=AIAnalysisResult.STATUS_ANALYZED
-                )
-            )
-        ),
-        pk=pk
-    )
-
-    # Check if the requesting user is the owner of the job
-    if original_job.created_by != request.user:
-        return Response(
-            {'error': 'You do not have permission to duplicate this job.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    # Create a new job with the same details but different ID
-    field_def = original_job.__class__._meta.get_field('application_link')
-    new_application_link = field_def.default() if callable(field_def.default) else field_def.default
-
-    new_job = JobListing(
-        title=f"{original_job.title} (Copy)",
-        description=original_job.description,
-        required_skills=original_job.required_skills,
-        required_experience=original_job.required_experience,
-        job_level=original_job.job_level,
-        start_date=original_job.start_date,
-        expiration_date=original_job.expiration_date,
-        modification_date=timezone.now(),
-        status='Inactive',  # New copies start as inactive
-        application_link=new_application_link,
-        created_by=request.user
-    )
-    new_job.save()
-
-    # Copy associated screening questions
-    original_questions = ScreeningQuestion.objects.filter(job_listing_id=pk)
-    for question in original_questions:
-        new_question = ScreeningQuestion(
-            job_listing=new_job,
-            question_text=question.question_text,
-            question_type=question.question_type,
-            required=question.required,
-            order=question.order,
-            choices=question.choices
-        )
-        new_question.save()
-
-    serializer = JobListingSerializer(new_job)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ScreeningQuestionListView(generics.ListCreateAPIView):

@@ -192,7 +192,11 @@
     <!-- For production, consider hosting axios locally or verify SRI hash for your CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js" integrity="sha384-4E6+Dy4UWMvNFVHh0vXXbK1KwLkhspLLKuq5X6SFTZ9D8yq9Xa6cV5hXJyNn6fF+" crossorigin="anonymous"></script>
     <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    <script src="{% static 'js/analysis.js' %}"></script>
     <script src="{% static 'js/job_detail.js' %}"></script>
     {% endblock %}
+
+    <!-- AI Analysis Loading Indicator -->
+    {% include 'analysis/_loading_indicator.html' %}
 </body>
 </html>

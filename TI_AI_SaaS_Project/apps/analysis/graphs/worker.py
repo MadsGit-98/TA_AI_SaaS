@@ -85,16 +85,19 @@ def retrieval_node(state: WorkerState) -> dict:
     # Defensive access with validation
     applicant = state.get('applicant')
     job_listing = state.get('job_listing')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+
+    logger.info(f"[Retrieval] Starting for applicant {applicant_id}")
 
     if not applicant:
-        logger.error("Missing 'applicant' in worker state")
+        logger.error(f"[Retrieval] Missing 'applicant' in worker state for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'Internal error: missing applicant data',
         }
 
     if not job_listing:
-        logger.error("Missing 'job_listing' in worker state")
+        logger.error(f"[Retrieval] Missing 'job_listing' in worker state for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'Internal error: missing job listing data',
@@ -102,22 +105,28 @@ def retrieval_node(state: WorkerState) -> dict:
 
     # Get resume parsed text
     resume_text = applicant.resume_parsed_text or ''
+    logger.info(f"[Retrieval] Resume text length: {len(resume_text)} chars for applicant {applicant_id}")
 
     if not resume_text:
+        logger.warning(f"[Retrieval] No parsed resume text for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'No parsed resume text available',
         }
 
+    job_requirements = {
+        'title': job_listing.title,
+        'description': job_listing.description,
+        'required_skills': job_listing.required_skills or [],
+        'required_experience': job_listing.required_experience or 0,
+        'job_level': job_listing.job_level,
+    }
+    logger.info(f"[Retrieval] Job requirements extracted: title={job_requirements['title']}, skills={len(job_requirements['required_skills'])}")
+    logger.info(f"[Retrieval] Completed for applicant {applicant_id}")
+
     return {
         'resume_text': resume_text,
-        'job_requirements': {
-            'title': job_listing.title,
-            'description': job_listing.description,
-            'required_skills': job_listing.required_skills or [],
-            'required_experience': job_listing.required_experience or 0,
-            'job_level': job_listing.job_level,
-        },
+        'job_requirements': job_requirements,
     }
 
 
@@ -138,8 +147,13 @@ def classification_node(state: WorkerState) -> dict:
         Updated state with classified data
     """
     resume_text = state.get('resume_text', '')
+    applicant = state.get('applicant')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+
+    logger.info(f"[Classification] Starting for applicant {applicant_id}")
 
     if not resume_text:
+        logger.warning(f"[Classification] No resume text for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'No resume text to classify',
@@ -147,6 +161,7 @@ def classification_node(state: WorkerState) -> dict:
 
     try:
         llm = get_llm(temperature=0.1, format="json")
+        logger.info(f"[Classification] LLM initialized for applicant {applicant_id}")
 
         classification_prompt = f"""
 You are a resume classification assistant. Analyze the following resume text and extract structured data into these categories:
@@ -209,17 +224,27 @@ Output ONLY valid JSON in this exact format:
 }}
 """
 
+        logger.info(f"[Classification] Invoking LLM for applicant {applicant_id}")
         response = llm.invoke(classification_prompt)
+        logger.info(f"[Classification] LLM response received for applicant {applicant_id}")
 
+        # Handle both string and object responses
         try:
-            classified_data = json.loads(response.content)
-        except json.JSONDecodeError:
-            applicant_id = state.get('applicant')
-            if applicant_id:
-                applicant_id = getattr(applicant_id, 'id', 'unknown')
+            # Check if response is a string directly
+            if isinstance(response, str):
+                response_text = response
+                logger.info(f"[Classification] Response is string for applicant {applicant_id}")
+            elif hasattr(response, 'content'):
+                response_text = response.content
+                logger.info(f"[Classification] Response has .content attribute for applicant {applicant_id}")
             else:
-                applicant_id = 'unknown'
-            logger.warning(f"Failed to parse classification JSON for applicant {applicant_id}")
+                response_text = str(response)
+                logger.warning(f"[Classification] Converting response to string for applicant {applicant_id}")
+
+            classified_data = json.loads(response_text)
+            logger.info(f"[Classification] JSON parsed successfully for applicant {applicant_id}")
+        except json.JSONDecodeError as je:
+            logger.warning(f"[Classification] Failed to parse classification JSON for applicant {applicant_id}: {je}")
             # Return basic structure if parsing fails
             classified_data = {
                 'professional_experience': {'employers': [], 'job_titles': [], 'responsibilities': []},
@@ -228,17 +253,13 @@ Output ONLY valid JSON in this exact format:
                 'supplemental': {'projects': [], 'awards': []}
             }
 
+        logger.info(f"[Classification] Completed for applicant {applicant_id}")
         return {
             'classified_data': classified_data,
         }
 
     except Exception as e:
-        applicant_id = state.get('applicant')
-        if applicant_id:
-            applicant_id = getattr(applicant_id, 'id', 'unknown')
-        else:
-            applicant_id = 'unknown'
-        logger.warning(f"Classification failed for applicant {applicant_id}: {e}")
+        logger.error(f"[Classification] Exception for applicant {applicant_id}: {e}", exc_info=True)
         return {
             'status': 'Unprocessed',
             'error_message': f'Classification failed: {str(e)}',
@@ -263,8 +284,13 @@ def scoring_node(state: WorkerState) -> dict:
     """
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
+    applicant = state.get('applicant')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+
+    logger.info(f"[Scoring] Starting for applicant {applicant_id}")
 
     if not classified_data or not job_requirements:
+        logger.warning(f"[Scoring] Missing classified data or job requirements for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'Missing classified data or job requirements',
@@ -272,6 +298,7 @@ def scoring_node(state: WorkerState) -> dict:
 
     try:
         llm = get_llm(temperature=0.1, format="json")
+        logger.info(f"[Scoring] LLM initialized for applicant {applicant_id}")
 
         scoring_prompt = f"""
 You are an AI hiring assistant. Score the following candidate against the job requirements.
@@ -310,39 +337,46 @@ Output ONLY valid JSON in this exact format:
 }}
 """
 
+        logger.info(f"[Scoring] Invoking LLM for applicant {applicant_id}")
         response = llm.invoke(scoring_prompt)
+        logger.info(f"[Scoring] LLM response received for applicant {applicant_id}")
 
-        # Parse JSON response
+        # Parse JSON response - handle both string and object responses
         try:
-            scores = json.loads(response.content)
+            # Check if response is a string directly
+            if isinstance(response, str):
+                response_text = response
+                logger.info(f"[Scoring] Response is string for applicant {applicant_id}")
+            elif hasattr(response, 'content'):
+                response_text = response.content
+                logger.info(f"[Scoring] Response has .content attribute for applicant {applicant_id}")
+            else:
+                response_text = str(response)
+                logger.warning(f"[Scoring] Converting response to string for applicant {applicant_id}")
+
+            scores = json.loads(response_text)
+            logger.info(f"[Scoring] JSON parsed successfully for applicant {applicant_id}")
 
             # Validate scores are in 0-100 range
             for key in ['education', 'skills', 'experience', 'supplemental']:
                 if key not in scores:
                     scores[key] = 0
+                    logger.warning(f"[Scoring] Missing {key} score, defaulting to 0")
                 else:
                     scores[key] = max(0, min(100, int(scores[key])))
 
+            logger.info(f"[Scoring] Scores validated: {scores}")
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            applicant_id = state.get('applicant')
-            if applicant_id:
-                applicant_id = getattr(applicant_id, 'id', 'unknown')
-            else:
-                applicant_id = 'unknown'
-            logger.warning(f"Failed to parse scoring JSON for applicant {applicant_id}: {e}")
+            logger.warning(f"[Scoring] Failed to parse scoring JSON for applicant {applicant_id}: {e}")
             scores = {'education': 0, 'skills': 0, 'experience': 0, 'supplemental': 0}
 
+        logger.info(f"[Scoring] Completed for applicant {applicant_id}")
         return {
             'scores': scores,
         }
 
     except Exception as e:
-        applicant_id = state.get('applicant')
-        if applicant_id:
-            applicant_id = getattr(applicant_id, 'id', 'unknown')
-        else:
-            applicant_id = 'unknown'
-        logger.warning(f"Scoring failed for applicant {applicant_id}: {e}")
+        logger.error(f"[Scoring] Exception for applicant {applicant_id}: {e}", exc_info=True)
         return {
             'status': 'Unprocessed',
             'error_message': f'Scoring failed: {str(e)}',
@@ -425,8 +459,13 @@ def justification_node(state: WorkerState) -> dict:
     overall_score = state.get('overall_score', 0)
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
+    applicant = state.get('applicant')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+
+    logger.info(f"[Justification] Starting for applicant {applicant_id}")
 
     if not scores or not category:
+        logger.warning(f"[Justification] Missing scores or category for applicant {applicant_id}")
         return {
             'status': 'Unprocessed',
             'error_message': 'Missing scores or category for justification',
@@ -434,6 +473,7 @@ def justification_node(state: WorkerState) -> dict:
 
     try:
         llm = get_llm(temperature=0.3, format="json")
+        logger.info(f"[Justification] LLM initialized for applicant {applicant_id}")
 
         justification_prompt = f"""
 You are an AI hiring assistant. Provide brief justifications for the following candidate scores.
@@ -469,18 +509,27 @@ Output ONLY valid JSON in this exact format:
 }}
 """
 
+        logger.info(f"[Justification] Invoking LLM for applicant {applicant_id}")
         response = llm.invoke(justification_prompt)
+        logger.info(f"[Justification] LLM response received for applicant {applicant_id}")
 
-        # Parse JSON response
+        # Parse JSON response - handle both string and object responses
         try:
-            justifications = json.loads(response.content)
-        except json.JSONDecodeError:
-            applicant_id = state.get('applicant')
-            if applicant_id:
-                applicant_id = getattr(applicant_id, 'id', 'unknown')
+            # Check if response is a string directly
+            if isinstance(response, str):
+                response_text = response
+                logger.info(f"[Justification] Response is string for applicant {applicant_id}")
+            elif hasattr(response, 'content'):
+                response_text = response.content
+                logger.info(f"[Justification] Response has .content attribute for applicant {applicant_id}")
             else:
-                applicant_id = 'unknown'
-            logger.warning(f"Failed to parse justification JSON for applicant {applicant_id}")
+                response_text = str(response)
+                logger.warning(f"[Justification] Converting response to string for applicant {applicant_id}")
+
+            justifications = json.loads(response_text)
+            logger.info(f"[Justification] JSON parsed successfully for applicant {applicant_id}")
+        except json.JSONDecodeError:
+            logger.warning(f"[Justification] Failed to parse justification JSON for applicant {applicant_id}")
             justifications = {
                 'education': f"Score: {scores.get('education', 0)}/100",
                 'skills': f"Score: {scores.get('skills', 0)}/100",
@@ -489,18 +538,14 @@ Output ONLY valid JSON in this exact format:
                 'overall': f"Overall: {overall_score}/100 - {category}",
             }
 
+        logger.info(f"[Justification] Completed for applicant {applicant_id}")
         return {
             'justifications': justifications,
             'status': 'Analyzed',
         }
 
     except Exception as e:
-        applicant_id = state.get('applicant')
-        if applicant_id:
-            applicant_id = getattr(applicant_id, 'id', 'unknown')
-        else:
-            applicant_id = 'unknown'
-        logger.warning(f"Justification failed for applicant {applicant_id}: {e}")
+        logger.error(f"[Justification] Exception for applicant {applicant_id}: {e}", exc_info=True)
         return {
             'status': 'Unprocessed',
             'error_message': f'Justification failed: {str(e)}',
@@ -518,10 +563,15 @@ def result_node(state: WorkerState) -> dict:
         Final state ready for return
     """
     status = state.get('status', 'Unprocessed')
+    applicant = state.get('applicant')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
     if status == 'Analyzed':
-        logger.info("Analysis completed successfully")
+        overall_score = state.get('overall_score', 0)
+        category = state.get('category', 'Unknown')
+        logger.info(f"[Result] Analysis completed successfully for applicant {applicant_id}: score={overall_score}, category={category}")
     else:
-        logger.warning(f"Analysis completed with status: {status}")
+        error_message = state.get('error_message', 'Unknown error')
+        logger.warning(f"[Result] Analysis completed with status={status} for applicant {applicant_id}: {error_message}")
 
     return state

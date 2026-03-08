@@ -96,7 +96,7 @@
     }
 
     /**
-     * Initiate AI analysis
+     * Initiate AI analysis with loading indicator
      */
     function initiateAnalysis() {
         // Validate JOB_DETAIL_CONFIG exists and has jobId
@@ -121,8 +121,15 @@
         })
         .then(function(data) {
             if (data.success) {
-                alert('AI analysis started! ' + data.data.applicant_count + ' applicants will be analyzed.');
-                window.location.reload();
+                // Show loading indicator with progress tracking
+                if (window.AnalysisLoadingIndicator) {
+                    var indicator = new window.AnalysisLoadingIndicator();
+                    indicator.show(jobId);
+                } else {
+                    // Fallback if indicator is not available
+                    alert('AI analysis started! ' + data.data.applicant_count + ' applicants will be analyzed.');
+                    window.location.reload();
+                }
             } else {
                 alert('Error: ' + (data.error?.message || 'Failed to start analysis'));
             }

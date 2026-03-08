@@ -160,12 +160,29 @@ function createJobElement(job, container) {
     statusButton.title = 'Status may change automatically based on start/expiration dates';
     rightSide.appendChild(statusButton);
 
-    // Duplicate button
-    const duplicateButton = document.createElement('button');
-    duplicateButton.className = 'text-purple-600 hover:text-purple-800 text-sm';
-    duplicateButton.textContent = 'Duplicate';
-    duplicateButton.addEventListener('click', () => duplicateJob(job.id));
-    rightSide.appendChild(duplicateButton);
+    // AI Analysis button
+    const analysisButton = document.createElement('button');
+    analysisButton.className = 'text-indigo-600 hover:text-indigo-800 text-sm font-medium';
+    
+    // Check if analysis is already complete
+    if (job.analysis_complete) {
+        analysisButton.textContent = 'View Analysis';
+        analysisButton.addEventListener('click', () => viewAnalysis(job.id));
+    } else {
+        // Check if there are applicants to analyze
+        const hasApplicants = job.applicant_count && job.applicant_count > 0;
+        if (hasApplicants) {
+            analysisButton.textContent = 'AI Analysis';
+            analysisButton.title = `Initiate AI analysis for ${job.applicant_count} applicants`;
+            analysisButton.addEventListener('click', () => initiateAnalysis(job.id));
+        } else {
+            analysisButton.textContent = 'No Applicants';
+            analysisButton.disabled = true;
+            analysisButton.classList.add('opacity-50', 'cursor-not-allowed');
+            analysisButton.title = 'No applicants to analyze yet';
+        }
+    }
+    rightSide.appendChild(analysisButton);
 
     // Assemble the content
     contentWrapper.appendChild(leftSide);
@@ -406,39 +423,6 @@ async function deactivateJob(jobId) {
     }
 }
 
-async function duplicateJob(jobId) {
-    if (!confirm('Are you sure you want to duplicate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/duplicate/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken()
-            },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            if (result && (typeof result.id === 'number' || (typeof result.id === 'string' && result.id.trim() !== ''))) {
-                showSuccess('Job duplicated successfully!');
-                setTimeout(() => {
-                    window.location.href = `/dashboard/${result.id}/edit/`; // Redirect to edit the new job
-                }, 1500);
-            } else {
-                console.error('Invalid or missing ID in duplication response:', result);
-                showSuccess('Job duplicated successfully but failed to redirect. Please refresh the page to see the new job.');
-            }
-        } else {
-            const errorData = await response.json();
-            showError(`Error duplicating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error duplicating job:', error);
-        showError('An error occurred while duplicating the job.');
-    }
-}
-
 function copyApplicationLink(link) {
     const fullLink = `${window.location.origin}/apply/${link}`;
     navigator.clipboard.writeText(fullLink)
@@ -449,6 +433,72 @@ function copyApplicationLink(link) {
             console.error('Failed to copy link: ', err);
             showError('Failed to copy link to clipboard.');
         });
+}
+
+// AI Analysis functions
+async function initiateAnalysis(jobId) {
+    if (!confirm('Are you sure you want to initiate AI analysis for all applicants? This process may take several minutes depending on the number of applicants.')) return;
+
+    try {
+        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/initiate/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            const applicantCount = data.data.applicant_count;
+            const estimatedMinutes = Math.ceil(data.data.estimated_duration_seconds / 60);
+            showSuccess(`AI analysis started for ${applicantCount} applicants. Estimated time: ~${estimatedMinutes} minute(s).`);
+            
+            // Show loading indicator with progress tracking
+            if (window.AnalysisLoadingIndicator) {
+                const indicator = new window.AnalysisLoadingIndicator();
+                indicator.show(jobId);
+            } else {
+                // Fallback if indicator is not available
+                setTimeout(() => {
+                    loadJobListings();
+                }, 2000);
+            }
+        } else {
+            const errorMessage = data.error ? data.error.message : 'Failed to initiate analysis';
+            showError(`Error: ${errorMessage}`);
+        }
+    } catch (error) {
+        console.error('Error initiating analysis:', error);
+        showError('An error occurred while initiating AI analysis.');
+    }
+}
+
+function viewAnalysis(jobId) {
+    // Redirect to the analysis reporting page
+    window.location.href = `/analysis/reporting/${jobId}/`;
+}
+
+async function checkAnalysisStatus(jobId) {
+    try {
+        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                return data.data;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error checking analysis status:', error);
+        return null;
+    }
 }
 
 // Set up filter event listeners when DOM is ready

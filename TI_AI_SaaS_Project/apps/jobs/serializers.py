@@ -55,6 +55,7 @@ class CommonScreeningQuestionSerializer(serializers.ModelSerializer):
 class JobListingSerializer(serializers.ModelSerializer):
     screening_questions = ScreeningQuestionSerializer(many=True, read_only=True)
     analysis_complete = serializers.SerializerMethodField()
+    applicant_count = serializers.SerializerMethodField()
 
     class Meta:
         model = JobListing
@@ -63,19 +64,32 @@ class JobListingSerializer(serializers.ModelSerializer):
 
     def get_analysis_complete(self, obj):
         """Check if AI analysis has been completed for this job listing.
-        
+
         Reads from 'analysis_complete' annotation if available (set by view using Exists),
         otherwise falls back to database query.
         """
         # Check if the view annotated the queryset with analysis_complete
         if hasattr(obj, 'analysis_complete'):
             return obj.analysis_complete
-        
+
         # Fallback: query the database (for backwards compatibility)
         return AIAnalysisResult.objects.filter(
             job_listing=obj,
             status=AIAnalysisResult.STATUS_ANALYZED
         ).exists()
+
+    def get_applicant_count(self, obj):
+        """Get the number of applicants for this job listing.
+        
+        Reads from 'applicant_count' annotation if available (set by view using Count),
+        otherwise falls back to database query.
+        """
+        # Check if the view annotated the queryset with applicant_count
+        if hasattr(obj, 'applicant_count'):
+            return obj.applicant_count
+        
+        # Fallback: query the database (for backwards compatibility)
+        return obj.applicants.count()
 
 
 class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerializer):

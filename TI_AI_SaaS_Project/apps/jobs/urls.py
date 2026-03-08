@@ -9,7 +9,6 @@ urlpatterns = [
     path('jobs/<uuid:pk>/', api.JobListingDetailView.as_view(), name='job-listing-detail'),
     path('jobs/<uuid:pk>/activate/', api.activate_job, name='job-activate'),
     path('jobs/<uuid:pk>/deactivate/', api.deactivate_job, name='job-deactivate'),
-    path('jobs/<uuid:pk>/duplicate/', api.duplicate_job, name='job-duplicate'),
 
     # Screening questions API endpoints - these need to be accessible from both /api/ and /dashboard/ contexts
     path('jobs/<uuid:job_id>/screening-questions/', api.ScreeningQuestionListView.as_view(), name='screening-question-list'),

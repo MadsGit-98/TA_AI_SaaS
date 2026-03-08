@@ -105,7 +105,7 @@
         var modalBody = document.getElementById('modal-body-content');
         var modal = document.getElementById('result-detail-modal');
 
-        fetch('/analysis/api/analysis/results/' + resultId + '/')
+        fetch('/api/analysis/results/' + resultId + '/')
             .then(function(response) {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
@@ -424,16 +424,23 @@
      */
     AnalysisLoadingIndicator.prototype.startPolling = function() {
         var self = this;
+        var retryCount = 0;
+        var maxRetries = 5;
 
         var pollStatus = function() {
-            fetch('/analysis/api/jobs/' + self.jobId + '/analysis/status/')
+            fetch('/api/analysis/jobs/' + self.jobId + '/analysis/status/', {
+                method: 'GET',
+                credentials: 'include'  // Include cookies for authentication
+            })
                 .then(function(response) {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        throw new Error('Network response was not ok: ' + response.status + ' ' + response.statusText);
                     }
                     return response.json();
                 })
                 .then(function(data) {
+                    retryCount = 0;  // Reset retry count on success
+
                     if (data.success) {
                         self.updateProgress(
                             data.data.processed_count,
@@ -453,12 +460,29 @@
                             self.addTerminalLine('Analysis cancelled by user.');
                             setTimeout(function() { self.hide(); }, 2000);
                             self.stopPolling();
+                        } else if (data.data.status === 'failed') {
+                            self.addTerminalLine('Analysis failed. Check logs for details.');
+                            setTimeout(function() { self.hide(); }, 3000);
+                            self.stopPolling();
                         }
+                    } else {
+                        // API returned success=false
+                        var errorMsg = data.error ? data.error.message : 'Unknown API error';
+                        console.error('API error:', errorMsg);
+                        self.addTerminalLine('Error: ' + errorMsg);
                     }
                 })
                 .catch(function(error) {
-                    console.error('Error polling status:', error);
-                    self.addTerminalLine('Error: Failed to fetch status');
+                    retryCount++;
+                    console.error('Error polling status (attempt ' + retryCount + '):', error);
+                    
+                    if (retryCount >= maxRetries) {
+                        self.addTerminalLine('Error: Failed to fetch status after ' + maxRetries + ' attempts');
+                        self.addTerminalLine('The analysis may still be running. Refresh the page to check status.');
+                        self.stopPolling();
+                    } else {
+                        self.addTerminalLine('Warning: Status fetch failed (retry ' + retryCount + '/' + maxRetries + ')');
+                    }
                 });
         };
 
@@ -490,7 +514,7 @@
         var self = this;
         this.addTerminalLine('Cancelling analysis...');
 
-        fetch('/analysis/api/jobs/' + this.jobId + '/analysis/cancel/', {
+        fetch('/api/analysis/jobs/' + this.jobId + '/analysis/cancel/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': this.getCSRFToken()
