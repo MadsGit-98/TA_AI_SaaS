@@ -210,7 +210,7 @@ def get_analysis_progress(job_id: str) -> Dict[str, int]:
     except RedisConnectionError:
         # Return default progress when Redis is unavailable
         return {'processed': 0, 'total': 0}
-    
+
     progress_key = f"analysis_progress:{job_id}"
     data = r.hgetall(progress_key)
 
@@ -221,6 +221,25 @@ def get_analysis_progress(job_id: str) -> Dict[str, int]:
         'processed': int(data.get(b'processed', 0)),
         'total': int(data.get(b'total', 0))
     }
+
+
+def clear_analysis_progress(job_id: str):
+    """
+    Clear progress tracking data for a completed analysis.
+
+    Should be called after analysis completes to avoid stale data.
+
+    Args:
+        job_id: UUID of the job listing
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Silently skip when Redis is unavailable
+        return
+
+    progress_key = f"analysis_progress:{job_id}"
+    r.delete(progress_key)
 
 
 # =============================================================================

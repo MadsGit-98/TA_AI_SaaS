@@ -19,6 +19,7 @@ from services.ai_analysis_service import (
     check_cancellation_flag,
     update_analysis_progress,
     release_analysis_lock,
+    clear_analysis_progress,
 )
 import logging
 logger = logging.getLogger(__name__)
@@ -283,6 +284,8 @@ def bulk_persistence_node(state: AnalysisState) -> dict:
         logger.info(f"No results to persist for job {job_id}")
         if owner_id:
             release_analysis_lock(job_id, owner_id)
+        # Clear Redis progress data to avoid stale data
+        clear_analysis_progress(job_id)
         return {}
 
     logger.info(f"Persisting {len(results)} analysis results for job {job_id}")
@@ -335,8 +338,10 @@ def bulk_persistence_node(state: AnalysisState) -> dict:
         logger.error(f"Error persisting analysis results for job {job_id}: {e}")
         raise
     finally:
-        # Always release the lock, even if bulk_create fails
+        # Always release the lock and clear Redis progress, even if bulk_create fails
         if owner_id:
             release_analysis_lock(job_id, owner_id)
+        # Clear Redis progress data to avoid stale data and re-analysis loops
+        clear_analysis_progress(job_id)
 
     return {}
