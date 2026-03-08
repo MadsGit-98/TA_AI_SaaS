@@ -19,7 +19,7 @@
         </div>
 
         <div class="flex gap-3">
-            <a href="{% url 'jobs:job_detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
+            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
                 ← Back to Job
             </a>
             <button onclick="window.print()" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">
@@ -58,3 +58,9 @@
 <script src="{% static 'js/auth-interceptor.js' %}"></script>
 <script src="{% static 'js/analysis.js' %}"></script>
 {% endblock %}
+
+<!-- AI Analysis Loading Indicator -->
+{% include 'analysis/_loading_indicator.html' %}
+
+</body>
+</html>

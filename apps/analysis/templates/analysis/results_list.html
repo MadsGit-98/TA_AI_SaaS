@@ -17,7 +17,7 @@
         <h2 class="text-lg text-secondary-text mb-4">{{ job_listing.title }}</h2>
 
         <div class="flex gap-3">
-            <a href="{% url 'jobs:job_detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
+            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">
                 ← Back to Job
             </a>
             <button id="refresh-results" class="bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition" type="button">

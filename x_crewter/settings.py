@@ -11,10 +11,20 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import warnings
 from pathlib import Path
 from datetime import timedelta    # JWT Configuration
 from celery.schedules import crontab
 import environ
+
+# Suppress langchain pydantic v1 deprecation warning (incompatible with Python 3.14)
+# This is a known issue: https://github.com/langchain-ai/langchain/issues/26882
+warnings.filterwarnings(
+    'ignore',
+    message='.*Core Pydantic V1 functionality.*',
+    category=UserWarning,
+    module='langchain_core'
+)
 
 # Initialize environment variables
 env = environ.Env(

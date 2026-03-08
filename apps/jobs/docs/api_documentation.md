@@ -155,17 +155,6 @@ POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/deactivate/
 Authorization: Bearer <jwt_token>
 ```
 
-#### Duplicate a job listing
-- **POST** `/jobs/{id}/duplicate/`
-- **Description**: Create a copy of an existing job listing as a template for a new position
-- **Path Parameter**: `id` - Unique identifier of the job listing to duplicate (UUID)
-- **Response**: 201 Created with duplicated job listing
-- **Example Request**:
-```
-POST /dashboard/jobs/123e4567-e89b-12d3-a456-426614174000/duplicate/
-Authorization: Bearer <jwt_token>
-```
-
 ### Screening Questions
 
 #### List screening questions for a job
