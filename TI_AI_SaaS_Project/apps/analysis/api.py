@@ -55,6 +55,44 @@ class AnalysisThrottle(SimpleRateThrottle):
         return f'analysis_scope:{client_ip}'
 
 
+class AnalysisResultDetailThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for analysis result detail endpoint
+    Higher limit to allow users to review multiple applicant details
+    """
+    scope = 'analysis_result_detail'
+
+    def get_cache_key(self, request, view):
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
+
+        if not client_ip:
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'analysis_result_detail_scope:unknown_ip:useragent:{user_agent_fragment}'
+
+        return f'analysis_result_detail_scope:{client_ip}'
+
+
+class AnalysisStatusThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for analysis status endpoint
+    Higher limit to allow frequent polling during analysis progress
+    """
+    scope = 'analysis_status'
+
+    def get_cache_key(self, request, view):
+        # Use DRF's get_ident to safely get client IP, handling trusted proxies
+        client_ip = self.get_ident(request)
+
+        if not client_ip:
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
+            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
+            return f'analysis_status_scope:unknown_ip:useragent:{user_agent_fragment}'
+
+        return f'analysis_status_scope:{client_ip}'
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @throttle_classes([AnalysisThrottle])
@@ -164,7 +202,7 @@ def initiate_analysis(request, job_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@throttle_classes([AnalysisThrottle])
+@throttle_classes([AnalysisStatusThrottle])
 def analysis_status(request, job_id):
     """
     API endpoint to get analysis progress status.
@@ -658,7 +696,7 @@ def rerun_analysis(request, job_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@throttle_classes([AnalysisThrottle])
+@throttle_classes([AnalysisResultDetailThrottle])
 def analysis_result_detail(request, result_id):
     """
     API endpoint to get detailed analysis result for a specific applicant.

@@ -4,6 +4,38 @@
    ========================================================================== */
 
 /* ==========================================================================
+   Progress Tag & Spinner Animation
+   ========================================================================== */
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+
+.analysis-progress-tag {
+    transition: all 0.3s ease;
+}
+
+.analysis-progress-tag:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.analysis-done-tag {
+    transition: all 0.3s ease;
+}
+
+.analysis-done-tag:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+/* ==========================================================================
    Category Badge Colors
    ========================================================================== */
 

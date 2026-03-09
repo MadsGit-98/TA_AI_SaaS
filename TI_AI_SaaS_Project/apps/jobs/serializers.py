@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.db.models import Exists, OuterRef
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
+from services.ai_analysis_service import get_analysis_progress
 
 
 class DateValidationMixin:
@@ -55,6 +56,8 @@ class CommonScreeningQuestionSerializer(serializers.ModelSerializer):
 class JobListingSerializer(serializers.ModelSerializer):
     screening_questions = ScreeningQuestionSerializer(many=True, read_only=True)
     analysis_complete = serializers.SerializerMethodField()
+    analysis_in_progress = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
     applicant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -77,6 +80,31 @@ class JobListingSerializer(serializers.ModelSerializer):
             job_listing=obj,
             status=AIAnalysisResult.STATUS_ANALYZED
         ).exists()
+
+    def get_analysis_in_progress(self, obj):
+        """Check if AI analysis is currently in progress for this job listing.
+        
+        Checks Redis progress tracking to determine if analysis is running.
+        """
+        progress = get_analysis_progress(str(obj.id))
+        processed = progress.get('processed', 0)
+        total = progress.get('total', 0)
+        
+        # Analysis is in progress if total > 0 and not all processed
+        return total > 0 and processed < total
+
+    def get_progress_percentage(self, obj):
+        """Get the current progress percentage for analysis.
+        
+        Returns percentage (0-100) based on processed/total applicants.
+        """
+        progress = get_analysis_progress(str(obj.id))
+        processed = progress.get('processed', 0)
+        total = progress.get('total', 0)
+        
+        if total > 0:
+            return int((processed / total) * 100)
+        return 0
 
     def get_applicant_count(self, obj):
         """Get the number of applicants for this job listing.

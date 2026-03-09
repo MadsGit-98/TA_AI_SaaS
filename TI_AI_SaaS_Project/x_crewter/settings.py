@@ -150,6 +150,8 @@ REST_FRAMEWORK = {
         'application_validation': '30/hour',  # 30 validation requests per hour per IP
         # AI Analysis throttles
         'analysis': '10/hour',  # 10 analysis requests per hour per IP
+        'analysis_status': '600/hour',  # 600 status checks per hour (10/min for polling during analysis)
+        'analysis_result_detail': '100/hour',  # 100 result detail views per hour per IP (higher limit for reviewing applicants)
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
