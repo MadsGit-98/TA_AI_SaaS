@@ -127,11 +127,7 @@
     {% block extra_js %}
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
         <script src="{% static 'js/auth-interceptor.js' %}"></script>
-        <script src="{% static 'js/analysis.js' %}"></script>
         <script src="{% static 'js/dashboard.js' %}"></script>
     {% endblock %}
-
-    <!-- AI Analysis Loading Indicator -->
-    {% include 'analysis/_loading_indicator.html' %}
 </body>
 </html>

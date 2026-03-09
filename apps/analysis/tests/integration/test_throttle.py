@@ -24,11 +24,20 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import UserProfile
-from apps.analysis.api import AnalysisThrottle
 from django.utils import timezone
 from datetime import timedelta
 from django.core.cache import cache
-from apps.analysis import api
+from apps.analysis.api import (
+    AnalysisThrottle,
+    AnalysisResultDetailThrottle,
+    initiate_analysis,
+    analysis_status,
+    analysis_results,
+    analysis_result_detail,
+    cancel_analysis,
+    rerun_analysis,
+    analysis_statistics,
+)
 import json
 
 User = get_user_model()
@@ -209,18 +218,17 @@ class AnalysisThrottleIntegrationTest(TestCase):
         """Test that throttle decorator is applied to all analysis endpoints."""
 
         # List of endpoint functions that should have throttle
-        endpoints = [
-            'initiate_analysis',
-            'analysis_status',
-            'analysis_results',
-            'analysis_result_detail',
-            'cancel_analysis',
-            'rerun_analysis',
-            'analysis_statistics',
-        ]
+        endpoints = {
+            'initiate_analysis': initiate_analysis,
+            'analysis_status': analysis_status,
+            'analysis_results': analysis_results,
+            'analysis_result_detail': analysis_result_detail,
+            'cancel_analysis': cancel_analysis,
+            'rerun_analysis': rerun_analysis,
+            'analysis_statistics': analysis_statistics,
+        }
 
-        for endpoint_name in endpoints:
-            endpoint_func = getattr(api, endpoint_name)
+        for endpoint_name, endpoint_func in endpoints.items():
             # Check if the function has throttle_classes decorator
             # The decorator adds attributes to the function
             self.assertTrue(
@@ -269,7 +277,7 @@ class AnalysisThrottleIntegrationTest(TestCase):
             self.assertNotEqual(response.status_code, 401, f"{url} should be accessible with auth")
 
     def test_throttle_rate_configured_in_settings(self):
-        """Test that analysis throttle rate is configured in settings."""
+        """Test that analysis throttle rates are configured in settings."""
         # Check that REST_FRAMEWORK settings exist
         self.assertTrue(hasattr(settings, 'REST_FRAMEWORK'))
 
@@ -282,6 +290,27 @@ class AnalysisThrottleIntegrationTest(TestCase):
         # Verify the rate format (should be like '10/hour')
         analysis_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
         self.assertIn('/', analysis_rate)
+
+        # Check that 'analysis_status' rate is configured for polling
+        self.assertIn('analysis_status', settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'])
+        status_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
+        self.assertIn('/', status_rate)
+
+        # Check that 'analysis_result_detail' rate is configured with higher limit
+        self.assertIn('analysis_result_detail', settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'])
+        detail_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_result_detail']
+        self.assertIn('/', detail_rate)
+
+        # Verify status rate is higher than general analysis rate (for polling)
+        status_count = int(status_rate.split('/')[0])
+        analysis_count = int(analysis_rate.split('/')[0])
+        self.assertGreater(status_count, analysis_count,
+                          "analysis_status throttle limit should be higher than analysis limit")
+
+        # Verify detail rate is higher than general analysis rate
+        detail_count = int(detail_rate.split('/')[0])
+        self.assertGreater(detail_count, analysis_count,
+                          "analysis_result_detail throttle limit should be higher than analysis limit")
 
     def test_throttle_cache_key_consistency(self):
         """Test that same IP produces consistent cache keys."""
@@ -310,8 +339,8 @@ class AnalysisThrottleIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
 
-        # Get the configured throttle rate (e.g., '10/hour')
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
+        # Get the configured throttle rate for status endpoint (e.g., '600/hour')
+        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
         rate_count = int(throttle_rate.split('/')[0])
 
         # Make requests up to the limit (all from same IP 127.0.0.1)
@@ -333,8 +362,8 @@ class AnalysisThrottleIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
 
-        # Get the configured throttle rate
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
+        # Get the configured throttle rate for status endpoint
+        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
         rate_count = int(throttle_rate.split('/')[0])
 
         # Exhaust the throttle limit (all from same IP)
@@ -360,8 +389,8 @@ class AnalysisThrottleIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
 
-        # Get the configured throttle rate
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
+        # Get the configured throttle rate for status endpoint
+        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
         rate_count = int(throttle_rate.split('/')[0])
 
         # Make requests from IP 1 up to the limit
