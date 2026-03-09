@@ -168,10 +168,11 @@ def reporting_page_view(request, job_id):
 
         # Check if analysis is complete
         analysis_complete = results.filter(status='Analyzed').count() > 0 and results.filter(status='Analyzed').count() >= total
-        
+
         # Check if analysis is currently running (Redis progress tracking)
         progress = get_analysis_progress(str(job_id))
         analysis_rerunning = progress.get('total', 0) > 0 and progress.get('processed', 0) < progress.get('total', 0)
+        progress_percentage = int((progress.get('processed', 0) / progress.get('total', 1)) * 100) if progress.get('total', 0) > 0 else 0
 
         context = {
             'job_listing': job_listing,
@@ -181,6 +182,7 @@ def reporting_page_view(request, job_id):
             'active_filters': active_filters,
             'analysis_complete': analysis_complete,
             'analysis_rerunning': analysis_rerunning,
+            'progress_percentage': progress_percentage,
             **footer_context,
         }
 
