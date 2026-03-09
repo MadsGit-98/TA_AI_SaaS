@@ -49,9 +49,6 @@
         {% include 'analysis/_toolbar.html' with job_listing=job_listing analysis_complete=analysis_complete analysis_rerunning=analysis_rerunning %}
     </div>
 </div>
-
-<!-- AI Analysis Loading Indicator -->
-{% include 'analysis/_loading_indicator.html' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -59,4 +56,5 @@
 <script src="{% static 'js/auth-interceptor.js' %}"></script>
 <script src="{% static 'js/analysis.js' %}"></script>
 <script src="{% static 'js/logout.js' %}"></script>
+<script src="{% static 'js/reporting_progress.js' %}"></script>
 {% endblock %}

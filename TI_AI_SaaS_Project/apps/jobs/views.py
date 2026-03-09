@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.jobs.models import JobListing
 from apps.accounts.models import CardLogo, SiteSetting
 from apps.analysis.models import AIAnalysisResult
+from services.ai_analysis_service import get_analysis_progress
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,11 @@ def job_detail_view(request, job_id):
         status='Analyzed'
     ).exists()
 
+    # Check if analysis is currently in progress (Redis progress tracking)
+    progress = get_analysis_progress(str(job_id))
+    analysis_in_progress = progress.get('total', 0) > 0 and progress.get('processed', 0) < progress.get('total', 0)
+    progress_percentage = int((progress.get('processed', 0) / progress.get('total', 1)) * 100) if progress.get('total', 0) > 0 else 0
+
     # Check if job was reactivated after analysis completion
     show_reactivation_warning = False
     if analysis_complete and job.status == 'Active':
@@ -84,7 +90,7 @@ def job_detail_view(request, job_id):
             job_listing=job,
             status='Analyzed'
         ).order_by('-created_at').first()
-        
+
         if last_analysis:
             new_applicants_count = job.applicants.filter(
                 submitted_at__gt=last_analysis.created_at
@@ -98,6 +104,8 @@ def job_detail_view(request, job_id):
     context = {
         'job': job,
         'analysis_complete': analysis_complete,
+        'analysis_in_progress': analysis_in_progress,
+        'progress_percentage': progress_percentage,
         'show_reactivation_warning': show_reactivation_warning,
         **footer_context,
     }

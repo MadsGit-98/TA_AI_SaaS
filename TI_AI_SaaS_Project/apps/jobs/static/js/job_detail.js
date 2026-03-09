@@ -82,8 +82,13 @@
         })
         .then(function(data) {
             if (data.success) {
-                alert(data.data.message);
+                // Close modal
                 closeRerunModal();
+                
+                // Start progress tracking
+                startProgressTracking(jobId);
+                
+                // Reload page to show progress tag
                 window.location.reload();
             } else {
                 alert('Error: ' + (data.error?.message || 'Failed to re-run analysis'));
@@ -152,6 +157,14 @@
     }
 
     /**
+     * Helper function to get CSRF token from meta tag
+     * @returns {string|null} CSRF token
+     */
+    function getCsrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    }
+
+    /**
      * Initialize job detail page
      */
     function init() {
@@ -169,6 +182,38 @@
         if (modal) {
             modal.addEventListener('click', handleModalOutsideClick);
         }
+
+        // Set up logout event listener
+        var logoutLink = document.getElementById('logout-link');
+        if (logoutLink) {
+            logoutLink.addEventListener('click', async function(e) {
+                e.preventDefault();
+
+                try {
+                    const response = await fetch('/api/accounts/auth/logout/', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCsrfToken(),
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'same-origin'  // Include cookies in request
+                    });
+
+                    if (response.status === 204) {
+                        // Redirect to home page after successful logout
+                        window.location.href = '/';
+                    } else {
+                        console.error('Logout failed');
+                        // Even if there's an error, redirect to home page
+                        window.location.href = '/';
+                    }
+                } catch (error) {
+                    console.error('Error during logout:', error);
+                    // Even if there's an error, redirect to home page
+                    window.location.href = '/';
+                }
+            });
+        }
     }
 
     // Initialize when DOM is ready
@@ -185,3 +230,126 @@
     window.initiateAnalysis = initiateAnalysis;
 
 })();
+
+// =============================================================================
+// Progress Tracking Functions (shared with dashboard.js approach)
+// =============================================================================
+
+// Track jobs currently being analyzed (jobId -> intervalId mapping)
+const analyzingJobs = new Map();
+
+/**
+ * Check analysis status for a job
+ * @param {string} jobId - The job ID to check
+ * @returns {Promise<Object|null>} Status data or null
+ */
+async function checkAnalysisStatus(jobId) {
+    try {
+        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                return data.data;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error checking analysis status:', error);
+        return null;
+    }
+}
+
+/**
+ * Start progress tracking for a job analysis
+ * @param {string} jobId - The job ID to track
+ */
+function startProgressTracking(jobId) {
+    // Check if already tracking this job
+    if (analyzingJobs.has(jobId)) {
+        console.log('Already tracking job', jobId);
+        return;
+    }
+
+    console.log('Starting progress tracking for job', jobId);
+
+    const intervalId = setInterval(async () => {
+        try {
+            const status = await checkAnalysisStatus(jobId);
+
+            if (status && status.status === 'processing') {
+                // Update progress tag for this job
+                const percentage = status.progress_percentage || 0;
+                updateJobProgress(jobId, percentage);
+            } else if (status && (status.status === 'completed' || status.status === 'failed')) {
+                // Stop tracking and reload the page
+                console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
+                stopProgressTracking(jobId);
+                window.location.reload(); // Refresh to show "Analysis Done" state
+            }
+        } catch (error) {
+            console.error('Error in progress tracking for job', jobId, error);
+        }
+    }, 6000); // Poll every 6 seconds (10 requests/minute, within 600/hour limit)
+
+    analyzingJobs.set(jobId, intervalId);
+}
+
+/**
+ * Stop progress tracking for a job
+ * @param {string} jobId - The job ID to stop tracking
+ */
+function stopProgressTracking(jobId) {
+    const intervalId = analyzingJobs.get(jobId);
+    if (intervalId) {
+        clearInterval(intervalId);
+        analyzingJobs.delete(jobId);
+        console.log('Stopped progress tracking for job', jobId);
+    }
+}
+
+/**
+ * Update the progress tag UI for a specific job
+ * @param {string} jobId - The job ID to update
+ * @param {number} percentage - The progress percentage (0-100)
+ */
+function updateJobProgress(jobId, percentage) {
+    // Find all progress tags and update the one for this job
+    const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+    progressTags.forEach(tag => {
+        if (tag.getAttribute('data-job-id') === jobId) {
+            // Update the percentage text
+            const textSpan = tag.querySelector('.text-gray-900');
+            if (textSpan) {
+                textSpan.textContent = 'Analyzing... ' + percentage + '%';
+            }
+            console.log('Updated progress for job', jobId, 'to', percentage + '%');
+        }
+    });
+}
+
+/**
+ * Initialize progress tracking for jobs that are already in progress
+ * Called on page load to resume tracking after page refresh
+ */
+function initProgressTracking() {
+    // Find all job cards with in-progress tags
+    const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+    progressTags.forEach(tag => {
+        const jobId = tag.getAttribute('data-job-id');
+        if (jobId && !analyzingJobs.has(jobId)) {
+            console.log('Resuming progress tracking for job', jobId);
+            startProgressTracking(jobId);
+        }
+    });
+}
+
+// Initialize progress tracking on page load for job detail page
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        initProgressTracking();
+    }, 100);
+});

@@ -29,60 +29,6 @@
                 }
             });
         }
-
-        // Rerun analysis button handler
-        const rerunBtn = document.getElementById('rerun-analysis-btn');
-        if (rerunBtn) {
-            rerunBtn.addEventListener('click', function() {
-                const jobId = this.dataset.jobId;
-                if (jobId && confirm('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.')) {
-                    rerunAnalysis(jobId);
-                }
-            });
-        }
-    }
-
-    /**
-     * Re-run AI analysis for a job
-     * @param {string} jobId - The job ID to re-run analysis for
-     */
-    function rerunAnalysis(jobId) {
-        // Get CSRF token
-        const tokenMeta = document.querySelector('meta[name="csrf-token"]');
-        const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : null;
-
-        fetch('/api/analysis/jobs/' + jobId + '/analysis/re-run/', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'Content-Type': 'application/json',
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({ confirm: true })
-        })
-        .then(function(response) {
-            return response.json();
-        })
-        .then(function(data) {
-            if (data.success) {
-                // Show loading indicator if available
-                if (window.AnalysisLoadingIndicator) {
-                    const indicator = new window.AnalysisLoadingIndicator();
-                    indicator.show(jobId);
-                } else {
-                    // Fallback: redirect to dashboard
-                    alert('Analysis re-run started! Redirecting to dashboard...');
-                    window.location.href = '/dashboard/';
-                }
-            } else {
-                const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to re-run analysis';
-                alert('Error: ' + errorMsg);
-            }
-        })
-        .catch(function(error) {
-            console.error('Error re-running analysis:', error);
-            alert('Failed to re-run analysis. Please try again.');
-        });
     }
 
     /**
