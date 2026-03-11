@@ -15,7 +15,7 @@ from django.db.models import Avg, Max, Min
 from apps.jobs.models import JobListing
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import CardLogo, SiteSetting
-from services.ai_analysis_service import get_analysis_progress
+from services.ai_analysis_service import get_analysis_progress, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,13 @@ def reporting_page_view(request, job_id):
 
         # Check if analysis is currently running (Redis progress tracking)
         progress = get_analysis_progress(str(job_id))
-        analysis_rerunning = progress.get('total', 0) > 0 and progress.get('processed', 0) < progress.get('total', 0)
+        has_progress_data = progress.get('total', 0) > 0
+        is_processing = progress.get('processed', 0) < progress.get('total', 0)
+        
+        # Check cancellation flag - if set, analysis is NOT running anymore
+        was_cancelled = check_cancellation_flag(str(job_id))
+        analysis_rerunning = has_progress_data and is_processing and not was_cancelled
+        
         progress_percentage = int((progress.get('processed', 0) / progress.get('total', 1)) * 100) if progress.get('total', 0) > 0 else 0
 
         context = {

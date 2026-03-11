@@ -39,15 +39,20 @@
             {# Analysis status indicator #}
             {% if analysis_rerunning %}
                 {% include 'analysis/_rerunning_tag.html' %}
+                {# Cancel Analysis button - shown when analysis is running #}
+                <button id="cancel-analysis-btn"
+                        data-job-id="{{ job_listing.id }}"
+                        class="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition"
+                        type="button">
+                    <span class="text-base">⏹</span>
+                    <span>Cancel Analysis</span>
+                </button>
             {% elif analysis_complete %}
                 {% include 'analysis/_done_tag.html' %}
-            {% endif %}
-
-            {# Rerun Analysis button - only show if analysis is complete #}
-            {% if analysis_complete and not analysis_rerunning %}
-                <button id="rerun-analysis-btn" 
+                {# Rerun Analysis button - only show if analysis is complete #}
+                <button id="rerun-analysis-btn"
                         data-job-id="{{ job_listing.id }}"
-                        class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text" 
+                        class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text"
                         type="button">
                     <span class="text-base">🔄</span>
                     <span>Rerun Analysis</span>

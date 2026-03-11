@@ -126,15 +126,11 @@
         })
         .then(function(data) {
             if (data.success) {
-                // Show loading indicator with progress tracking
-                if (window.AnalysisLoadingIndicator) {
-                    var indicator = new window.AnalysisLoadingIndicator();
-                    indicator.show(jobId);
-                } else {
-                    // Fallback if indicator is not available
-                    alert('AI analysis started! ' + data.data.applicant_count + ' applicants will be analyzed.');
-                    window.location.reload();
-                }
+                // Start progress tracking
+                startProgressTracking(jobId);
+                
+                // Reload page to show progress tag
+                window.location.reload();
             } else {
                 alert('Error: ' + (data.error?.message || 'Failed to start analysis'));
             }
@@ -142,6 +138,54 @@
         .catch(function(error) {
             console.error('Error initiating analysis:', error);
             alert('Failed to start analysis. Please try again.');
+        });
+    }
+
+    /**
+     * Cancel AI analysis for a job
+     */
+    function cancelAnalysis() {
+        // Validate JOB_DETAIL_CONFIG exists and has jobId
+        if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
+            console.error('Job ID not found in JOB_DETAIL_CONFIG');
+            alert('Error: Job information is not available. Please refresh the page and try again.');
+            return;
+        }
+
+        var jobId = window.JOB_DETAIL_CONFIG.jobId;
+
+        if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) {
+            return;
+        }
+
+        fetch('/api/analysis/jobs/' + jobId + '/analysis/cancel/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include'
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                // Stop progress tracking
+                stopProgressTracking(jobId);
+                
+                // Wait a moment to ensure cancellation flag is set in Redis
+                // Then reload to get fresh data from server
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                alert('Error: ' + (data.error?.message || 'Failed to cancel analysis'));
+            }
+        })
+        .catch(function(error) {
+            console.error('Error cancelling analysis:', error);
+            alert('Failed to cancel analysis. Please try again.');
         });
     }
 
@@ -228,6 +272,7 @@
     window.closeRerunModal = closeRerunModal;
     window.confirmRerunAnalysis = confirmRerunAnalysis;
     window.initiateAnalysis = initiateAnalysis;
+    window.cancelAnalysis = cancelAnalysis;
 
 })();
 
@@ -284,11 +329,11 @@ function startProgressTracking(jobId) {
                 // Update progress tag for this job
                 const percentage = status.progress_percentage || 0;
                 updateJobProgress(jobId, percentage);
-            } else if (status && (status.status === 'completed' || status.status === 'failed')) {
+            } else if (status && (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled')) {
                 // Stop tracking and reload the page
-                console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
+                console.log('Analysis completed/failed/cancelled for job', jobId, 'status:', status.status);
                 stopProgressTracking(jobId);
-                window.location.reload(); // Refresh to show "Analysis Done" state
+                window.location.reload(); // Refresh to show updated state
             }
         } catch (error) {
             console.error('Error in progress tracking for job', jobId, error);

@@ -31,6 +31,8 @@ from services.ai_analysis_service import (
     release_analysis_lock,
     set_cancellation_flag,
     get_analysis_progress,
+    check_cancellation_flag,
+    clear_cancellation_flag,
 )
 
 logger = logging.getLogger(__name__)
@@ -261,6 +263,25 @@ def analysis_status(request, job_id):
         progress = get_analysis_progress(str(job_id))
         processed_count = progress.get('processed', 0)
         total_count = progress.get('total', 0)
+
+        # Check cancellation flag BEFORE determining status from Redis data
+        if check_cancellation_flag(str(job_id)):
+            # Cancellation was requested - return cancelled status
+            # DO NOT clear the flag here - the Celery task needs it to detect cancellation
+            # The flag will be cleared by the task when it finishes
+            
+            progress_percentage = int((processed_count / total_count) * 100) if (processed_count > 0 and total_count > 0) else 0
+            return Response({
+                'success': True,
+                'data': {
+                    'job_id': str(job_id),
+                    'status': 'cancelled',
+                    'progress_percentage': progress_percentage,
+                    'processed_count': processed_count,
+                    'total_count': total_count,
+                    'results_summary': None,
+                }
+            })
 
         # Determine status from Redis data
         if total_count == 0:
@@ -541,14 +562,18 @@ def cancel_analysis(request, job_id):
         if job.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to cancel analysis for this job.")
 
-        # Set cancellation flag
-        set_cancellation_flag(str(job_id), ttl_seconds=60)
+        # Set cancellation flag (5 minute TTL to ensure it persists through page reload)
+        set_cancellation_flag(str(job_id))
 
         # Count preserved results
         preserved_count = AIAnalysisResult.objects.filter(
             job_listing=job,
             status='Analyzed'
         ).count()
+
+        # Set cancellation flag - the Celery task will detect it and stop
+        # DO NOT release locks here - the task will release them when it detects cancellation
+        # We only set the flag, we don't clear anything
 
         return Response({
             'success': True,

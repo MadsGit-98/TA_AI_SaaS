@@ -4,22 +4,23 @@ LangGraph Worker Sub-Graph
 Processes a single applicant through sequential analysis nodes.
 
 Graph Flow:
-1. Data Retrieval: Fetch applicant data and resume text
-2. Classification: Structure resume data into categories
-3. Scoring (LLM): Generate scores for each metric
-4. Categorization: Calculate overall score and assign category
-5. Justification (LLM): Generate textual justifications
-6. Result: Return complete analysis result
+1. Check Cancellation: Check if analysis was cancelled
+2. Data Retrieval: Fetch applicant data and resume text
+3. Classification: Structure resume data into categories
+4. Scoring (LLM): Generate scores for each metric
+5. Categorization: Calculate overall score and assign category
+6. Justification (LLM): Generate textual justifications
+7. Result: Return complete analysis result
 """
 
 import json
 import logging
 import math
-from typing import TypedDict, Any, Dict
+from typing import TypedDict, Any, Dict, Literal
 
 from langgraph.graph import StateGraph, END
 
-from services.ai_analysis_service import get_llm
+from services.ai_analysis_service import get_llm, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class WorkerState(TypedDict):
     """State for the worker sub-graph."""
     applicant: Any  # Applicant instance
     job_listing: Any  # JobListing instance
+    job_id: str  # Job ID for cancellation check
     resume_text: str
     job_requirements: Dict[str, Any]  # Job requirements from retrieval_node
     classified_data: Dict[str, Any]
@@ -37,6 +39,7 @@ class WorkerState(TypedDict):
     justifications: Dict[str, str]
     status: str
     error_message: str
+    cancelled: bool  # Flag to track if analysis was cancelled
 
 
 def create_worker_graph():
@@ -57,12 +60,52 @@ def create_worker_graph():
     workflow.add_node("justification", justification_node)
     workflow.add_node("result", result_node)
 
-    # Add edges (sequential flow)
-    workflow.add_edge("retrieval", "classification")
-    workflow.add_edge("classification", "scoring")
-    workflow.add_edge("scoring", "categorization")
-    workflow.add_edge("categorization", "justification")
-    workflow.add_edge("justification", "result")
+    # Add conditional edges that check cancellation before each node
+    workflow.add_conditional_edges(
+        "retrieval",
+        check_cancellation_edge,
+        {
+            "continue": "classification",
+            "cancel": "result"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "classification",
+        check_cancellation_edge,
+        {
+            "continue": "scoring",
+            "cancel": "result"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "scoring",
+        check_cancellation_edge,
+        {
+            "continue": "categorization",
+            "cancel": "result"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "categorization",
+        check_cancellation_edge,
+        {
+            "continue": "justification",
+            "cancel": "result"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "justification",
+        check_cancellation_edge,
+        {
+            "continue": "result",
+            "cancel": "result"
+        }
+    )
+    
     workflow.add_edge("result", END)
 
     # Set entry point
@@ -70,6 +113,25 @@ def create_worker_graph():
 
     # Compile the graph
     return workflow.compile()
+
+
+def check_cancellation_edge(state: WorkerState) -> Literal["continue", "cancel"]:
+    """
+    Conditional edge: Check if analysis was cancelled.
+
+    Args:
+        state: Current worker state
+
+    Returns:
+        "continue" if not cancelled, "cancel" if cancelled
+    """
+    job_id = state.get('job_id', '')
+    
+    if check_cancellation_flag(job_id):
+        logger.info(f"Cancellation detected for job {job_id}")
+        return "cancel"
+    
+    return "continue"
 
 
 def retrieval_node(state: WorkerState) -> dict:
@@ -562,9 +624,30 @@ def result_node(state: WorkerState) -> dict:
     Returns:
         Final state ready for return
     """
-    status = state.get('status', 'Unprocessed')
     applicant = state.get('applicant')
+    job_listing = state.get('job_listing')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    
+    # Check if analysis was cancelled
+    cancelled = state.get('cancelled', False)
+    job_id = state.get('job_id', '')
+    
+    # Also check cancellation flag in case it was set during processing
+    if check_cancellation_flag(job_id):
+        cancelled = True
+    
+    if cancelled:
+        logger.info(f"[Result] Analysis cancelled for applicant {applicant_id}")
+        return {
+            'applicant': applicant,
+            'job_listing': job_listing,
+            'status': 'Unprocessed',
+            'category': 'Unprocessed',
+            'error_message': 'Analysis cancelled',
+            'cancelled': True,
+        }
+    
+    status = state.get('status', 'Unprocessed')
 
     if status == 'Analyzed':
         overall_score = state.get('overall_score', 0)

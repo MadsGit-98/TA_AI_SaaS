@@ -11,6 +11,7 @@ This service handles:
 5. Scoring utilities (weighted average, category assignment)
 """
 
+import logging
 import math
 import uuid
 from typing import Dict, Any, Optional
@@ -19,6 +20,8 @@ from langchain_ollama import OllamaLLM
 
 # Import shared Redis utilities from accounts app to avoid code duplication
 from apps.accounts.redis_utils import get_redis_client, DummyRedisClient, RedisConnectionError
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -99,31 +102,26 @@ def release_analysis_lock(job_id: str, owner_id: str) -> bool:
     return bool(result)
 
 
-def set_cancellation_flag(job_id: str, ttl_seconds: int = 60) -> bool:
+def set_cancellation_flag(job_id: str, ttl_seconds: int = 300) -> bool:
     """
     Set cancellation flag for a running analysis.
 
-    Only sets the flag if an analysis lock exists (i.e., analysis is actually running).
-    This prevents setting cancellation flags for analyses that don't exist or have completed.
+    The cancellation flag is set independently of the analysis lock to ensure
+    it persists even if the lock expires. The Celery task will check this flag
+    and stop processing when it's set.
 
     Args:
         job_id: UUID of the job listing
-        ttl_seconds: Time-to-live for cancellation flag (default 60 seconds)
+        ttl_seconds: Time-to-live for cancellation flag (default 300 seconds / 5 minutes)
 
     Returns:
-        True if flag was set, False if no running analysis found (lock doesn't exist)
+        True if flag was set successfully
     """
     try:
         r = get_redis_client()
     except RedisConnectionError:
         # Use dummy client when Redis is unavailable
         r = DummyRedisClient()
-    
-    lock_key = f"analysis_lock:{job_id}"
-
-    # Only set cancellation flag if analysis lock exists (analysis is running)
-    if not r.exists(lock_key):
-        return False
 
     cancel_key = f"analysis_cancel:{job_id}"
     return r.setex(cancel_key, ttl_seconds, "cancelled")
@@ -161,9 +159,39 @@ def clear_cancellation_flag(job_id: str):
     except RedisConnectionError:
         # Use dummy client when Redis is unavailable
         r = DummyRedisClient()
-    
+
     cancel_key = f"analysis_cancel:{job_id}"
     r.delete(cancel_key)
+
+
+def release_all_analysis_locks(job_id: str):
+    """
+    Release all analysis locks for a job (lock and progress).
+    
+    This is used when analysis is cancelled to allow immediate re-analysis.
+    
+    Args:
+        job_id: UUID of the job listing
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        return
+
+    # Delete lock key
+    lock_key = f"analysis_lock:{job_id}"
+    r.delete(lock_key)
+    
+    # Delete progress key
+    progress_key = f"analysis_progress:{job_id}"
+    r.delete(progress_key)
+    
+    # Delete cancellation flag
+    cancel_key = f"analysis_cancel:{job_id}"
+    r.delete(cancel_key)
+    
+    logger.info(f"Released all analysis locks for job {job_id}")
 
 
 def update_analysis_progress(job_id: str, processed_count: int, total_count: int):

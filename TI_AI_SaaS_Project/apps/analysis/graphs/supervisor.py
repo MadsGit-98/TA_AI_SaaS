@@ -20,6 +20,7 @@ from services.ai_analysis_service import (
     update_analysis_progress,
     release_analysis_lock,
     clear_analysis_progress,
+    clear_cancellation_flag,
 )
 import logging
 logger = logging.getLogger(__name__)
@@ -166,14 +167,36 @@ def map_workers_node(state: AnalysisState) -> dict:
         # Collect results as they complete
         for future in as_completed(future_to_applicant):
             applicant = future_to_applicant[future]
+            
+            # Check cancellation during batch processing
+            if check_cancellation_flag(job_id):
+                logger.info(f"Analysis cancelled for job {job_id} during batch processing")
+                return {
+                    'results': results + new_results,
+                    'processed_count': processed_count,
+                    'current_index': current_index,
+                    'cancelled': True,
+                }
+            
             try:
                 result = future.result()
+                
+                # Check if this applicant was cancelled
+                if result.get('cancelled', False):
+                    logger.info(f"Applicant {applicant.id} processing cancelled")
+                    return {
+                        'results': results + new_results + [result],
+                        'processed_count': processed_count + 1,
+                        'current_index': current_index,
+                        'cancelled': True,
+                    }
+                
                 new_results.append(result)
                 processed_count += 1
-                
+
                 # Update progress
                 update_analysis_progress(job_id, processed_count, len(applicants))
-                
+
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
                 logger.warning(f"Worker failed for applicant {applicant.id}: {e}")
@@ -185,10 +208,10 @@ def map_workers_node(state: AnalysisState) -> dict:
                     'error_message': str(e)[:500],
                 })
                 processed_count += 1
-    
+
     # Update current index
     new_index = current_index + batch_size
-    
+
     return {
         'results': results + new_results,
         'processed_count': processed_count,
@@ -224,11 +247,13 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
         initial_state = {
             'applicant': applicant,
             'job_listing': job,
+            'job_id': job_id,  # Pass job_id for cancellation check
             'resume_text': applicant.resume_parsed_text or '',
             'scores': {},
             'category': None,
             'justifications': {},
             'status': 'Pending',
+            'cancelled': False,
         }
         
         final_state = worker_graph.invoke(initial_state)
@@ -343,5 +368,7 @@ def bulk_persistence_node(state: AnalysisState) -> dict:
             release_analysis_lock(job_id, owner_id)
         # Clear Redis progress data to avoid stale data and re-analysis loops
         clear_analysis_progress(job_id)
+        # Clear cancellation flag
+        clear_cancellation_flag(job_id)
 
     return {}
