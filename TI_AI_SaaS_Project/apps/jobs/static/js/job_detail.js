@@ -16,14 +16,15 @@
 
     /**
      * Copy application link to clipboard
-     * @param {string} link - The application link to copy
+     * @param {string} jobId - The job ID to construct the application link
      */
-    function copyApplicationLink(link) {
-        if (!link) {
+    function copyApplicationLink(jobId) {
+        if (!jobId) {
             alert('No application link available');
             return;
         }
-        navigator.clipboard.writeText(link).then(function() {
+        var fullLink = window.location.origin + '/apply/' + jobId;
+        navigator.clipboard.writeText(fullLink).then(function() {
             alert('Application link copied to clipboard!');
         }).catch(function(err) {
             console.error('Failed to copy link:', err);
@@ -68,7 +69,7 @@
 
         var jobId = window.JOB_DETAIL_CONFIG.jobId;
 
-        fetch('/dashboard/jobs/' + jobId + '/analysis/re-run/', {
+        fetch('/api/analysis/jobs/' + jobId + '/analysis/re-run/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken(),
@@ -84,10 +85,10 @@
             if (data.success) {
                 // Close modal
                 closeRerunModal();
-                
+
                 // Start progress tracking
                 startProgressTracking(jobId);
-                
+
                 // Reload page to show progress tag
                 window.location.reload();
             } else {
@@ -113,7 +114,7 @@
 
         var jobId = window.JOB_DETAIL_CONFIG.jobId;
 
-        fetch('/dashboard/jobs/' + jobId + '/analysis/initiate/', {
+        fetch('/api/analysis/jobs/' + jobId + '/analysis/initiate/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken(),
@@ -292,6 +293,9 @@ async function checkAnalysisStatus(jobId) {
     try {
         const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
             method: 'GET',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+            },
             credentials: 'include'
         });
 
