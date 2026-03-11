@@ -232,10 +232,20 @@ class RedisSecurityTest(TestCase):
         job_id = str(uuid.uuid4())
 
         # Try to set cancellation flag without lock (no running analysis)
+        # NOTE: As of latest changes, set_cancellation_flag() no longer checks for lock
+        # This allows users to cancel analysis even if the lock has expired
+        # The Celery task will detect the flag and stop processing
         result = set_cancellation_flag(job_id, ttl_seconds=60)
 
-        # Should return False (no running analysis)
-        self.assertFalse(result)
+        # Should return True (flag is set regardless of lock state)
+        self.assertTrue(result)
+        
+        # Verify the flag was actually set
+        is_cancelled = check_cancellation_flag(job_id)
+        self.assertTrue(is_cancelled)
+        
+        # Clean up
+        clear_cancellation_flag(job_id)
 
     def test_cancellation_flag_respected(self):
         """Test that cancellation flag is properly checked."""
