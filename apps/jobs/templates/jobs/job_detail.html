@@ -158,8 +158,8 @@
             {% if analysis_in_progress %}
             <section class="mb-8 p-6 bg-code-block-bg rounded-lg">
                 <h2 class="text-xl font-semibold text-primary-text mb-4">AI Analysis</h2>
-                <p class="text-secondary-text mb-4">Analysis is currently in progress. Please wait for it to complete.</p>
-                <button type="button" disabled class="bg-code-block-bg text-secondary-text px-5 py-2.5 rounded text-sm font-medium cursor-not-allowed opacity-50">Analyzing...</button>
+                <p class="text-secondary-text mb-4">Analysis is currently in progress. You can cancel it at any time.</p>
+                <button type="button" onclick="cancelAnalysis()" class="bg-red-600 text-white px-5 py-2.5 rounded text-sm font-medium hover:bg-red-700 transition">Cancel Analysis</button>
             </section>
             {% elif analysis_complete %}
             <section class="mb-8 p-6 bg-code-block-bg rounded-lg">

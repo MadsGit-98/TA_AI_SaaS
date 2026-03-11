@@ -14,7 +14,7 @@ from django.utils import timezone
 from apps.jobs.models import JobListing
 from apps.accounts.models import CardLogo, SiteSetting
 from apps.analysis.models import AIAnalysisResult
-from services.ai_analysis_service import get_analysis_progress
+from services.ai_analysis_service import get_analysis_progress, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,13 @@ def job_detail_view(request, job_id):
 
     # Check if analysis is currently in progress (Redis progress tracking)
     progress = get_analysis_progress(str(job_id))
-    analysis_in_progress = progress.get('total', 0) > 0 and progress.get('processed', 0) < progress.get('total', 0)
+    has_progress_data = progress.get('total', 0) > 0
+    is_processing = progress.get('processed', 0) < progress.get('total', 0)
+    
+    # Check cancellation flag - if set, analysis is NOT in progress anymore
+    was_cancelled = check_cancellation_flag(str(job_id))
+    analysis_in_progress = has_progress_data and is_processing and not was_cancelled
+    
     progress_percentage = int((progress.get('processed', 0) / progress.get('total', 1)) * 100) if progress.get('total', 0) > 0 else 0
 
     # Check if job was reactivated after analysis completion

@@ -64,11 +64,11 @@
                     // Update progress tag for this job
                     const percentage = status.progress_percentage || 0;
                     updateJobProgress(jobId, percentage);
-                } else if (status && (status.status === 'completed' || status.status === 'failed')) {
+                } else if (status && (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled')) {
                     // Stop tracking and reload the page
-                    console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
+                    console.log('Analysis completed/failed/cancelled for job', jobId, 'status:', status.status);
                     stopProgressTracking(jobId);
-                    window.location.reload(); // Refresh to show "Analysis Done" state
+                    window.location.reload(); // Refresh to show updated state
                 }
             } catch (error) {
                 console.error('Error in progress tracking for job', jobId, error);
@@ -141,6 +141,15 @@
                 }
             });
         }
+        
+        // Set up cancel analysis button handler
+        const cancelBtn = document.getElementById('cancel-analysis-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                const jobId = this.dataset.jobId;
+                cancelAnalysis(jobId);
+            });
+        }
     });
 
     /**
@@ -177,9 +186,50 @@
         }
     }
 
+    /**
+     * Cancel AI analysis for a job
+     * @param {string} jobId - The job ID to cancel analysis for
+     */
+    async function cancelAnalysis(jobId) {
+        if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) return;
+
+        try {
+            const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.data.message || 'Analysis cancelled successfully.');
+
+                // Stop progress tracking
+                stopProgressTracking(jobId);
+                
+                // Wait a moment to ensure cancellation flag is set in Redis
+                // Then reload to get fresh data from server
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to cancel analysis';
+                alert('Error: ' + errorMsg);
+            }
+        } catch (error) {
+            console.error('Error cancelling analysis:', error);
+            alert('Failed to cancel analysis. Please try again.');
+        }
+    }
+
     // Expose functions globally for toolbar use
     window.startProgressTracking = startProgressTracking;
     window.initProgressTracking = initProgressTracking;
     window.rerunAnalysis = rerunAnalysis;
+    window.cancelAnalysis = cancelAnalysis;
 
 })();

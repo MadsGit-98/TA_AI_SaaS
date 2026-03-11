@@ -23,6 +23,8 @@ from apps.accounts.models import Notification
 from services.ai_analysis_service import (
     release_analysis_lock,
     update_analysis_progress,
+    clear_cancellation_flag,
+    clear_analysis_progress,
 )
 import uuid
 
@@ -129,6 +131,13 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             f"AI analysis {status} for job {job_id}: "
             f"{analyzed_count} analyzed, {unprocessed_count} unprocessed"
         )
+
+        # Clear cancellation flag and release locks after completion/cancellation
+        clear_cancellation_flag(job_id)
+        if owner_id:
+            release_analysis_lock(job_id, owner_id)
+        # Clear progress tracking data
+        clear_analysis_progress(job_id)
 
         # Create in-app notification for job owner on completion
         try:

@@ -178,10 +178,23 @@ function createJobElement(job, container) {
 
     // Check if analysis is in progress
     if (job.analysis_in_progress) {
-        analysisButton.textContent = 'Analyzing...';
-        analysisButton.disabled = true;
-        analysisButton.classList.add('opacity-50', 'cursor-not-allowed');
-        analysisButton.title = 'Analysis in progress';
+        // Check if this job is being cancelled
+        const isCancelling = cancellingJobs.has(job.id);
+        
+        // Show Cancel Analysis button when analysis is running
+        analysisButton.textContent = 'Cancel Analysis';
+        analysisButton.title = 'Cancel the running analysis';
+        
+        if (isCancelling) {
+            // Disable button when cancelling
+            analysisButton.disabled = true;
+            analysisButton.classList.add('opacity-50', 'cursor-not-allowed');
+            analysisButton.className = 'text-gray-400 text-sm font-medium cursor-not-allowed';
+        } else {
+            // Normal cancel button
+            analysisButton.className = 'text-red-600 hover:text-red-800 text-sm font-medium';
+            analysisButton.addEventListener('click', () => cancelAnalysis(job.id));
+        }
     }
     // Check if analysis is already complete
     else if (job.analysis_complete) {
@@ -477,7 +490,7 @@ async function initiateAnalysis(jobId) {
 
             // Start progress tracking for this job
             startProgressTracking(jobId);
-            
+
             // Refresh job list to show "Analyzing..." tag
             setTimeout(() => {
                 loadJobListings();
@@ -489,6 +502,57 @@ async function initiateAnalysis(jobId) {
     } catch (error) {
         console.error('Error initiating analysis:', error);
         showError('An error occurred while initiating AI analysis.');
+    }
+}
+
+/**
+ * Cancel AI analysis for a job
+ * @param {string} jobId - The job ID to cancel analysis for
+ */
+async function cancelAnalysis(jobId) {
+    // Prevent multiple cancellation requests
+    if (cancellingJobs.has(jobId)) {
+        console.log('Already cancelling job', jobId);
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) return;
+
+    try {
+        // Mark as cancelling immediately for UI feedback
+        markJobAsCancelling(jobId);
+
+        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            console.log('Cancellation requested for job', jobId);
+            // Don't reload here - the polling will detect when task finishes and reload automatically
+            // Just show a brief success message
+            showSuccess(data.data.message || 'Analysis cancellation requested.');
+        } else {
+            const errorMessage = data.error ? data.error.message : 'Failed to cancel analysis';
+            showError(`Error: ${errorMessage}`);
+            // Remove from cancelling set on error
+            cancellingJobs.delete(jobId);
+            // Reload to restore normal state
+            window.location.reload();
+        }
+    } catch (error) {
+        console.error('Error cancelling analysis:', error);
+        showError('An error occurred while cancelling analysis.');
+        // Remove from cancelling set on error
+        cancellingJobs.delete(jobId);
+        // Reload to restore normal state
+        window.location.reload();
     }
 }
 
@@ -524,6 +588,9 @@ async function checkAnalysisStatus(jobId) {
 // Track jobs currently being analyzed (jobId -> intervalId mapping)
 const analyzingJobs = new Map();
 
+// Track jobs being cancelled (jobId -> {started: timestamp, lastStatus: string})
+const cancellingJobs = new Map();
+
 /**
  * Start progress tracking for a job analysis
  * @param {string} jobId - The job ID to track
@@ -539,22 +606,45 @@ function startProgressTracking(jobId) {
 
     const intervalId = setInterval(async () => {
         try {
+            console.log('Polling status for job', jobId);
             const status = await checkAnalysisStatus(jobId);
+            console.log('Status for job', jobId, ':', status);
 
-            if (status && status.status === 'processing') {
-                // Update progress tag for this job
-                const percentage = status.progress_percentage || 0;
-                updateJobProgress(jobId, percentage);
-            } else if (status && (status.status === 'completed' || status.status === 'failed')) {
-                // Stop tracking and refresh the job list
-                console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
-                stopProgressTracking(jobId);
-                loadJobListings(); // Refresh to show "Analysis Done" state
+            // Check if this job is being cancelled
+            const cancellingInfo = cancellingJobs.get(jobId);
+            
+            if (cancellingInfo) {
+                // Job is in cancellation state
+                if (status && status.status === 'cancelled') {
+                    // Still cancelling - keep showing the tag
+                    console.log('Job', jobId, 'still cancelling...');
+                    // Don't update UI, keep showing "Cancelling..."
+                } else {
+                    // Status changed from 'cancelled' - task finished!
+                    console.log('Task finished after cancellation, reloading page');
+                    cancellingJobs.delete(jobId);
+                    stopProgressTracking(jobId);
+                    // Full page reload to ensure all state is fresh
+                    window.location.reload();
+                    return;
+                }
+            } else {
+                // Not cancelling - normal progress tracking
+                if (status && status.status === 'processing') {
+                    // Update progress tag for this job
+                    const percentage = status.progress_percentage || 0;
+                    updateJobProgress(jobId, percentage);
+                } else if (status && (status.status === 'completed' || status.status === 'failed')) {
+                    // Stop tracking and reload
+                    console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
+                    stopProgressTracking(jobId);
+                    window.location.reload();
+                }
             }
         } catch (error) {
             console.error('Error in progress tracking for job', jobId, error);
         }
-    }, 6000); // Poll every 6 seconds (10 requests/minute, within 600/hour limit)
+    }, 2000); // Poll every 2 seconds for faster cancellation response
 
     analyzingJobs.set(jobId, intervalId);
 }
@@ -573,21 +663,114 @@ function stopProgressTracking(jobId) {
 }
 
 /**
+ * Mark a job as being cancelled
+ * @param {string} jobId - The job ID
+ */
+function markJobAsCancelling(jobId) {
+    cancellingJobs.set(jobId, {started: Date.now(), lastStatus: 'cancelling'});
+    // Update UI immediately - both progress tag and button
+    updateJobProgress(jobId, null, true);
+    updateCancelButtonState(jobId, true);
+}
+
+/**
+ * Update the cancel button state for a specific job
+ * @param {string} jobId - The job ID to update
+ * @param {boolean} isCancelling - Whether the job is being cancelled
+ */
+function updateCancelButtonState(jobId, isCancelling) {
+    // Find the progress tag for this job
+    const progressTag = document.querySelector(`[data-progress-type="in-progress"][data-job-id="${jobId}"]`);
+    console.log('updateCancelButtonState: progressTag found:', !!progressTag, 'jobId:', jobId, 'isCancelling:', isCancelling);
+    
+    if (progressTag) {
+        const jobCard = progressTag.closest('.border.border-gray-200');
+        console.log('updateCancelButtonState: jobCard found:', !!jobCard);
+        
+        if (jobCard) {
+            // Find all buttons in the right side column
+            const rightSide = jobCard.querySelector('.flex.flex-col.space-y-2');
+            console.log('updateCancelButtonState: rightSide found:', !!rightSide);
+            
+            if (rightSide) {
+                const buttons = rightSide.querySelectorAll('button');
+                console.log('updateCancelButtonState: found', buttons.length, 'buttons');
+                
+                // The cancel button is the 4th button (index 3) - after Edit, Copy Link, Deactivate/Activate
+                const cancelBtn = buttons[3];
+                console.log('updateCancelButtonState: cancelBtn found:', !!cancelBtn, 'text:', cancelBtn ? cancelBtn.textContent : 'N/A');
+                
+                if (cancelBtn && cancelBtn.textContent.trim() === 'Cancel Analysis') {
+                    if (isCancelling) {
+                        cancelBtn.disabled = true;
+                        cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        cancelBtn.classList.remove('text-red-600', 'hover:text-red-800');
+                        cancelBtn.classList.add('text-gray-400');
+                        cancelBtn.style.pointerEvents = 'none';
+                        console.log('updateCancelButtonState: disabled cancel button');
+                    } else {
+                        cancelBtn.disabled = false;
+                        cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'text-gray-400');
+                        cancelBtn.classList.add('text-red-600', 'hover:text-red-800');
+                        cancelBtn.style.pointerEvents = 'auto';
+                        console.log('updateCancelButtonState: enabled cancel button');
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Update the progress tag UI for a specific job
  * @param {string} jobId - The job ID to update
- * @param {number} percentage - The progress percentage (0-100)
+ * @param {number|null} percentage - The progress percentage (0-100), null for cancelling state
+ * @param {boolean} isCancelling - Whether the job is being cancelled
  */
-function updateJobProgress(jobId, percentage) {
+function updateJobProgress(jobId, percentage, isCancelling = false) {
     // Find all progress tags and update the one for this job
     const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+    console.log('Found', progressTags.length, 'progress tags, looking for job', jobId);
+    
     progressTags.forEach(tag => {
-        if (tag.getAttribute('data-job-id') === jobId) {
-            // Update the percentage text
-            const textSpan = tag.querySelector('.text-gray-900');
-            if (textSpan) {
-                textSpan.textContent = 'Analyzing... ' + percentage + '%';
+        const tagJobId = tag.getAttribute('data-job-id');
+        console.log('Progress tag job ID:', tagJobId, 'looking for:', jobId, 'match:', tagJobId === jobId);
+        
+        if (tagJobId === jobId) {
+            // The tag structure is:
+            // <span data-progress-type="in-progress" data-job-id="...">
+            //   <span class="...animate-spin">⟳</span>
+            //   <span class="text-gray-900 tracking-wide uppercase">Analyzing... 45%</span>
+            // </span>
+            const spans = tag.querySelectorAll('span');
+            const spinner = spans[0];  // First span is the spinner
+            const textSpan = spans[1];  // Second span is the text
+
+            console.log('Updating job', jobId, 'isCancelling:', isCancelling, 'percentage:', percentage, 'textSpan:', textSpan);
+            
+            if (isCancelling) {
+                // Show cancelling state
+                if (textSpan) {
+                    textSpan.textContent = 'Cancelling...';
+                    textSpan.className = 'text-gray-600 tracking-wide uppercase';
+                    console.log('Set text to "Cancelling..."');
+                }
+                // Slow down spinner
+                if (spinner) {
+                    spinner.style.animationDuration = '2s';
+                }
+            } else if (percentage !== null) {
+                // Show progress percentage
+                if (textSpan) {
+                    textSpan.textContent = 'Analyzing... ' + percentage + '%';
+                    textSpan.className = 'text-gray-900 tracking-wide uppercase';
+                }
+                // Normal spinner speed
+                if (spinner) {
+                    spinner.style.animationDuration = '1s';
+                }
             }
-            console.log('Updated progress for job', jobId, 'to', percentage + '%');
+            console.log('Updated progress for job', jobId, isCancelling ? '(cancelling)' : percentage + '%');
         }
     });
 }
