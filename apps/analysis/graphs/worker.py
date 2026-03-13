@@ -7,19 +7,18 @@ Graph Flow:
 1. Check Cancellation: Check if analysis was cancelled
 2. Data Retrieval: Fetch applicant data and resume text
 3. Classification: Structure resume data into categories
-4. Scoring (LLM): Generate scores for each metric
-5. Categorization: Calculate overall score and assign category
-6. Justification (LLM): Generate textual justifications
-7. Result: Return complete analysis result
+4. Elimination: Assess relevance of candidate profile to job requirements
+5. Scoring (LLM): Generate scores for each metric
+6. Categorization: Calculate overall score and assign category
+7. Justification (LLM): Generate textual justifications
+8. Result: Return complete analysis result
 """
 
 import json
 import logging
 import math
 from typing import TypedDict, Any, Dict, Literal
-
 from langgraph.graph import StateGraph, END
-
 from services.ai_analysis_service import get_llm, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
@@ -33,6 +32,7 @@ class WorkerState(TypedDict):
     resume_text: str
     job_requirements: Dict[str, Any]  # Job requirements from retrieval_node
     classified_data: Dict[str, Any]
+    relevance_assessment: Dict[str, Any]  # Relevance assessment from elimination_node
     scores: Dict[str, int]
     overall_score: int
     category: str
@@ -55,6 +55,7 @@ def create_worker_graph():
     # Add nodes
     workflow.add_node("retrieval", retrieval_node)
     workflow.add_node("classification", classification_node)
+    workflow.add_node("elimination", elimination_node)
     workflow.add_node("scoring", scoring_node)
     workflow.add_node("categorization", categorization_node)
     workflow.add_node("justification", justification_node)
@@ -69,16 +70,25 @@ def create_worker_graph():
             "cancel": "result"
         }
     )
-    
+
     workflow.add_conditional_edges(
         "classification",
+        check_cancellation_edge,
+        {
+            "continue": "elimination",
+            "cancel": "result"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "elimination",
         check_cancellation_edge,
         {
             "continue": "scoring",
             "cancel": "result"
         }
     )
-    
+
     workflow.add_conditional_edges(
         "scoring",
         check_cancellation_edge,
@@ -87,7 +97,7 @@ def create_worker_graph():
             "cancel": "result"
         }
     )
-    
+
     workflow.add_conditional_edges(
         "categorization",
         check_cancellation_edge,
@@ -96,7 +106,7 @@ def create_worker_graph():
             "cancel": "result"
         }
     )
-    
+
     workflow.add_conditional_edges(
         "justification",
         check_cancellation_edge,
@@ -150,6 +160,7 @@ def retrieval_node(state: WorkerState) -> dict:
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
     logger.info(f"[Retrieval] Starting for applicant {applicant_id}")
+    logger.info(f"[Retrieval] State check - applicant: {'present' if applicant else 'MISSING'}, job_listing: {'present' if job_listing else 'MISSING'}")
 
     if not applicant:
         logger.error(f"[Retrieval] Missing 'applicant' in worker state for applicant {applicant_id}")
@@ -184,6 +195,7 @@ def retrieval_node(state: WorkerState) -> dict:
         'job_level': job_listing.job_level,
     }
     logger.info(f"[Retrieval] Job requirements extracted: title={job_requirements['title']}, skills={len(job_requirements['required_skills'])}")
+    logger.info(f"[Retrieval] Returning state update with resume_text ({len(resume_text)} chars) and job_requirements (keys: {list(job_requirements.keys())})")
     logger.info(f"[Retrieval] Completed for applicant {applicant_id}")
 
     return {
@@ -213,6 +225,7 @@ def classification_node(state: WorkerState) -> dict:
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
     logger.info(f"[Classification] Starting for applicant {applicant_id}")
+    logger.info(f"[Classification] State check - resume_text length: {len(resume_text) if resume_text else 0}")
 
     if not resume_text:
         logger.warning(f"[Classification] No resume text for applicant {applicant_id}")
@@ -305,6 +318,144 @@ Output ONLY valid JSON in this exact format:
 
             classified_data = json.loads(response_text)
             logger.info(f"[Classification] JSON parsed successfully for applicant {applicant_id}")
+            
+            # Log detailed classified data for debugging and analysis
+            logger.info(f"[Classification] === CLASSIFIED DATA BEGIN === for applicant {applicant_id}")
+            
+            # Log Professional Experience
+            prof_exp = classified_data.get('professional_experience', {})
+            logger.info(f"[Classification] -- PROFESSIONAL EXPERIENCE --")
+            employers = prof_exp.get('employers', [])
+            logger.info(f"[Classification] Employers ({len(employers)}):")
+            for idx, emp in enumerate(employers, 1):
+                company = emp.get('company', 'N/A')
+                industry = emp.get('industry', 'N/A')
+                location = emp.get('location', 'N/A')
+                logger.info(f"[Classification]   [{idx}] Company: {company} | Industry: {industry} | Location: {location}")
+            
+            job_titles = prof_exp.get('job_titles', [])
+            logger.info(f"[Classification] Job Titles ({len(job_titles)}): {', '.join(job_titles) if job_titles else 'None'}")
+            
+            employment_dates = prof_exp.get('employment_dates', [])
+            logger.info(f"[Classification] Employment Dates ({len(employment_dates)}):")
+            for idx, dates in enumerate(employment_dates, 1):
+                start = dates.get('start', 'N/A')
+                end = dates.get('end', 'N/A')
+                logger.info(f"[Classification]   [{idx}] Start: {start} | End: {end}")
+            
+            responsibilities = prof_exp.get('responsibilities', [])
+            logger.info(f"[Classification] Responsibilities ({len(responsibilities)}):")
+            for idx, resp in enumerate(responsibilities, 1):
+                logger.info(f"[Classification]   [{idx}] {resp[:200]}{'...' if len(resp) > 200 else ''}")
+            
+            achievements = prof_exp.get('achievements', [])
+            logger.info(f"[Classification] Achievements ({len(achievements)}):")
+            for idx, achieve in enumerate(achievements, 1):
+                logger.info(f"[Classification]   [{idx}] {achieve[:200]}{'...' if len(achieve) > 200 else ''}")
+            
+            gaps = prof_exp.get('gaps', [])
+            logger.info(f"[Classification] Employment Gaps ({len(gaps)}): {gaps if gaps else 'None identified'}")
+            
+            # Log Education
+            education = classified_data.get('education', {})
+            logger.info(f"[Classification] -- EDUCATION & CREDENTIALS --")
+            degrees = education.get('degrees', [])
+            logger.info(f"[Classification] Degrees ({len(degrees)}):")
+            for idx, deg in enumerate(degrees, 1):
+                deg_type = deg.get('type', 'N/A')
+                major = deg.get('major', 'N/A')
+                institution = deg.get('institution', 'N/A')
+                logger.info(f"[Classification]   [{idx}] Type: {deg_type} | Major: {major} | Institution: {institution}")
+
+            graduation_dates = education.get('graduation_dates', [])
+            # Handle both string and dict formats for graduation_dates
+            if graduation_dates:
+                if isinstance(graduation_dates[0], dict):
+                    date_strs = [d.get('date', str(d)) for d in graduation_dates]
+                else:
+                    date_strs = [str(d) for d in graduation_dates]
+                logger.info(f"[Classification] Graduation Dates ({len(graduation_dates)}): {', '.join(date_strs)}")
+            else:
+                logger.info(f"[Classification] Graduation Dates (0): None")
+
+            certifications = education.get('certifications', [])
+            # Handle both string and dict formats for certifications
+            if certifications:
+                if isinstance(certifications[0], dict):
+                    cert_strs = [c.get('name', c.get('certification', str(c))) for c in certifications]
+                else:
+                    cert_strs = [str(c) for c in certifications]
+                logger.info(f"[Classification] Certifications ({len(certifications)}): {', '.join(cert_strs)}")
+            else:
+                logger.info(f"[Classification] Certifications (0): None")
+
+            continuing_edu = education.get('continuing_education', [])
+            # Handle both string and dict formats for continuing education
+            if continuing_edu:
+                if isinstance(continuing_edu[0], dict):
+                    edu_strs = [e.get('course', e.get('name', str(e))) for e in continuing_edu]
+                else:
+                    edu_strs = [str(e) for e in continuing_edu]
+                logger.info(f"[Classification] Continuing Education ({len(continuing_edu)}): {', '.join(edu_strs)}")
+            else:
+                logger.info(f"[Classification] Continuing Education (0): None")
+            
+            # Log Skills
+            skills = classified_data.get('skills', {})
+            logger.info(f"[Classification] -- SKILLS & COMPETENCIES --")
+            hard_skills = skills.get('hard_skills', [])
+            logger.info(f"[Classification] Hard Skills ({len(hard_skills)}): {', '.join(hard_skills) if hard_skills else 'None'}")
+            
+            soft_skills = skills.get('soft_skills', [])
+            # Handle both string and dict formats for soft_skills
+            if soft_skills:
+                if isinstance(soft_skills[0], dict):
+                    skill_strs = [s.get('skill', s.get('name', str(s))) for s in soft_skills]
+                else:
+                    skill_strs = [str(s) for s in soft_skills]
+                logger.info(f"[Classification] Soft Skills ({len(soft_skills)}): {', '.join(skill_strs)}")
+            else:
+                logger.info(f"[Classification] Soft Skills (0): None")
+
+            languages = skills.get('languages', [])
+            logger.info(f"[Classification] Languages ({len(languages)}):")
+            for idx, lang in enumerate(languages, 1):
+                lang_name = lang.get('language', 'N/A')
+                proficiency = lang.get('proficiency', 'N/A')
+                logger.info(f"[Classification]   [{idx}] Language: {lang_name} | Proficiency: {proficiency}")
+
+            # Log Supplemental Information
+            supplemental = classified_data.get('supplemental', {})
+            logger.info(f"[Classification] -- SUPPLEMENTAL INFORMATION --")
+            
+            # Helper function to format list items that may be strings or dicts
+            def format_list_items(items, name_field='name', default_field='title'):
+                if not items:
+                    return 'None'
+                if isinstance(items[0], dict):
+                    item_strs = [item.get(name_field, item.get(default_field, str(item))) for item in items]
+                else:
+                    item_strs = [str(item) for item in items]
+                return ', '.join(item_strs)
+            
+            projects = supplemental.get('projects', [])
+            projects_str = format_list_items(projects, 'project', 'name')
+            logger.info(f"[Classification] Projects ({len(projects)}): {projects_str}")
+
+            awards = supplemental.get('awards', [])
+            awards_str = format_list_items(awards, 'award', 'name')
+            logger.info(f"[Classification] Awards ({len(awards)}): {awards_str}")
+
+            volunteer_work = supplemental.get('volunteer_work', [])
+            volunteer_str = format_list_items(volunteer_work, 'organization', 'role')
+            logger.info(f"[Classification] Volunteer Work ({len(volunteer_work)}): {volunteer_str}")
+
+            publications = supplemental.get('publications', [])
+            publications_str = format_list_items(publications, 'publication', 'title')
+            logger.info(f"[Classification] Publications ({len(publications)}): {publications_str}")
+
+            logger.info(f"[Classification] === CLASSIFIED DATA END === for applicant {applicant_id}")
+            
         except json.JSONDecodeError as je:
             logger.warning(f"[Classification] Failed to parse classification JSON for applicant {applicant_id}: {je}")
             # Return basic structure if parsing fails
@@ -314,6 +465,7 @@ Output ONLY valid JSON in this exact format:
                 'skills': {'hard_skills': [], 'soft_skills': []},
                 'supplemental': {'projects': [], 'awards': []}
             }
+            logger.warning(f"[Classification] Using fallback empty classified data structure for applicant {applicant_id}")
 
         logger.info(f"[Classification] Completed for applicant {applicant_id}")
         return {
@@ -328,6 +480,181 @@ Output ONLY valid JSON in this exact format:
         }
 
 
+def elimination_node(state: WorkerState) -> dict:
+    """
+    Elimination Node: Assess relevance of candidate profile to job requirements.
+
+    This node uses LLM to evaluate whether the candidate's skills, education,
+    and experience are relevant to the job's domain and requirements. If the
+    candidate is fundamentally mismatched (e.g., accounting candidate for a
+    software engineering role), this node flags them for automatic "Mismatched"
+    categorization.
+
+    Args:
+        state: Current worker state
+
+    Returns:
+        Updated state with relevance_assessment dict containing:
+        - is_relevant: bool (True if candidate is relevant to job)
+        - relevance_score: int 0-100 (higher = more relevant)
+        - reason: str (explanation of relevance assessment)
+    """
+    classified_data = state.get('classified_data', {})
+    job_requirements = state.get('job_requirements', {})
+    applicant = state.get('applicant')
+    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+
+    logger.info(f"[Elimination] Starting relevance assessment for applicant {applicant_id}")
+    logger.info(f"[Elimination] State check - classified_data keys: {list(classified_data.keys()) if classified_data else 'None'}")
+    logger.info(f"[Elimination] State check - job_requirements keys: {list(job_requirements.keys()) if job_requirements else 'None'}")
+    
+    # Log what we received from classification node
+    if classified_data:
+        prof_exp = classified_data.get('professional_experience', {})
+        education = classified_data.get('education', {})
+        skills = classified_data.get('skills', {})
+        logger.info(f"[Elimination] From classification - employers: {len(prof_exp.get('employers', []))}, degrees: {len(education.get('degrees', []))}, hard_skills: {len(skills.get('hard_skills', []))}")
+    
+    if job_requirements:
+        logger.info(f"[Elimination] Job requirements - title: {job_requirements.get('title', 'N/A')}, required_skills: {len(job_requirements.get('required_skills', []))}")
+
+    if not classified_data or not job_requirements:
+        missing = []
+        if not classified_data:
+            missing.append('classified_data')
+        if not job_requirements:
+            missing.append('job_requirements')
+        logger.warning(f"[Elimination] Missing classified data or job requirements for applicant {applicant_id}. Missing: {', '.join(missing)}. This may indicate an issue with previous nodes.")
+        # Default to relevant if we can't assess
+        return {
+            'relevance_assessment': {
+                'is_relevant': True,
+                'relevance_score': 100,
+                'reason': 'Unable to assess relevance due to missing data',
+            }
+        }
+
+    try:
+        llm = get_llm(temperature=0.1, format="json")
+        logger.info(f"[Elimination] LLM initialized for applicant {applicant_id}")
+
+        # Extract key information for the prompt
+        job_title = job_requirements.get('title', 'N/A')
+        job_description = job_requirements.get('description', '')
+        required_skills = job_requirements.get('required_skills', [])
+        job_level = job_requirements.get('job_level', 'N/A')
+
+        # Extract classified data
+        skills = classified_data.get('skills', {})
+        education = classified_data.get('education', {})
+        experience = classified_data.get('professional_experience', {})
+
+        elimination_prompt = f"""
+You are a job-candidate relevance assessor. Your task is to determine if the candidate's 
+profile is fundamentally relevant to the job requirements. This is a domain/field relevance 
+check, not a quality assessment.
+
+Job Requirements:
+- Title: {job_title}
+- Description: {job_description}
+- Required Skills: {', '.join(required_skills) if required_skills else 'None specified'}
+- Job Level: {job_level}
+
+Candidate Profile:
+Skills:
+{json.dumps(skills, indent=2)}
+
+Education:
+{json.dumps(education, indent=2)}
+
+Professional Experience:
+{json.dumps(experience, indent=2)}
+
+Assess the following:
+1. Do the candidate's skills match the job's required skills and industry domain?
+   (e.g., Programming skills for software jobs, Accounting skills for finance jobs)
+2. Is the candidate's education field relevant to this job type?
+   (e.g., CS degree for software jobs, Finance degree for accounting jobs)
+3. Does the candidate's work experience align with this job's field/industry?
+   (e.g., Software development experience for software jobs)
+
+Important Guidelines:
+- A candidate with ALL skills/experience/education in a completely different field should 
+  be marked as NOT relevant (e.g., Accounting/Finance background for a Software Engineering role)
+- A candidate with SOME transferable skills or related field should be marked as partially relevant
+- A candidate whose background directly aligns with the job domain should be marked as highly relevant
+- Focus on FIELD/DOMAIN relevance, not quality or seniority level
+
+Output ONLY valid JSON in this exact format:
+{{
+  "is_relevant": true/false,
+  "relevance_score": 0-100,
+  "reason": "Brief explanation of why the candidate is or isn't relevant to this job domain"
+}}
+"""
+
+        logger.info(f"[Elimination] Invoking LLM for applicant {applicant_id}")
+        response = llm.invoke(elimination_prompt)
+        logger.info(f"[Elimination] LLM response received for applicant {applicant_id}")
+
+        # Parse JSON response
+        try:
+            if isinstance(response, str):
+                response_text = response
+            elif hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
+
+            relevance_assessment = json.loads(response_text)
+            logger.info(f"[Elimination] JSON parsed successfully for applicant {applicant_id}")
+
+            # Validate and normalize the assessment
+            if 'is_relevant' not in relevance_assessment:
+                relevance_assessment['is_relevant'] = True
+            if 'relevance_score' not in relevance_assessment:
+                relevance_assessment['relevance_score'] = 100
+            else:
+                # Clamp relevance_score to 0-100
+                relevance_assessment['relevance_score'] = max(0, min(100, int(relevance_assessment['relevance_score'])))
+            if 'reason' not in relevance_assessment:
+                relevance_assessment['reason'] = 'Relevance assessment completed'
+
+            # Enforce consistency: if relevance_score < 30, is_relevant must be False
+            if relevance_assessment['relevance_score'] < 30:
+                relevance_assessment['is_relevant'] = False
+            # If is_relevant is False, cap relevance_score at 40
+            elif not relevance_assessment['is_relevant']:
+                relevance_assessment['relevance_score'] = min(relevance_assessment['relevance_score'], 40)
+
+            logger.info(f"[Elimination] Relevance assessment: is_relevant={relevance_assessment['is_relevant']}, score={relevance_assessment['relevance_score']}")
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.warning(f"[Elimination] Failed to parse relevance JSON for applicant {applicant_id}: {e}")
+            # Default to relevant if parsing fails
+            relevance_assessment = {
+                'is_relevant': True,
+                'relevance_score': 100,
+                'reason': 'Failed to parse relevance assessment, defaulting to relevant',
+            }
+
+        logger.info(f"[Elimination] Completed for applicant {applicant_id}")
+        return {
+            'relevance_assessment': relevance_assessment,
+        }
+
+    except Exception as e:
+        logger.error(f"[Elimination] Exception for applicant {applicant_id}: {e}", exc_info=True)
+        # Default to relevant if assessment fails
+        return {
+            'relevance_assessment': {
+                'is_relevant': True,
+                'relevance_score': 100,
+                'reason': f'Relevance assessment failed: {str(e)}',
+            }
+        }
+
+
 def scoring_node(state: WorkerState) -> dict:
     """
     Scoring Node: Generate scores for each metric using LLM.
@@ -338,6 +665,9 @@ def scoring_node(state: WorkerState) -> dict:
     - Experience
     - Supplemental Information
 
+    If the elimination node determined the candidate is not relevant to the job domain,
+    scores are capped at 30 to guarantee a "Mismatched" category.
+
     Args:
         state: Current worker state
 
@@ -346,6 +676,7 @@ def scoring_node(state: WorkerState) -> dict:
     """
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
+    relevance_assessment = state.get('relevance_assessment', {})
     applicant = state.get('applicant')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
@@ -356,6 +687,23 @@ def scoring_node(state: WorkerState) -> dict:
         return {
             'status': 'Unprocessed',
             'error_message': 'Missing classified data or job requirements',
+        }
+
+    # Check if candidate was marked as not relevant by elimination node
+    is_relevant = relevance_assessment.get('is_relevant', True)
+    relevance_score = relevance_assessment.get('relevance_score', 100)
+    relevance_reason = relevance_assessment.get('reason', '')
+
+    if not is_relevant:
+        logger.info(f"[Scoring] Candidate marked as not relevant for applicant {applicant_id}. Capping scores at 30.")
+        # Cap scores at 30 for irrelevant candidates (guarantees "Mismatched" category)
+        return {
+            'scores': {
+                'education': min(30, relevance_score),
+                'skills': min(30, relevance_score),
+                'experience': min(30, relevance_score),
+                'supplemental': min(30, relevance_score),
+            }
         }
 
     try:
@@ -510,6 +858,9 @@ def justification_node(state: WorkerState) -> dict:
     - Each scored metric (Education, Skills, Experience, Supplemental)
     - Overall category assignment
 
+    If the candidate was marked as not relevant by the elimination node,
+    the justifications will reflect this in the overall justification.
+
     Args:
         state: Current worker state
 
@@ -521,6 +872,7 @@ def justification_node(state: WorkerState) -> dict:
     overall_score = state.get('overall_score', 0)
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
+    relevance_assessment = state.get('relevance_assessment', {})
     applicant = state.get('applicant')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
@@ -533,9 +885,22 @@ def justification_node(state: WorkerState) -> dict:
             'error_message': 'Missing scores or category for justification',
         }
 
+    # Get relevance assessment info
+    is_relevant = relevance_assessment.get('is_relevant', True)
+    relevance_reason = relevance_assessment.get('reason', '')
+
     try:
         llm = get_llm(temperature=0.3, format="json")
         logger.info(f"[Justification] LLM initialized for applicant {applicant_id}")
+
+        # Add relevance context to the prompt
+        relevance_context = ""
+        if not is_relevant:
+            relevance_context = f"""
+IMPORTANT: This candidate was assessed as NOT RELEVANT to the job domain.
+Relevance Assessment: {relevance_reason}
+This mismatch is the primary reason for the low scores and "Mismatched" category.
+"""
 
         justification_prompt = f"""
 You are an AI hiring assistant. Provide brief justifications for the following candidate scores.
@@ -549,17 +914,17 @@ Candidate Scores:
 - Supplemental: {scores.get('supplemental', 0)}/100
 - Overall: {overall_score}/100
 - Category: {category}
-
+{relevance_context}
 Candidate Profile Summary:
 {classified_data}
 
 Provide a 1-2 sentence justification for EACH metric and an overall justification:
 
-Education Justification: [Why this score?]
-Skills Justification: [Why this score?]
-Experience Justification: [Why this score?]
+Education Justification: [Why this score? If not relevant, mention the field mismatch]
+Skills Justification: [Why this score? If not relevant, mention the skills are in a different domain]
+Experience Justification: [Why this score? If not relevant, mention the experience is in a different field]
 Supplemental Justification: [Why this score?]
-Overall Justification: [Why this category?]
+Overall Justification: [Why this category? If not relevant, emphasize the domain mismatch as the primary reason]
 
 Output ONLY valid JSON in this exact format:
 {{
@@ -592,13 +957,23 @@ Output ONLY valid JSON in this exact format:
             logger.info(f"[Justification] JSON parsed successfully for applicant {applicant_id}")
         except json.JSONDecodeError:
             logger.warning(f"[Justification] Failed to parse justification JSON for applicant {applicant_id}")
-            justifications = {
-                'education': f"Score: {scores.get('education', 0)}/100",
-                'skills': f"Score: {scores.get('skills', 0)}/100",
-                'experience': f"Score: {scores.get('experience', 0)}/100",
-                'supplemental': f"Score: {scores.get('supplemental', 0)}/100",
-                'overall': f"Overall: {overall_score}/100 - {category}",
-            }
+            # Include relevance reason in fallback justifications
+            if not is_relevant:
+                justifications = {
+                    'education': f"Score: {scores.get('education', 0)}/100 - Field/degree not relevant to job requirements.",
+                    'skills': f"Score: {scores.get('skills', 0)}/100 - Skills are in a different domain than required.",
+                    'experience': f"Score: {scores.get('experience', 0)}/100 - Work experience is not aligned with job field.",
+                    'supplemental': f"Score: {scores.get('supplemental', 0)}/100",
+                    'overall': f"Overall: {overall_score}/100 - {category}. {relevance_reason}",
+                }
+            else:
+                justifications = {
+                    'education': f"Score: {scores.get('education', 0)}/100",
+                    'skills': f"Score: {scores.get('skills', 0)}/100",
+                    'experience': f"Score: {scores.get('experience', 0)}/100",
+                    'supplemental': f"Score: {scores.get('supplemental', 0)}/100",
+                    'overall': f"Overall: {overall_score}/100 - {category}",
+                }
 
         logger.info(f"[Justification] Completed for applicant {applicant_id}")
         return {

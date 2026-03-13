@@ -295,7 +295,7 @@ CELERY_TIMEZONE = 'UTC'
 
 # OLLAMA LLM Configuration
 OLLAMA_BASE_URL = env('OLLAMA_BASE_URL', default='http://localhost:11434')
-OLLAMA_MODEL = env('OLLAMA_MODEL', default='llama2:7b')
+OLLAMA_MODEL = env('OLLAMA_MODEL', default='phi4-mini:latest')
 
 # Celery Beat Configuration for periodic tasks
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

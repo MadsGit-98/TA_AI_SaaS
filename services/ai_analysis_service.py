@@ -277,17 +277,17 @@ def clear_analysis_progress(job_id: str):
 def get_llm(temperature: float = 0.1, format: str = "json") -> OllamaLLM:
     """
     Get configured Ollama LLM instance.
-    
+
     Args:
         temperature: Model temperature (lower = more deterministic, default 0.1)
         format: Response format (default "json" for structured output)
-    
+
     Returns:
         Configured OllamaLLM instance
     """
     base_url = getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434')
-    model = getattr(settings, 'OLLAMA_MODEL', 'llama2:7b')
-    
+    model = getattr(settings, 'OLLAMA_MODEL', 'phi4-mini')
+
     return OllamaLLM(
         base_url=base_url,
         model=model,
