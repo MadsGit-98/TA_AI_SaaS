@@ -120,54 +120,63 @@ def should_continue(state: AnalysisState) -> Literal["continue", "end"]:
 def map_workers_node(state: AnalysisState) -> dict:
     """
     Map workers node: Process applicants concurrently.
-    
+
     Uses ThreadPoolExecutor to process multiple applicants in parallel.
     Each applicant is processed by the worker sub-graph.
-    
+
     Args:
         state: Current analysis state
-    
+
     Returns:
         Updated state with new results
     """
-    
+
     current_index = state.get('current_index', 0)
     applicants = state['applicants']
     job = state['job']
     job_id = state['job_id']
     results = state.get('results', [])
     processed_count = state.get('processed_count', 0)
-    
+
     # Get batch of applicants to process (up to 10 at a time for controlled concurrency)
     batch_size = min(10, len(applicants) - current_index)
     batch_applicants = applicants[current_index:current_index + batch_size]
-    
+
+    logger.info(f"[MapWorkers] Processing batch: current_index={current_index}, batch_size={batch_size}, total_applicants={len(applicants)}")
+
     if not batch_applicants:
+        logger.warning(f"[MapWorkers] No applicants to process at index {current_index}")
         return {
             'processed_count': processed_count,
             'current_index': current_index,
         }
-    
+
     # Create worker graph
     worker_graph = create_worker_graph()
-    
+
     # Process applicants concurrently
     new_results = []
-    
+
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
-    
+    logger.info(f"[MapWorkers] Using {max_workers} workers for batch of {batch_size} applicants")
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_applicant = {
             executor.submit(process_single_applicant, worker_graph, applicant, job, job_id): applicant
             for applicant in batch_applicants
         }
-        
+
+        logger.info(f"[MapWorkers] Submitted {len(future_to_applicant)} tasks for processing")
+
         # Collect results as they complete
+        results_collected = 0
         for future in as_completed(future_to_applicant):
             applicant = future_to_applicant[future]
-            
+            results_collected += 1
+            logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {applicant.id}")
+
             # Check cancellation during batch processing
             if check_cancellation_flag(job_id):
                 logger.info(f"Analysis cancelled for job {job_id} during batch processing")
@@ -177,10 +186,11 @@ def map_workers_node(state: AnalysisState) -> dict:
                     'current_index': current_index,
                     'cancelled': True,
                 }
-            
+
             try:
                 result = future.result()
-                
+                logger.info(f"[MapWorkers] Result received for applicant {applicant.id}: status={result.get('status', 'Unknown')}, category={result.get('category', 'Unknown')}")
+
                 # Check if this applicant was cancelled
                 if result.get('cancelled', False):
                     logger.info(f"Applicant {applicant.id} processing cancelled")
@@ -190,7 +200,7 @@ def map_workers_node(state: AnalysisState) -> dict:
                         'current_index': current_index,
                         'cancelled': True,
                     }
-                
+
                 new_results.append(result)
                 processed_count += 1
 
@@ -199,7 +209,7 @@ def map_workers_node(state: AnalysisState) -> dict:
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
-                logger.warning(f"Worker failed for applicant {applicant.id}: {e}")
+                logger.warning(f"Worker failed for applicant {applicant.id}: {e}", exc_info=True)
                 new_results.append({
                     'applicant': applicant,
                     'job_listing': job,
@@ -211,6 +221,7 @@ def map_workers_node(state: AnalysisState) -> dict:
 
     # Update current index
     new_index = current_index + batch_size
+    logger.info(f"[MapWorkers] Batch complete: processed {len(new_results)} applicants, new_index={new_index}, total_processed={processed_count}")
 
     return {
         'results': results + new_results,
@@ -222,19 +233,23 @@ def map_workers_node(state: AnalysisState) -> dict:
 def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
     """
     Process a single applicant through the worker graph.
-    
+
     Args:
         worker_graph: Compiled worker graph
         applicant: Applicant instance
         job: JobListing instance
         job_id: Job UUID
-    
+
     Returns:
         Analysis result dict
     """
+    applicant_id = getattr(applicant, 'id', 'unknown')
+    logger.info(f"[ProcessSingle] Starting processing for applicant {applicant_id}")
+    
     try:
         # Check for cancellation before processing
         if check_cancellation_flag(job_id):
+            logger.info(f"[ProcessSingle] Cancelled before processing for applicant {applicant_id}")
             return {
                 'applicant': applicant,
                 'job_listing': job,
@@ -242,22 +257,36 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
                 'category': 'Unprocessed',
                 'error_message': 'Analysis cancelled',
             }
-        
+
+        # Check if resume text is available
+        resume_text = applicant.resume_parsed_text or ''
+        if not resume_text:
+            logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
+            return {
+                'applicant': applicant,
+                'job_listing': job,
+                'status': 'Unprocessed',
+                'category': 'Unprocessed',
+                'error_message': 'No parsed resume text available',
+            }
+
         # Execute worker graph
         initial_state = {
             'applicant': applicant,
             'job_listing': job,
             'job_id': job_id,  # Pass job_id for cancellation check
-            'resume_text': applicant.resume_parsed_text or '',
+            'resume_text': resume_text,
             'scores': {},
             'category': None,
             'justifications': {},
             'status': 'Pending',
             'cancelled': False,
         }
-        
+
+        logger.info(f"[ProcessSingle] Invoking worker graph for applicant {applicant_id}")
         final_state = worker_graph.invoke(initial_state)
-        
+        logger.info(f"[ProcessSingle] Worker graph completed for applicant {applicant_id}: status={final_state.get('status', 'Unknown')}, category={final_state.get('category', 'Unknown')}")
+
         # Build result dict
         result = {
             'applicant': applicant,
@@ -275,11 +304,12 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
             'overall_justification': final_state.get('justifications', {}).get('overall', ''),
             'status': final_state.get('status', 'Unprocessed'),
         }
-        
+
+        logger.info(f"[ProcessSingle] Result built for applicant {applicant_id}: status={result['status']}, category={result['category']}")
         return result
-        
+
     except Exception as e:
-        logger.warning(f"Error processing applicant {applicant.id}: {e}")
+        logger.warning(f"Error processing applicant {applicant_id}: {e}", exc_info=True)
         return {
             'applicant': applicant,
             'job_listing': job,

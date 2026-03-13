@@ -167,12 +167,58 @@
         var skillsScore = getScore(skills.score);
         var experienceScore = getScore(experience.score);
         var supplementalScore = getScore(supplemental.score);
-        
+
         var overallJustification = overall.justification ? escapeHtml(overall.justification) : 'N/A';
         var educationJustification = education.justification ? escapeHtml(education.justification) : 'N/A';
         var skillsJustification = skills.justification ? escapeHtml(skills.justification) : 'N/A';
         var experienceJustification = experience.justification ? escapeHtml(experience.justification) : 'N/A';
         var supplementalJustification = supplemental.justification ? escapeHtml(supplemental.justification) : 'N/A';
+
+        // Build screening questions HTML
+        var screeningQuestionsHtml = '';
+        var screeningQuestions = data.screening_questions || [];
+        if (screeningQuestions.length > 0) {
+            screeningQuestionsHtml = [
+                '    <!-- Screening Questions -->',
+                '    <div class="detail-screening-questions mb-4">',
+                '        <h5 class="text-sm font-semibold text-primary-text mb-3">Screening Questions & Answers</h5>',
+                '        <div class="flex flex-col gap-2">'
+            ].join('\n');
+
+            screeningQuestions.forEach(function(qa) {
+                var questionText = escapeHtml(qa.question_text);
+                var answerText = qa.answer ? escapeHtml(qa.answer) : 'No answer provided';
+                var questionType = escapeHtml(qa.question_type);
+
+                screeningQuestionsHtml += [
+                    '            <div class="border border-secondary-text rounded overflow-hidden">',
+                    '                <div class="screening-question-header w-full flex justify-between items-center p-3 bg-code-block-bg text-left text-sm font-semibold text-primary-text">',
+                    '                    <span class="flex-1">' + questionText + '</span>',
+                    '                    <span class="text-xs bg-white px-2 py-1 rounded ml-2">' + questionType + '</span>',
+                    '                </div>',
+                    '                <div class="screening-question-content p-3 bg-white text-sm text-secondary-text">',
+                    '                    <p class="font-medium text-primary-text mb-1">Answer:</p>',
+                    '                    <p>' + answerText + '</p>',
+                    '                </div>',
+                    '            </div>'
+                ].join('\n');
+            });
+
+            screeningQuestionsHtml += [
+                '        </div>',
+                '    </div>'
+            ].join('\n');
+        } else {
+            screeningQuestionsHtml = [
+                '    <!-- Screening Questions -->',
+                '    <div class="detail-screening-questions mb-4">',
+                '        <h5 class="text-sm font-semibold text-primary-text mb-3">Screening Questions & Answers</h5>',
+                '        <div class="p-3 bg-code-block-bg rounded text-sm text-secondary-text">',
+                '            <p>No screening questions for this job listing.</p>',
+                '        </div>',
+                '    </div>'
+            ].join('\n');
+        }
 
         return [
             '<div class="detail-container">',
@@ -218,6 +264,7 @@
             '        </div>',
             '    </div>',
             '',
+            screeningQuestionsHtml,
             '    <!-- Justifications Accordion -->',
             '    <div class="detail-justifications">',
             '        <h5 class="text-sm font-semibold text-primary-text mb-3">Detailed Justifications</h5>',

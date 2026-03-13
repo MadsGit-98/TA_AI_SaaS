@@ -22,8 +22,9 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from apps.jobs.models import JobListing
+from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
+from apps.applications.models import ApplicationAnswer
 from apps.analysis.tasks import run_ai_analysis
 from django.db.models import Avg, Count
 from services.ai_analysis_service import (
@@ -728,7 +729,7 @@ def analysis_result_detail(request, result_id):
 
     GET /api/analysis/results/{result_id}/
 
-    Returns full justifications for all metrics.
+    Returns full justifications for all metrics and screening question answers.
     """
     try:
         result = get_object_or_404(
@@ -739,6 +740,32 @@ def analysis_result_detail(request, result_id):
         # Authorization check: only owner or staff can view analysis result detail
         if result.job_listing.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to view this analysis result.")
+
+        # Get screening questions for this job listing
+        screening_questions = ScreeningQuestion.objects.filter(
+            job_listing=result.job_listing
+        ).order_by('order')
+
+        # Get applicant's answers to screening questions
+        applicant_answers = ApplicationAnswer.objects.filter(
+            applicant=result.applicant
+        ).select_related('question')
+
+        # Build a dictionary of question_id -> answer_text
+        answers_map = {
+            str(answer.question.id): answer.answer_text
+            for answer in applicant_answers
+        }
+
+        # Build screening questions data with answers
+        screening_data = []
+        for question in screening_questions:
+            screening_data.append({
+                'id': str(question.id),
+                'question_text': question.question_text,
+                'question_type': question.question_type,
+                'answer': answers_map.get(str(question.id), 'No answer provided'),
+            })
 
         return Response({
             'success': True,
@@ -779,6 +806,7 @@ def analysis_result_detail(request, result_id):
                         'justification': result.overall_justification,
                     }
                 },
+                'screening_questions': screening_data,
                 'status': result.status,
                 'created_at': result.created_at.isoformat(),
                 'updated_at': result.updated_at.isoformat(),

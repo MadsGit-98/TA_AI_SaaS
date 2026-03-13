@@ -34,6 +34,7 @@ from apps.analysis.graphs.worker import (
     create_worker_graph,
     retrieval_node,
     classification_node,
+    elimination_node,
     scoring_node,
     categorization_node,
     justification_node,
@@ -1530,10 +1531,237 @@ class ClassificationNodeTest(TestCase):
         }
         
         result = classification_node(state)
-        
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertIn('Classification failed', result['error_message'])
+
+
+class EliminationNodeTest(TestCase):
+    """Test cases for elimination_node function."""
+
+    def setUp(self):
+        """Set up test data."""
+        # Relevant candidate - software engineer for software job
+        self.relevant_classified_data = {
+            'professional_experience': {
+                'employers': [{'company': 'Tech Corp', 'industry': 'Software'}],
+                'job_titles': ['Senior Software Engineer'],
+                'responsibilities': ['Developed web applications']
+            },
+            'education': {
+                'degrees': [{'type': 'BS', 'major': 'Computer Science'}],
+                'certifications': ['AWS Certified']
+            },
+            'skills': {
+                'hard_skills': ['Python', 'Django', 'JavaScript'],
+                'soft_skills': ['Leadership']
+            },
+            'supplemental': {
+                'projects': ['Open source'],
+                'awards': []
+            }
+        }
+
+        # Irrelevant candidate - accountant for software job
+        self.irrelevant_classified_data = {
+            'professional_experience': {
+                'employers': [{'company': 'Finance Corp', 'industry': 'Accounting'}],
+                'job_titles': ['Senior Accountant'],
+                'responsibilities': ['Managed financial records']
+            },
+            'education': {
+                'degrees': [{'type': 'BS', 'major': 'Accounting'}],
+                'certifications': ['CPA']
+            },
+            'skills': {
+                'hard_skills': ['Financial Analysis', 'Tax Preparation', 'QuickBooks'],
+                'soft_skills': ['Attention to Detail']
+            },
+            'supplemental': {
+                'projects': [],
+                'awards': []
+            }
+        }
+
+        self.job_requirements = {
+            'title': 'Software Engineer',
+            'description': 'Develop and maintain web applications using Python and Django',
+            'required_skills': ['Python', 'Django', 'REST API'],
+            'required_experience': 3,
+            'job_level': 'Junior'
+        }
+
+        self.applicant = MagicMock()
+        self.applicant.id = 'test-applicant-id'
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_relevant_candidate(self, mock_get_llm):
+        """Test elimination node marks relevant candidate as relevant."""
+        # Mock LLM to return relevant assessment
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+
+        mock_response = MagicMock()
+        mock_response.content = json.dumps({
+            'is_relevant': True,
+            'relevance_score': 95,
+            'reason': 'Candidate has strong software development background matching job requirements'
+        })
+        mock_llm.invoke.return_value = mock_response
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.relevant_classified_data,
+            'job_requirements': self.job_requirements,
+        }
+
+        from apps.analysis.graphs.worker import elimination_node
+        result = elimination_node(state)
+
+        # Verify LLM was called
+        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+
+        # Verify relevance assessment
+        self.assertIn('relevance_assessment', result)
+        assessment = result['relevance_assessment']
+        self.assertTrue(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 95)
+        self.assertIn('reason', assessment)
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_irrelevant_candidate(self, mock_get_llm):
+        """Test elimination node marks irrelevant candidate as not relevant."""
+        # Mock LLM to return irrelevant assessment
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+
+        mock_response = MagicMock()
+        mock_response.content = json.dumps({
+            'is_relevant': False,
+            'relevance_score': 15,
+            'reason': 'Candidate background is in accounting/finance, not software development'
+        })
+        mock_llm.invoke.return_value = mock_response
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.irrelevant_classified_data,
+            'job_requirements': self.job_requirements,
+        }
+
+        result = elimination_node(state)
+
+        # Verify relevance assessment shows not relevant
+        self.assertIn('relevance_assessment', result)
+        assessment = result['relevance_assessment']
+        self.assertFalse(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 15)
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_missing_data(self, mock_get_llm):
+        """Test elimination node handles missing classified data."""
+        state = {
+            'applicant': self.applicant,
+            'classified_data': {},
+            'job_requirements': {},
+        }
+
+        result = elimination_node(state)
+
+        # Should default to relevant when data is missing
+        self.assertIn('relevance_assessment', result)
+        assessment = result['relevance_assessment']
+        self.assertTrue(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 100)
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_invalid_json_fallback(self, mock_get_llm):
+        """Test elimination node handles invalid JSON gracefully."""
+        # Mock LLM to return invalid JSON
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.invoke.return_value = MagicMock(content='invalid json {')
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.relevant_classified_data,
+            'job_requirements': self.job_requirements,
+        }
+
+        result = elimination_node(state)
+
+        # Should default to relevant when parsing fails
+        self.assertIn('relevance_assessment', result)
+        assessment = result['relevance_assessment']
+        self.assertTrue(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 100)
+        self.assertIn('Failed to parse', assessment['reason'])
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_llm_exception(self, mock_get_llm):
+        """Test elimination node handles LLM exceptions gracefully."""
+        # Mock LLM to raise exception
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.invoke.side_effect = Exception('LLM service unavailable')
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.relevant_classified_data,
+            'job_requirements': self.job_requirements,
+        }
+
+        result = elimination_node(state)
+
+        # Should default to relevant when exception occurs
+        self.assertIn('relevance_assessment', result)
+        assessment = result['relevance_assessment']
+        self.assertTrue(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 100)
+        self.assertIn('failed', assessment['reason'])
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_elimination_node_score_consistency(self, mock_get_llm):
+        """Test elimination node enforces score/is_relevant consistency."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+
+        # Test: low score should force is_relevant=False
+        mock_response = MagicMock()
+        mock_response.content = json.dumps({
+            'is_relevant': True,  # This should be overridden
+            'relevance_score': 20,  # Low score
+            'reason': 'Test'
+        })
+        mock_llm.invoke.return_value = mock_response
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.relevant_classified_data,
+            'job_requirements': self.job_requirements,
+        }
+
+        result = elimination_node(state)
+        assessment = result['relevance_assessment']
+
+        # Score < 30 should force is_relevant=False
+        self.assertFalse(assessment['is_relevant'])
+
+        # Test: is_relevant=False should cap score at 40
+        mock_response2 = MagicMock()
+        mock_response2.content = json.dumps({
+            'is_relevant': False,
+            'relevance_score': 60,  # Should be capped at 40
+            'reason': 'Test'
+        })
+        mock_llm.invoke.return_value = mock_response2
+
+        result = elimination_node(state)
+        assessment = result['relevance_assessment']
+
+        self.assertFalse(assessment['is_relevant'])
+        self.assertLessEqual(assessment['relevance_score'], 40)
 
 
 class ScoringNodeTest(TestCase):
@@ -1757,6 +1985,74 @@ class ScoringNodeTest(TestCase):
         self.assertEqual(result['scores']['skills'], 0)
         self.assertEqual(result['scores']['experience'], 0)
         self.assertEqual(result['scores']['supplemental'], 0)
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_scoring_node_respects_relevance_assessment(self, mock_get_llm):
+        """Test scoring node caps scores at 30 for irrelevant candidates."""
+        # Relevance assessment marking candidate as not relevant
+        relevance_assessment = {
+            'is_relevant': False,
+            'relevance_score': 25,
+            'reason': 'Candidate background is in accounting, not software development'
+        }
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.classified_data,
+            'job_requirements': self.job_requirements,
+            'relevance_assessment': relevance_assessment,
+        }
+
+        result = scoring_node(state)
+
+        # Verify LLM was NOT called for irrelevant candidates
+        mock_get_llm.assert_not_called()
+
+        # Verify scores are capped at 30 (or relevance_score if lower)
+        self.assertIn('scores', result)
+        scores = result['scores']
+        
+        # All scores should be capped at min(30, relevance_score) = 25
+        self.assertEqual(scores['education'], 25)
+        self.assertEqual(scores['skills'], 25)
+        self.assertEqual(scores['experience'], 25)
+        self.assertEqual(scores['supplemental'], 25)
+
+    @patch('apps.analysis.graphs.worker.get_llm')
+    def test_scoring_node_calls_llm_for_relevant_candidate(self, mock_get_llm):
+        """Test scoring node invokes LLM for relevant candidates."""
+        # Mock LLM
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+
+        mock_response = MagicMock()
+        mock_response.content = json.dumps({
+            'education': 85,
+            'skills': 90,
+            'experience': 80,
+            'supplemental': 75
+        })
+        mock_llm.invoke.return_value = mock_response
+
+        # Relevance assessment marking candidate as relevant
+        relevance_assessment = {
+            'is_relevant': True,
+            'relevance_score': 95,
+            'reason': 'Candidate has strong software background'
+        }
+
+        state = {
+            'applicant': self.applicant,
+            'classified_data': self.classified_data,
+            'job_requirements': self.job_requirements,
+            'relevance_assessment': relevance_assessment,
+        }
+
+        result = scoring_node(state)
+
+        # Verify LLM WAS called for relevant candidates
+        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+        mock_llm.invoke.assert_called_once()
 
 
 class CategorizationNodeTest(TestCase):
