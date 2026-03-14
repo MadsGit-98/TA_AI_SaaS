@@ -1,0 +1,12 @@
+{# Rerunning Tag Component - Displays when AI analysis is being re-run #}
+{# Usage: Include in toolbar or job detail view #}
+
+{% if analysis_rerunning %}
+<div class="analysis-rerunning-tag inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 border-l-[3px] border-yellow-400 rounded font-mono text-xs font-semibold text-gray-900 shadow-sm" 
+     title="AI Analysis Re-running"
+     data-job-id="{{ job_listing.id }}"
+     data-progress-type="in-progress">
+    <span class="rerun-icon inline-flex items-center justify-center w-4 h-4 bg-[#ffcc00] text-gray-900 rounded-full text-[10px] font-bold animate-spin">⟳</span>
+    <span class="rerun-text text-gray-900 tracking-wide uppercase">Analyzing... {{ progress_percentage|default:"0" }}%</span>
+</div>
+{% endif %}

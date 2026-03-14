@@ -11,10 +11,20 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import warnings
 from pathlib import Path
 from datetime import timedelta    # JWT Configuration
 from celery.schedules import crontab
 import environ
+
+# Suppress langchain pydantic v1 deprecation warning (incompatible with Python 3.14)
+# This is a known issue: https://github.com/langchain-ai/langchain/issues/26882
+warnings.filterwarnings(
+    'ignore',
+    message='.*Core Pydantic V1 functionality.*',
+    category=UserWarning,
+    module='langchain_core'
+)
 
 # Initialize environment variables
 env = environ.Env(
@@ -138,6 +148,10 @@ REST_FRAMEWORK = {
         # Application submission throttles
         'application_submission': '5/hour',  # 5 job applications per hour per IP
         'application_validation': '30/hour',  # 30 validation requests per hour per IP
+        # AI Analysis throttles
+        'analysis': '10/hour',  # 10 analysis requests per hour per IP
+        'analysis_status': '600/hour',  # 600 status checks per hour (10/min for polling during analysis)
+        'analysis_result_detail': '100/hour',  # 100 result detail views per hour per IP (higher limit for reviewing applicants)
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
 }
@@ -278,6 +292,10 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# OLLAMA LLM Configuration
+OLLAMA_BASE_URL = env('OLLAMA_BASE_URL', default='http://localhost:11434')
+OLLAMA_MODEL = env('OLLAMA_MODEL', default='phi4-mini:latest')
 
 # Celery Beat Configuration for periodic tasks
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

@@ -1,0 +1,62 @@
+{# AI Analysis Toolbar Component #}
+{# Centralized action toolbar for analysis reporting page #}
+
+<div class="analysis-toolbar no-print bg-code-block-bg border border-secondary-text rounded-lg p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        {# Left side: Navigation actions #}
+        <div class="flex flex-wrap items-center gap-2">
+            {# Back to Job button #}
+            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}"
+               class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text">
+                <span class="text-base">←</span>
+                <span>Back to Job</span>
+            </a>
+
+            {# Print Report button #}
+            <button onclick="window.print()" 
+                    class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text" 
+                    type="button">
+                <span class="text-base">📄</span>
+                <span>Print Report</span>
+            </button>
+        </div>
+
+        {# Center: View toggle #}
+        <div class="flex items-center gap-2">
+            <button id="toggle-view-btn" 
+                    class="inline-flex items-center gap-2 bg-accent-cta text-cta-text px-4 py-2 rounded text-sm font-medium hover:brightness-110 transition" 
+                    type="button" 
+                    aria-pressed="false" 
+                    aria-controls="table-view comparison-view">
+                <span class="text-base">⇄</span>
+                <span>Switch to Comparison View</span>
+            </button>
+        </div>
+
+        {# Right side: Analysis actions #}
+        <div class="flex flex-wrap items-center gap-2">
+            {# Analysis status indicator #}
+            {% if analysis_rerunning %}
+                {% include 'analysis/_rerunning_tag.html' %}
+                {# Cancel Analysis button - shown when analysis is running #}
+                <button id="cancel-analysis-btn"
+                        data-job-id="{{ job_listing.id }}"
+                        class="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition"
+                        type="button">
+                    <span class="text-base">⏹</span>
+                    <span>Cancel Analysis</span>
+                </button>
+            {% elif analysis_complete %}
+                {% include 'analysis/_done_tag.html' %}
+                {# Rerun Analysis button - only show if analysis is complete #}
+                <button id="rerun-analysis-btn"
+                        data-job-id="{{ job_listing.id }}"
+                        class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text"
+                        type="button">
+                    <span class="text-base">🔄</span>
+                    <span>Rerun Analysis</span>
+                </button>
+            {% endif %}
+        </div>
+    </div>
+</div>

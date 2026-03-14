@@ -14,6 +14,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-04
 - Sqlite3 (initial implementation) with potential upgrade path to PostgreSQL (007-job-listings)
 - Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2 (008-job-application-submission)
 - Sqlite3 (initial), Amazon S3 or Google Cloud Storage for files (django-storages backend), media/ for local dev (008-job-application-submission)
+- Python 3.11 + Django 5.2.9, DRF 3.15.2, LangChain 1.1.x, LangGraph 1.0.x, Celery 5.4.0, Redis 7.1.0 (009-ai-analysis-scoring)
+- Sqlite3 (initial), Amazon S3 for files (django-storages) (009-ai-analysis-scoring)
 
 - Python 3.11 + Django, Django REST Framework (DRF), Tailwind CSS, shadcn_django (002-compliant-home-page)
 
@@ -65,21 +67,11 @@ Python 3.11: Follow standard conventions
 3. **Test Execution**: Do not use pytest to run any of the tests created. You must use the "python manage.py test" command.
 
 ## Recent Changes
+- 009-ai-analysis-scoring: Added Python 3.11 + Django 5.2.9, DRF 3.15.2, LangChain 1.1.x, LangGraph 1.0.x, Celery 5.4.0, Redis 7.1.0
 - 008-job-application-submission: Added Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2
 - 007-job-listings: Added Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid, shadcn_django
-- 006-remember-me-functionality: Added Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid6, nanoid
 
 
 <!-- MANUAL ADDITIONS START -->
-- Always make sure that the urls paths in any of the tests match the configured urls in the urls.py of the application.
-- If there are some ratelimits that hinders the integration tests or any other tests use a teardown method that clears the cache so the rate limits are not reached during the testing
-- views.py must not contain APIs or endpoints it must only render views, APIs must be defined in api.py
-- Loggiing anywhere within the project must not contain any confidential information of users such as e-mail. Follow PII best practice.
-- JS are not to be embedded within HTML 
-- All code must comply with PEP 8 standards, with 90% unit test coverage minimum using Python's unittest module. [No imports are to be within the python functions]
-- Integration tests are not to use Mocks in any ways it must test integrating the newly implemented unit interactions with the old implemented units.
-- Tests must fall with their intended sub-directories.
-- Strictly use the django template language (DTL) in developing html pages.
-- Check imports before adding them if they already exist.
 
 <!-- MANUAL ADDITIONS END -->

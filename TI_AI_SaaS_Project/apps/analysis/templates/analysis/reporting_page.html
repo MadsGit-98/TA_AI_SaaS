@@ -1,0 +1,60 @@
+{# AI Analysis Reporting Page #}
+{% extends 'accounts/base.html' %}
+{% load static %}
+
+{% block title %}AI Analysis Report - {{ job_listing.title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/analysis.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Report Header (Screen) -->
+    <div class="screen-header mb-6 pb-6 border-b-2 border-secondary-text">
+        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Report</h1>
+        <h2 class="text-lg text-secondary-text mb-2">{{ job_listing.title }}</h2>
+        <p class="text-sm text-secondary-text">Generated: {{ generated_at|date:"M d, Y H:i" }}</p>
+    </div>
+
+    <!-- Report Header (Print - Hidden on Screen) -->
+    <div class="print-header" style="display: none;">
+        <h1 class="text-3xl font-bold text-primary-text mb-2">AI Analysis Report</h1>
+        <h2 class="text-lg text-secondary-text mb-2">{{ job_listing.title }}</h2>
+        <p class="text-sm text-secondary-text">Generated: {{ generated_at|date:"M d, Y H:i" }}</p>
+    </div>
+
+    {# AI Disclaimer - Hidden in print #}
+    <div class="no-print">
+        {% include 'analysis/_ai_disclaimer.html' %}
+    </div>
+
+    {# Statistics Overview #}
+    {% include 'analysis/_statistics_panel.html' with statistics=statistics %}
+
+    {# Table View (Default) #}
+    <div id="table-view" class="w-full">
+        {% include 'analysis/results_list.html' with results=results page_obj=page_obj %}
+    </div>
+
+    {# Comparison View #}
+    <div id="comparison-view" style="display: none;" class="w-full">
+        {% include 'analysis/_comparison_view.html' with results=results %}
+    </div>
+</div>
+
+<!-- Action Toolbar (Docked at bottom, above footer) -->
+<div class="border-t-2 border-secondary-text py-6 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {% include 'analysis/_toolbar.html' with job_listing=job_listing analysis_complete=analysis_complete analysis_rerunning=analysis_rerunning %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
+<script src="{% static 'js/auth-interceptor.js' %}"></script>
+<script src="{% static 'js/analysis.js' %}"></script>
+<script src="{% static 'js/logout.js' %}"></script>
+<script src="{% static 'js/reporting_progress.js' %}"></script>
+{% endblock %}

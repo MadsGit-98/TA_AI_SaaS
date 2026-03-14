@@ -1,0 +1,10 @@
+{# Unprocessed Applicant Badge #}
+{# Displays error information for failed analyses #}
+
+<div class="unprocessed-badge inline-flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg font-sans" title="{{ error_message|default:'Analysis failed to process this applicant' }}">
+    <span class="badge-icon text-base">⚠️</span>
+    <span class="badge-text font-mono text-sm font-semibold text-red-600">Unprocessed</span>
+    {% if error_message %}
+    <span class="badge-error font-sans text-xs text-secondary-text max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">{{ error_message|truncatechars:50 }}</span>
+    {% endif %}
+</div>

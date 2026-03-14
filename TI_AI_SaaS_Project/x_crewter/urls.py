@@ -35,7 +35,8 @@ urlpatterns = [
     path('api/health/', health_check, name='health_check'),
     path('api/accounts/', include('apps.accounts.api_urls')),
     path('api/applications/', include('apps.applications.api_urls')),  # API endpoints only
-    path('api/analysis/', include('apps.analysis.urls')),
+    path('api/analysis/', include('apps.analysis.api_urls')),  # API endpoints only
+    path('analysis/', include('apps.analysis.ui_urls')),  # UI views for analysis
     #path('api/subscription/', include('apps.subscription.urls')),
     # Frontend views for non-API access
     path('', include('apps.applications.urls')),  # Application form template views (apply/, application/success/)
@@ -53,7 +54,7 @@ def fallback_view(request, *args, **kwargs):
 urlpatterns += [
     # Catch all other routes and redirect to home page (avoiding static serve errors)
     # Updated to explicitly exclude activation paths, static/media files, WebSocket URLs, and application form paths
-    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)|apply(?:/|$)|application(?:/|$)).*$', fallback_view, name='fallback'),
+    re_path(r'^(?!api(?:/|$)|admin(?:/|$)|dashboard(?:/|$)|landing(?:/|$)|analysis(?:/|$)|static(?:/|$)|media(?:/|$)|ws(?:/|$)|activation-success(?:/|$)|activation-error(?:/|$)|activation-step(?:/|$)|apply(?:/|$)|application(?:/|$)).*$', fallback_view, name='fallback'),
 ]
 
 
