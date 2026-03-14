@@ -81,27 +81,53 @@ class JobListingSerializer(serializers.ModelSerializer):
             status=AIAnalysisResult.STATUS_ANALYZED
         ).exists()
 
+    def _get_analysis_progress(self, obj):
+        """Get analysis progress with caching to avoid duplicate Redis calls.
+
+        Caches the progress on the serializer instance for reuse across methods.
+
+        Args:
+            obj: The JobListing object
+
+        Returns:
+            Dict with 'processed' and 'total' counts
+        """
+        # Check if already cached on this serializer instance
+        if not hasattr(self, '_progress_cache'):
+            self._progress_cache = {}
+
+        job_id = str(obj.id)
+
+        # Return cached value if available
+        if job_id in self._progress_cache:
+            return self._progress_cache[job_id]
+
+        # Fetch from Redis and cache
+        progress = get_analysis_progress(job_id)
+        self._progress_cache[job_id] = progress
+        return progress
+
     def get_analysis_in_progress(self, obj):
         """Check if AI analysis is currently in progress for this job listing.
-        
+
         Checks Redis progress tracking to determine if analysis is running.
         """
-        progress = get_analysis_progress(str(obj.id))
+        progress = self._get_analysis_progress(obj)
         processed = progress.get('processed', 0)
         total = progress.get('total', 0)
-        
+
         # Analysis is in progress if total > 0 and not all processed
         return total > 0 and processed < total
 
     def get_progress_percentage(self, obj):
         """Get the current progress percentage for analysis.
-        
+
         Returns percentage (0-100) based on processed/total applicants.
         """
-        progress = get_analysis_progress(str(obj.id))
+        progress = self._get_analysis_progress(obj)
         processed = progress.get('processed', 0)
         total = progress.get('total', 0)
-        
+
         if total > 0:
             return int((processed / total) * 100)
         return 0

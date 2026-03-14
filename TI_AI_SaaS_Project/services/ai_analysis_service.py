@@ -245,9 +245,13 @@ def get_analysis_progress(job_id: str) -> Dict[str, int]:
     if not data:
         return {'processed': 0, 'total': 0}
 
+    # Handle both byte and string keys (decode_responses may be True or False)
+    processed = data.get(b'processed') or data.get('processed') or 0
+    total = data.get(b'total') or data.get('total') or 0
+
     return {
-        'processed': int(data.get(b'processed', 0)),
-        'total': int(data.get(b'total', 0))
+        'processed': int(processed),
+        'total': int(total)
     }
 
 

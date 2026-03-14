@@ -166,8 +166,9 @@ def reporting_page_view(request, job_id):
         # Get footer context
         footer_context = _get_footer_context()
 
-        # Check if analysis is complete
-        analysis_complete = results.filter(status='Analyzed').count() > 0 and results.filter(status='Analyzed').count() >= total
+        # Check if analysis is complete (based on global total, not filtered results)
+        # Use precomputed statistics['analyzed_count'] to avoid redundant DB queries
+        analysis_complete = statistics['analyzed_count'] > 0 and statistics['analyzed_count'] >= total
 
         # Check if analysis is currently running (Redis progress tracking)
         progress = get_analysis_progress(str(job_id))

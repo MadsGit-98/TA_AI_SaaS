@@ -220,13 +220,17 @@
             ].join('\n');
         }
 
+        // Defensive check: extract applicant info safely
+        var applicantName = (data.applicant && data.applicant.name) ? escapeHtml(data.applicant.name) : 'Unknown';
+        var applicantRef = (data.applicant && data.applicant.reference_number) ? escapeHtml(data.applicant.reference_number) : '';
+
         return [
             '<div class="detail-container">',
             '    <!-- Applicant Info Header -->',
             '    <div class="detail-header mb-4 pb-4 border-b border-secondary-text">',
-            '        <h4 class="text-xl font-bold text-primary-text mb-2">' + escapeHtml(data.applicant.name) + '</h4>',
+            '        <h4 class="text-xl font-bold text-primary-text mb-2">' + applicantName + '</h4>',
             '        <div class="flex gap-4 text-sm text-secondary-text">',
-            '            <span>Reference: ' + escapeHtml(data.applicant.reference_number) + '</span>',
+            '            <span>Reference: ' + (applicantRef || 'N/A') + '</span>',
             '            <span>Status: ' + escapeHtml(data.status) + '</span>',
             '        </div>',
             '    </div>',

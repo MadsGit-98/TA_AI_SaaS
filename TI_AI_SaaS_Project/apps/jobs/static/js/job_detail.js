@@ -202,14 +202,6 @@
     }
 
     /**
-     * Helper function to get CSRF token from meta tag
-     * @returns {string|null} CSRF token
-     */
-    function getCsrfToken() {
-        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    }
-
-    /**
      * Initialize job detail page
      */
     function init() {
@@ -275,130 +267,134 @@
     window.initiateAnalysis = initiateAnalysis;
     window.cancelAnalysis = cancelAnalysis;
 
-})();
+    // =============================================================================
+    // Progress Tracking Functions
+    // =============================================================================
 
-// =============================================================================
-// Progress Tracking Functions (shared with dashboard.js approach)
-// =============================================================================
+    // Track jobs currently being analyzed (jobId -> intervalId mapping)
+    const analyzingJobs = new Map();
 
-// Track jobs currently being analyzed (jobId -> intervalId mapping)
-const analyzingJobs = new Map();
-
-/**
- * Check analysis status for a job
- * @param {string} jobId - The job ID to check
- * @returns {Promise<Object|null>} Status data or null
- */
-async function checkAnalysisStatus(jobId) {
-    try {
-        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
-            method: 'GET',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-            },
-            credentials: 'include'
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                return data.data;
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error('Error checking analysis status:', error);
-        return null;
-    }
-}
-
-/**
- * Start progress tracking for a job analysis
- * @param {string} jobId - The job ID to track
- */
-function startProgressTracking(jobId) {
-    // Check if already tracking this job
-    if (analyzingJobs.has(jobId)) {
-        console.log('Already tracking job', jobId);
-        return;
-    }
-
-    console.log('Starting progress tracking for job', jobId);
-
-    const intervalId = setInterval(async () => {
+    /**
+     * Check analysis status for a job
+     * @param {string} jobId - The job ID to check
+     * @returns {Promise<Object|null>} Status data or null
+     */
+    async function checkAnalysisStatus(jobId) {
         try {
-            const status = await checkAnalysisStatus(jobId);
+            const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                credentials: 'include'
+            });
 
-            if (status && status.status === 'processing') {
-                // Update progress tag for this job
-                const percentage = status.progress_percentage || 0;
-                updateJobProgress(jobId, percentage);
-            } else if (status && (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled')) {
-                // Stop tracking and reload the page
-                console.log('Analysis completed/failed/cancelled for job', jobId, 'status:', status.status);
-                stopProgressTracking(jobId);
-                window.location.reload(); // Refresh to show updated state
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    return data.data;
+                }
             }
+            return null;
         } catch (error) {
-            console.error('Error in progress tracking for job', jobId, error);
+            console.error('Error checking analysis status:', error);
+            return null;
         }
-    }, 6000); // Poll every 6 seconds (10 requests/minute, within 600/hour limit)
-
-    analyzingJobs.set(jobId, intervalId);
-}
-
-/**
- * Stop progress tracking for a job
- * @param {string} jobId - The job ID to stop tracking
- */
-function stopProgressTracking(jobId) {
-    const intervalId = analyzingJobs.get(jobId);
-    if (intervalId) {
-        clearInterval(intervalId);
-        analyzingJobs.delete(jobId);
-        console.log('Stopped progress tracking for job', jobId);
     }
-}
 
-/**
- * Update the progress tag UI for a specific job
- * @param {string} jobId - The job ID to update
- * @param {number} percentage - The progress percentage (0-100)
- */
-function updateJobProgress(jobId, percentage) {
-    // Find all progress tags and update the one for this job
-    const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
-    progressTags.forEach(tag => {
-        if (tag.getAttribute('data-job-id') === jobId) {
-            // Update the percentage text
-            const textSpan = tag.querySelector('.text-gray-900');
-            if (textSpan) {
-                textSpan.textContent = 'Analyzing... ' + percentage + '%';
+    /**
+     * Start progress tracking for a job analysis
+     * @param {string} jobId - The job ID to track
+     */
+    function startProgressTracking(jobId) {
+        // Check if already tracking this job
+        if (analyzingJobs.has(jobId)) {
+            console.log('Already tracking job', jobId);
+            return;
+        }
+
+        console.log('Starting progress tracking for job', jobId);
+
+        const intervalId = setInterval(async () => {
+            try {
+                const status = await checkAnalysisStatus(jobId);
+
+                if (status && status.status === 'processing') {
+                    // Update progress tag for this job
+                    const percentage = status.progress_percentage || 0;
+                    updateJobProgress(jobId, percentage);
+                } else if (status && (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled')) {
+                    // Stop tracking and reload the page
+                    console.log('Analysis completed/failed/cancelled for job', jobId, 'status:', status.status);
+                    stopProgressTracking(jobId);
+                    window.location.reload(); // Refresh to show updated state
+                }
+            } catch (error) {
+                console.error('Error in progress tracking for job', jobId, error);
             }
-            console.log('Updated progress for job', jobId, 'to', percentage + '%');
-        }
-    });
-}
+        }, 6000); // Poll every 6 seconds (10 requests/minute, within 600/hour limit)
 
-/**
- * Initialize progress tracking for jobs that are already in progress
- * Called on page load to resume tracking after page refresh
- */
-function initProgressTracking() {
-    // Find all job cards with in-progress tags
-    const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
-    progressTags.forEach(tag => {
-        const jobId = tag.getAttribute('data-job-id');
-        if (jobId && !analyzingJobs.has(jobId)) {
-            console.log('Resuming progress tracking for job', jobId);
-            startProgressTracking(jobId);
-        }
-    });
-}
+        analyzingJobs.set(jobId, intervalId);
+    }
 
-// Initialize progress tracking on page load for job detail page
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(() => {
-        initProgressTracking();
-    }, 100);
-});
+    /**
+     * Stop progress tracking for a job
+     * @param {string} jobId - The job ID to stop tracking
+     */
+    function stopProgressTracking(jobId) {
+        const intervalId = analyzingJobs.get(jobId);
+        if (intervalId) {
+            clearInterval(intervalId);
+            analyzingJobs.delete(jobId);
+            console.log('Stopped progress tracking for job', jobId);
+        }
+    }
+
+    /**
+     * Update the progress tag UI for a specific job
+     * @param {string} jobId - The job ID to update
+     * @param {number} percentage - The progress percentage (0-100)
+     */
+    function updateJobProgress(jobId, percentage) {
+        // Find all progress tags and update the one for this job
+        const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+        progressTags.forEach(tag => {
+            if (tag.getAttribute('data-job-id') === jobId) {
+                // Update the percentage text
+                const textSpan = tag.querySelector('.text-gray-900');
+                if (textSpan) {
+                    textSpan.textContent = 'Analyzing... ' + percentage + '%';
+                }
+                console.log('Updated progress for job', jobId, 'to', percentage + '%');
+            }
+        });
+    }
+
+    /**
+     * Initialize progress tracking for jobs that are already in progress
+     * Called on page load to resume tracking after page refresh
+     */
+    function initProgressTracking() {
+        // Find all job cards with in-progress tags
+        const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+        progressTags.forEach(tag => {
+            const jobId = tag.getAttribute('data-job-id');
+            if (jobId && !analyzingJobs.has(jobId)) {
+                console.log('Resuming progress tracking for job', jobId);
+                startProgressTracking(jobId);
+            }
+        });
+    }
+
+    // Expose progress tracking functions globally
+    window.startProgressTracking = startProgressTracking;
+    window.initProgressTracking = initProgressTracking;
+
+    // Initialize progress tracking on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => {
+            initProgressTracking();
+        }, 100);
+    });
+
+})();

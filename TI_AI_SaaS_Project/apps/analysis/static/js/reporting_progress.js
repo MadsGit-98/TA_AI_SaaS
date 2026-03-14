@@ -147,6 +147,10 @@
         if (cancelBtn) {
             cancelBtn.addEventListener('click', function() {
                 const jobId = this.dataset.jobId;
+                if (!jobId) {
+                    console.error('Cancel button missing data-job-id attribute');
+                    return;
+                }
                 cancelAnalysis(jobId);
             });
         }
@@ -168,12 +172,18 @@
                 body: JSON.stringify({ confirm: true })
             });
 
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Re-run analysis request failed:', response.status, errorText);
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
             const data = await response.json();
 
             if (data.success) {
                 // Start progress tracking
                 startProgressTracking(jobId);
-                
+
                 // Reload page to show progress tag
                 window.location.reload();
             } else {
@@ -203,6 +213,12 @@
                 credentials: 'same-origin'
             });
 
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Cancel analysis request failed:', response.status, errorText);
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
             const data = await response.json();
 
             if (data.success) {
@@ -210,7 +226,7 @@
 
                 // Stop progress tracking
                 stopProgressTracking(jobId);
-                
+
                 // Wait a moment to ensure cancellation flag is set in Redis
                 // Then reload to get fresh data from server
                 setTimeout(() => {
