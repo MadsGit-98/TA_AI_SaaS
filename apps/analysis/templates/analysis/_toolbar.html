@@ -6,9 +6,8 @@
         {# Left side: Navigation actions #}
         <div class="flex flex-wrap items-center gap-2">
             {# Back to Job button #}
-            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}" 
-               class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text" 
-               type="button">
+            <a href="{% url 'dashboard_jobs:job-detail' job_listing.id %}"
+               class="inline-flex items-center gap-2 bg-white text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-100 transition border border-secondary-text">
                 <span class="text-base">←</span>
                 <span>Back to Job</span>
             </a>

@@ -484,6 +484,12 @@ async function initiateAnalysis(jobId) {
         const data = await response.json();
 
         if (response.ok && data.success) {
+            // Defensive check: ensure data.data exists before accessing properties
+            if (!data.data) {
+                console.error('API response missing data.data:', data);
+                showError('Analysis started but response data is incomplete.');
+                return;
+            }
             const applicantCount = data.data.applicant_count;
             const estimatedMinutes = Math.ceil(data.data.estimated_duration_seconds / 60);
             showSuccess(`AI analysis started for ${applicantCount} applicants. Estimated time: ~${estimatedMinutes} minute(s).`);
@@ -844,11 +850,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Load job listings when page loads
-    loadJobListings();
-    
-    // Initialize progress tracking for jobs already in progress
-    // This runs after job listings are loaded
-    setTimeout(() => {
+    // Initialize progress tracking after job listings are fully loaded and rendered
+    loadJobListings().then(() => {
         initProgressTracking();
-    }, 100);
+    });
 });

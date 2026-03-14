@@ -336,6 +336,16 @@ def analysis_status(request, job_id):
             }
         }, status=status.HTTP_404_NOT_FOUND)
 
+    except PermissionDenied as e:
+        logger.error(f"Permission denied getting analysis status for job {job_id}: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
     except Exception as e:
         logger.error(f"Error getting analysis status for job {job_id}: {e}", exc_info=True)
         return Response({
@@ -660,15 +670,11 @@ def rerun_analysis(request, job_id):
                 }
             }, status=status.HTTP_409_CONFLICT)
 
-        # Lock acquired - now safe to delete previous results
-        previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
-        AIAnalysisResult.objects.filter(job_listing=job).delete()
-
-        # Start Celery task
+        # Start Celery task FIRST - only delete data after successful dispatch
         try:
             task = run_ai_analysis.delay(str(job_id), owner_id)
         except Exception as dispatch_error:
-            # Release lock if task dispatch fails
+            # Release lock if task dispatch fails - DO NOT delete any data
             release_analysis_lock(str(job_id), owner_id)
             logger.error(f"Failed to dispatch analysis task for job {job_id}: {dispatch_error}")
             return Response({
@@ -678,6 +684,10 @@ def rerun_analysis(request, job_id):
                     'message': 'Failed to start analysis task. Please try again.'
                 }
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Task dispatched successfully - now safe to delete previous results
+        previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
+        AIAnalysisResult.objects.filter(job_listing=job).delete()
 
         return Response({
             'success': True,
