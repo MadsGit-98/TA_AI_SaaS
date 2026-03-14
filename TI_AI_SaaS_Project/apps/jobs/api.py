@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Exists, OuterRef, Count
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -7,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from .serializers import JobListingSerializer, ScreeningQuestionSerializer, CommonScreeningQuestionSerializer, JobListingCreateSerializer, JobListingUpdateSerializer
+from apps.analysis.models import AIAnalysisResult
 
 
 from rest_framework.pagination import PageNumberPagination
@@ -17,24 +19,56 @@ class JobListingListPagination(PageNumberPagination):
     max_page_size = 100
 
 class JobListingListView(generics.ListCreateAPIView):
-    queryset = JobListing.objects.all()
     serializer_class = JobListingSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = JobListingListPagination
 
     def get_serializer_class(self):
+        """
+        Selects the serializer class to use for the current request.
+        
+        Returns:
+            The serializer class to use: `JobListingCreateSerializer` for POST requests, otherwise the view's `serializer_class`.
+        """
         if self.request.method == 'POST':
             return JobListingCreateSerializer
         return self.serializer_class
 
     def get_queryset(self):
-        queryset = JobListing.objects.filter(created_by=self.request.user)
+        # Annotate with analysis_complete and applicant_count to avoid N+1 queries
+        """
+        Build the queryset of job listings owned by the requesting user, annotated with analysis and applicant counts and filtered by request query parameters.
         
+        The returned QuerySet is limited to JobListing objects created by the requesting user and includes these annotations:
+        - `analysis_complete`: boolean indicating whether an analyzed AIAnalysisResult exists for the listing.
+        - `applicant_count`: integer count of related applicants.
+        
+        The queryset is optionally filtered by these query parameters:
+        - `status`: exact match on listing status.
+        - `date_range`: one of `today`, `week`, or `month` to restrict by created_at.
+        - `job_level`: exact match on job_level.
+        - `search`: case-insensitive containment match against title or description.
+        
+        Returns:
+            QuerySet: Annotated and filtered QuerySet of JobListing instances.
+        """
+        queryset = JobListing.objects.filter(
+            created_by=self.request.user
+        ).annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            ),
+            applicant_count=Count('applicants')
+        )
+
         # Apply status filter
         status_param = self.request.query_params.get('status', None)
         if status_param:
             queryset = queryset.filter(status=status_param)
-        
+
         # Apply date range filter
         date_range_param = self.request.query_params.get('date_range', None)
         if date_range_param:
@@ -47,43 +81,95 @@ class JobListingListView(generics.ListCreateAPIView):
                 queryset = queryset.filter(created_at__gte=start_of_week)
             elif date_range_param == 'month':
                 queryset = queryset.filter(created_at__year=now.year, created_at__month=now.month)
-        
+
         # Apply job level filter
         job_level_param = self.request.query_params.get('job_level', None)
         if job_level_param:
             queryset = queryset.filter(job_level=job_level_param)
-        
+
         # Apply search filter
         search_param = self.request.query_params.get('search', None)
         if search_param:
             from django.db.models import Q
             queryset = queryset.filter(
-                Q(title__icontains=search_param) | 
+                Q(title__icontains=search_param) |
                 Q(description__icontains=search_param)
             )
-        
+
         return queryset
 
     def perform_create(self, serializer):
+        """
+        Save a new instance using the provided serializer and set its `created_by` to the current request user.
+        
+        Parameters:
+            serializer: Serializer instance used to create the model object; `save()` will be called with `created_by=self.request.user`.
+        """
         serializer.save(created_by=self.request.user)
 
 
 class JobListingDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = JobListing.objects.all()
     serializer_class = JobListingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # Annotate with analysis_complete to avoid N+1 queries
         # For update/delete, restrict to owned jobs; allow retrieve for all
+        """
+        Return a queryset of JobListing objects annotated with `analysis_complete`.
+        
+        For `PUT`, `PATCH`, and `DELETE` requests the queryset is restricted to listings created by the requesting user; for other request methods it returns all listings. Each returned object has an `analysis_complete` annotation set to `True` when an `AIAnalysisResult` with status `AIAnalysisResult.STATUS_ANALYZED` exists for that listing, `False` otherwise.
+        
+        Returns:
+            QuerySet: A Django QuerySet of JobListing objects annotated with the boolean `analysis_complete`.
+        """
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return JobListing.objects.filter(created_by=self.request.user)
-        return JobListing.objects.all()
+            return JobListing.objects.filter(
+                created_by=self.request.user
+            ).annotate(
+                analysis_complete=Exists(
+                    AIAnalysisResult.objects.filter(
+                        job_listing=OuterRef('pk'),
+                        status=AIAnalysisResult.STATUS_ANALYZED
+                    )
+                )
+            )
+        return JobListing.objects.all().annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def activate_job(request, pk):
-    job = get_object_or_404(JobListing, pk=pk)
+    """
+    Activate a job listing if the requester is the owner.
+    
+    Sets the job's status to 'Active' and returns the serialized job data; if the requesting user does not own the job, returns a 403 Response with an error message.
+    
+    Parameters:
+        request (rest_framework.request.Request): The incoming HTTP request with an authenticated user.
+        pk (int): Primary key of the JobListing to activate.
+    
+    Returns:
+        rest_framework.response.Response: Serialized JobListing data on success, or a 403 error response when the requester is not the job owner.
+    """
+    job = get_object_or_404(
+        JobListing.objects.annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        ),
+        pk=pk
+    )
 
     # Check if the requesting user is the owner of the job
     if job.created_by != request.user:
@@ -101,7 +187,29 @@ def activate_job(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def deactivate_job(request, pk):
-    job = get_object_or_404(JobListing, pk=pk)
+    """
+    Deactivate a job listing if the requesting user is the listing's owner.
+    
+    Parameters:
+        request: The incoming HTTP request with an authenticated user.
+        pk (int): Primary key of the JobListing to deactivate.
+    
+    Returns:
+        Response: Serialized JobListing data after setting its status to "Inactive".
+        May return a 403 response with an error message if the requester is not the owner,
+        or a 404 response if no JobListing with the given `pk` exists.
+    """
+    job = get_object_or_404(
+        JobListing.objects.annotate(
+            analysis_complete=Exists(
+                AIAnalysisResult.objects.filter(
+                    job_listing=OuterRef('pk'),
+                    status=AIAnalysisResult.STATUS_ANALYZED
+                )
+            )
+        ),
+        pk=pk
+    )
 
     # Check if the requesting user is the owner of the job
     if job.created_by != request.user:
@@ -114,54 +222,6 @@ def deactivate_job(request, pk):
     job.save()
     serializer = JobListingSerializer(job)
     return Response(serializer.data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def duplicate_job(request, pk):
-    original_job = get_object_or_404(JobListing, pk=pk)
-
-    # Check if the requesting user is the owner of the job
-    if original_job.created_by != request.user:
-        return Response(
-            {'error': 'You do not have permission to duplicate this job.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    # Create a new job with the same details but different ID
-    field_def = original_job.__class__._meta.get_field('application_link')
-    new_application_link = field_def.default() if callable(field_def.default) else field_def.default
-
-    new_job = JobListing(
-        title=f"{original_job.title} (Copy)",
-        description=original_job.description,
-        required_skills=original_job.required_skills,
-        required_experience=original_job.required_experience,
-        job_level=original_job.job_level,
-        start_date=original_job.start_date,
-        expiration_date=original_job.expiration_date,
-        modification_date=timezone.now(),
-        status='Inactive',  # New copies start as inactive
-        application_link=new_application_link,
-        created_by=request.user
-    )
-    new_job.save()
-
-    # Copy associated screening questions
-    original_questions = ScreeningQuestion.objects.filter(job_listing_id=pk)
-    for question in original_questions:
-        new_question = ScreeningQuestion(
-            job_listing=new_job,
-            question_text=question.question_text,
-            question_type=question.question_type,
-            required=question.required,
-            order=question.order,
-            choices=question.choices
-        )
-        new_question.save()
-
-    serializer = JobListingSerializer(new_job)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ScreeningQuestionListView(generics.ListCreateAPIView):

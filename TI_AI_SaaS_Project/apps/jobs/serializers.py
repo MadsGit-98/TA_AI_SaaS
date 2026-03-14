@@ -1,14 +1,23 @@
 from rest_framework import serializers
+from django.db.models import Exists, OuterRef
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
+from apps.analysis.models import AIAnalysisResult
+from services.ai_analysis_service import get_analysis_progress
 
 
 class DateValidationMixin:
     """
     Mixin to provide date validation for serializers that have start_date and expiration_date fields.
     """
-    def validate_dates(self, data):
+    def validate(self, data):
         """
-        Validates that expiration date is after start date, considering existing instance values for partial updates.
+        Ensure expiration_date, if present, occurs after start_date, using instance values for missing fields during partial updates.
+        
+        Returns:
+            data: The validated input mapping.
+        
+        Raises:
+            serializers.ValidationError: If both dates are present and expiration_date is less than or equal to start_date.
         """
         start_date = data.get('start_date')
         expiration_date = data.get('expiration_date')
@@ -52,11 +61,107 @@ class CommonScreeningQuestionSerializer(serializers.ModelSerializer):
 
 class JobListingSerializer(serializers.ModelSerializer):
     screening_questions = ScreeningQuestionSerializer(many=True, read_only=True)
-    
+    analysis_complete = serializers.SerializerMethodField()
+    analysis_in_progress = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    applicant_count = serializers.SerializerMethodField()
+
     class Meta:
         model = JobListing
         fields = '__all__'
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'created_by', 'modification_date')
+
+    def get_analysis_complete(self, obj):
+        """
+        Determine whether AI analysis for the given job listing is complete.
+        
+        Checks an `analysis_complete` queryset annotation on `obj` if present; otherwise queries for any AIAnalysisResult related to the job listing with status `ANALYZED`.
+        
+        Parameters:
+            obj: JobListing instance to check for completed analysis.
+        
+        Returns:
+            True if a completed analysis exists for the job listing, False otherwise.
+        """
+        # Check if the view annotated the queryset with analysis_complete
+        if hasattr(obj, 'analysis_complete'):
+            return obj.analysis_complete
+
+        # Fallback: query the database (for backwards compatibility)
+        return AIAnalysisResult.objects.filter(
+            job_listing=obj,
+            status=AIAnalysisResult.STATUS_ANALYZED
+        ).exists()
+
+    def _get_analysis_progress(self, obj):
+        """
+        Get analysis progress for the given JobListing, using a per-serializer-instance cache to avoid repeated lookups.
+        
+        Parameters:
+            obj (JobListing): Job listing instance to query progress for.
+        
+        Returns:
+            dict: Mapping with keys 'processed' and 'total' containing integer counts.
+        """
+        # Check if already cached on this serializer instance
+        if not hasattr(self, '_progress_cache'):
+            self._progress_cache = {}
+
+        job_id = str(obj.id)
+
+        # Return cached value if available
+        if job_id in self._progress_cache:
+            return self._progress_cache[job_id]
+
+        # Fetch from Redis and cache
+        progress = get_analysis_progress(job_id)
+        self._progress_cache[job_id] = progress
+        return progress
+
+    def get_analysis_in_progress(self, obj):
+        """
+        Determine whether AI analysis for the given job listing is currently in progress.
+        
+        Returns:
+            bool: True if analysis has been started and not yet completed, False otherwise.
+        """
+        progress = self._get_analysis_progress(obj)
+        processed = progress.get('processed', 0)
+        total = progress.get('total', 0)
+
+        # Analysis is in progress if total > 0 and not all processed
+        return total > 0 and processed < total
+
+    def get_progress_percentage(self, obj):
+        """
+        Compute the analysis progress as an integer percentage between 0 and 100.
+        
+        Returns:
+            int: Percentage of processed applicants out of total applicants; returns 0 when total is zero.
+        """
+        progress = self._get_analysis_progress(obj)
+        processed = progress.get('processed', 0)
+        total = progress.get('total', 0)
+
+        if total > 0:
+            return int((processed / total) * 100)
+        return 0
+
+    def get_applicant_count(self, obj):
+        """
+        Return the applicant count for the job listing.
+        
+        If the queryset includes an `applicant_count` annotation, that value is returned; otherwise returns the count of related applicants.
+        
+        Returns:
+            int: Number of applicants for the job listing.
+        """
+        # Check if the view annotated the queryset with applicant_count
+        if hasattr(obj, 'applicant_count'):
+            return obj.applicant_count
+        
+        # Fallback: query the database (for backwards compatibility)
+        return obj.applicants.count()
 
 
 class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerializer):
@@ -69,10 +174,17 @@ class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerialize
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'modification_date')
 
     def validate(self, data):
-        # Call the parent validate method if it exists
+        # Call the parent validate method
+        """
+        Validate start_date and expiration_date and return the validated data.
+        
+        Performs date validation for serializers that include `start_date` and `expiration_date`. For partial updates, missing dates fall back to the instance's existing values. Raises serializers.ValidationError if both dates are present and `expiration_date` is not later than `start_date`.
+        
+        Returns:
+            The validated data dictionary.
+        """
         data = super().validate(data)
-        # Apply date validation
-        return self.validate_dates(data)
+        return data
 
 
 class JobListingUpdateSerializer(DateValidationMixin, serializers.ModelSerializer):
@@ -84,7 +196,14 @@ class JobListingUpdateSerializer(DateValidationMixin, serializers.ModelSerialize
         ]
 
     def validate(self, data):
-        # Call the parent validate method if it exists
+        # Call the parent validate method
+        """
+        Validate start_date and expiration_date and return the validated data.
+        
+        Performs date validation for serializers that include `start_date` and `expiration_date`. For partial updates, missing dates fall back to the instance's existing values. Raises serializers.ValidationError if both dates are present and `expiration_date` is not later than `start_date`.
+        
+        Returns:
+            The validated data dictionary.
+        """
         data = super().validate(data)
-        # Apply date validation
-        return self.validate_dates(data)
+        return data
