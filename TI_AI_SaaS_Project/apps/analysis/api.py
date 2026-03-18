@@ -378,6 +378,12 @@ def analysis_results(request, job_id):
     - status: Filter by status (Analyzed, Unprocessed)
     - min_score: Minimum overall score
     - max_score: Maximum overall score
+    - min_education_score: Minimum education score
+    - max_education_score: Maximum education score
+    - min_skills_score: Minimum skills score
+    - max_skills_score: Maximum skills score
+    - min_experience_score: Minimum experience score
+    - max_experience_score: Maximum experience score
     - page: Page number (default 1)
     - page_size: Items per page (default 20, max 100)
     - ordering: Order by field (default -overall_score)
@@ -406,6 +412,14 @@ def analysis_results(request, job_id):
         status_filter = request.query_params.get('status')
         min_score_param = request.query_params.get('min_score')
         max_score_param = request.query_params.get('max_score')
+        
+        # Individual metric filters
+        min_education_param = request.query_params.get('min_education_score')
+        max_education_param = request.query_params.get('max_education_score')
+        min_skills_param = request.query_params.get('min_skills_score')
+        max_skills_param = request.query_params.get('max_skills_score')
+        min_experience_param = request.query_params.get('min_experience_score')
+        max_experience_param = request.query_params.get('max_experience_score')
 
         if category:
             results = results.filter(category=category)
@@ -413,7 +427,7 @@ def analysis_results(request, job_id):
         if status_filter:
             results = results.filter(status=status_filter)
 
-        # Validate and apply score filters
+        # Validate and apply overall score filters
         if min_score_param:
             try:
                 min_score = int(min_score_param)
@@ -439,6 +453,87 @@ def analysis_results(request, job_id):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
             results = results.filter(overall_score__lte=max_score)
+        
+        # Validate and apply education score filters
+        if min_education_param:
+            try:
+                min_education = int(min_education_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_education_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(education_score__gte=min_education)
+        
+        if max_education_param:
+            try:
+                max_education = int(max_education_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_education_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(education_score__lte=max_education)
+        
+        # Validate and apply skills score filters
+        if min_skills_param:
+            try:
+                min_skills = int(min_skills_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_skills_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(skills_score__gte=min_skills)
+        
+        if max_skills_param:
+            try:
+                max_skills = int(max_skills_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_skills_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(skills_score__lte=max_skills)
+        
+        # Validate and apply experience score filters
+        if min_experience_param:
+            try:
+                min_experience = int(min_experience_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_experience_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(experience_score__gte=min_experience)
+        
+        if max_experience_param:
+            try:
+                max_experience = int(max_experience_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_experience_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(experience_score__lte=max_experience)
 
         # Validate and apply pagination parameters
         page_param = request.query_params.get('page', '1')
