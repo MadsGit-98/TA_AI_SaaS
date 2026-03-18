@@ -617,6 +617,14 @@ function startProgressTracking(jobId) {
 
     console.log('Starting WebSocket progress tracking for job', jobId);
 
+    // Defensive check: ensure AnalysisWebSocket class is available
+    if (typeof window.AnalysisWebSocket !== 'function') {
+        console.warn('AnalysisWebSocket class not found - falling back to polling for job', jobId);
+        // Fallback to polling if WebSocket class is not available
+        startFallbackPolling(jobId);
+        return;
+    }
+
     // Create WebSocket instance for this job
     const ws = new window.AnalysisWebSocket();
     
@@ -658,11 +666,22 @@ function startProgressTracking(jobId) {
     
     ws.onStateChanged(function(state) {
         console.log('WebSocket state changed for job', jobId, ':', state);
-        
+
         // Handle fallback mode
         if (state === 'fallback_mode') {
             console.log('WebSocket unavailable, using fallback polling');
-            // Fallback to polling if needed
+            // Close the WebSocket before starting fallback polling to prevent resource leak
+            if (ws && typeof ws.close === 'function') {
+                try {
+                    ws.close();
+                } catch (closeError) {
+                    // Ignore errors if already closed
+                    console.log('WebSocket already closed for job', jobId);
+                }
+            }
+            // Remove from analyzingJobs to prevent duplicate tracking
+            analyzingJobs.delete(jobId);
+            // Start fallback polling
             startFallbackPolling(jobId);
         }
     });
@@ -682,20 +701,25 @@ function startFallbackPolling(jobId) {
     const intervalId = setInterval(async () => {
         try {
             const status = await checkAnalysisStatus(jobId);
-            
+
             const cancellingInfo = cancellingJobs.get(jobId);
-            
+
             if (cancellingInfo) {
+                // Job is in cancellation state
                 if (status && status.status === 'cancelled') {
-                    console.log('Job', jobId, 'still cancelling...');
-                } else {
+                    // Cancellation confirmed - stop polling and reload
+                    console.log('Job', jobId, 'cancellation confirmed, reloading...');
                     cancellingJobs.delete(jobId);
                     stopProgressTracking(jobId);
                     clearInterval(intervalId);
                     window.location.reload();
                     return;
+                } else {
+                    // Still waiting for cancellation to complete
+                    console.log('Job', jobId, 'still cancelling...');
                 }
             } else {
+                // Not cancelling - normal progress tracking
                 if (status && status.status === 'processing') {
                     const percentage = status.progress_percentage || 0;
                     updateJobProgress(jobId, percentage);
@@ -709,7 +733,7 @@ function startFallbackPolling(jobId) {
             console.error('Error in fallback polling for job', jobId, error);
         }
     }, 5000); // Poll every 5 seconds in fallback mode
-    
+
     analyzingJobs.set(jobId, { intervalId: intervalId, isFallback: true });
 }
 

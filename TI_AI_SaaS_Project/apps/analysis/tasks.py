@@ -67,6 +67,7 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         }
     """
     job_id = str(job_id)
+    job = None  # Track job instance for error handling
 
     try:
         # Load job listing
@@ -99,7 +100,7 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
 
         # Initialize progress tracking
         update_analysis_progress(job_id, 0, total_count)
-        
+
         # Send initial progress notification (0%)
         try:
             user_id = str(job.created_by_id)
@@ -157,8 +158,6 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             release_analysis_lock(job_id, owner_id)
         # Clear progress tracking data
         clear_analysis_progress(job_id)
-        # Clear analysis_in_progress flag
-        JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
 
         # Create in-app notification for job owner on completion
         try:
@@ -214,20 +213,19 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Job listing not found: {job_id}")
         if owner_id:
             release_analysis_lock(job_id, owner_id)
-        
+
         # Send failure notification
         try:
-            job = JobListing.objects.get(id=job_id)
-            user_id = str(job.created_by_id)
+            # Job doesn't exist, can't get user_id
             AnalysisNotificationConsumer.notify_failed(
-                job_id, user_id,
+                job_id, owner_id or 'unknown',
                 'JOB_NOT_FOUND',
                 'Job listing not found',
                 0, 0
             )
         except Exception as e:
             logger.error(f"Failed to send failure notification: {e}")
-        
+
         return {
             'job_id': job_id,
             'status': 'failed',
@@ -238,11 +236,13 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Analysis task timed out for job {job_id}: {str(e)}")
         if owner_id:
             release_analysis_lock(job_id, owner_id)
-        
+
         # Send failure notification
         try:
-            job = JobListing.objects.get(id=job_id)
-            user_id = str(job.created_by_id)
+            if job:
+                user_id = str(job.created_by_id)
+            else:
+                user_id = owner_id or 'unknown'
             progress = get_analysis_progress(job_id)
             AnalysisNotificationConsumer.notify_failed(
                 job_id, user_id,
@@ -253,7 +253,7 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             )
         except Exception as e:
             logger.error(f"Failed to send failure notification: {e}")
-        
+
         return {
             'job_id': job_id,
             'status': 'failed',
@@ -264,11 +264,13 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Analysis task failed for job {job_id}: {str(e)}", exc_info=True)
         if owner_id:
             release_analysis_lock(job_id, owner_id)
-        
+
         # Send failure notification
         try:
-            job = JobListing.objects.get(id=job_id)
-            user_id = str(job.created_by_id)
+            if job:
+                user_id = str(job.created_by_id)
+            else:
+                user_id = owner_id or 'unknown'
             progress = get_analysis_progress(job_id)
             AnalysisNotificationConsumer.notify_failed(
                 job_id, user_id,
@@ -279,9 +281,18 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             )
         except Exception as e:
             logger.error(f"Failed to send failure notification: {e}")
-        
+
         return {
             'job_id': job_id,
             'status': 'failed',
             'error': str(e),
         }
+    finally:
+        # ALWAYS clear the analysis_in_progress flag, even on failure
+        # This ensures the flag is never left in a stuck state
+        try:
+            JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
+            logger.info(f"Cleared analysis_in_progress flag for job {job_id}")
+        except Exception as e:
+            # Log but don't raise - we don't want to mask the original error
+            logger.error(f"Failed to clear analysis_in_progress flag for job {job_id}: {e}")

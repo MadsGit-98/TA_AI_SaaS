@@ -43,7 +43,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         else:
             # Close connection for unauthenticated users
             logger.warning("WebSocket connection rejected - unauthenticated user")
-            await self.close(code=403)
+            await self.close(code=4003)
     
     async def disconnect(self, close_code):
         """
@@ -62,15 +62,50 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
     async def subscribe_to_job(self, job_id):
         """
         Subscribe user to analysis updates for a specific job.
-        
+
         Args:
             job_id: UUID string of the job listing
+            
+        Raises:
+            PermissionError: If user is not authorized to access this job
         """
+        from apps.jobs.models import JobListing
+        from django.core.exceptions import ObjectDoesNotExist
+        
+        # Authorization check: verify user has access to this job
+        try:
+            job = await JobListing.objects.aget(id=job_id)
+            # Check if user is the owner or has staff privileges
+            if str(job.created_by_id) != self.user_id and not self.scope["user"].is_staff:
+                logger.warning(f"User {self.user_id} attempted to subscribe to unauthorized job {job_id}")
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error_code': 'PERMISSION_DENIED',
+                    'error_message': 'You do not have permission to access this job'
+                }))
+                return
+        except ObjectDoesNotExist:
+            logger.warning(f"Job {job_id} not found for subscription by user {self.user_id}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error_code': 'JOB_NOT_FOUND',
+                'error_message': 'Job not found'
+            }))
+            return
+        except Exception as e:
+            logger.error(f"Error checking job authorization: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error_code': 'INTERNAL_ERROR',
+                'error_message': 'Failed to verify job access'
+            }))
+            return
+        
         if not hasattr(self, 'subscribed_groups'):
             self.subscribed_groups = set()
-        
+
         group_name = f"analysis_{job_id}_{self.user_id}"
-        
+
         if group_name not in self.subscribed_groups:
             await self.channel_layer.group_add(
                 group_name,

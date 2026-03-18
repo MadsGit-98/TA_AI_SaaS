@@ -368,6 +368,30 @@
     window.AnalysisModule = {
         openResultDetail: openResultDetail
     };
+    
+    // Global callback for WebSocket progress updates
+    window.updateAnalysisProgress = function(data) {
+        console.log('Received progress update:', data);
+        
+        // Update AnalysisLoadingIndicator instance if it exists
+        if (window.AnalysisLoadingIndicator && window.analysisLoadingIndicatorInstance) {
+            window.analysisLoadingIndicatorInstance.updateProgress(
+                data.processed_count,
+                data.total_count
+            );
+        }
+        
+        // Update progress tags (for dashboard/rerunning tag)
+        const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
+        progressTags.forEach(function(tag) {
+            const percentage = data.progress_percentage || Math.round((data.processed_count / data.total_count) * 100);
+            const textSpan = tag.querySelector('.rerun-text, .text-gray-900');
+            if (textSpan) {
+                textSpan.textContent = 'Analyzing... ' + percentage + '%';
+                console.log('Updated progress tag to:', percentage + '%');
+            }
+        });
+    };
 
 })();
 
@@ -456,6 +480,10 @@
             this.container.style.display = 'block';
         }
         this.addTerminalLine('Starting analysis for job ' + jobId + '...');
+        
+        // Store instance globally for WebSocket integration
+        window.analysisLoadingIndicatorInstance = this;
+        
         this.startPolling();
     };
 
@@ -530,9 +558,85 @@
      * @deprecated Use analysis-websocket.js instead
      */
     AnalysisLoadingIndicator.prototype.startPolling = function() {
-        console.warn('DEPRECATED: startPolling() is deprecated. Use analysis-websocket.js instead.');
-        // WebSocket handles progress updates automatically - no polling needed
-        console.log('WebSocket will handle progress updates automatically');
+        var self = this;
+        
+        // Check if WebSocket is available and active
+        if (window.analysisWebSocketActive && window.analysisWebSocket) {
+            console.log('WebSocket is active - progress updates will be received via WebSocket');
+            // WebSocket will handle progress updates - no polling needed
+            return;
+        }
+        
+        // WebSocket not available - start fallback polling
+        console.warn('WebSocket not available - starting fallback polling');
+        
+        var retryCount = 0;
+        var maxRetries = 5;
+
+        var pollStatus = function() {
+            fetch('/api/analysis/jobs/' + self.jobId + '/analysis/status/', {
+                method: 'GET',
+                credentials: 'include'  // Include cookies for authentication
+            })
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.status + ' ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    retryCount = 0;  // Reset retry count on success
+
+                    if (data.success) {
+                        self.updateProgress(
+                            data.data.processed_count,
+                            data.data.total_count
+                        );
+
+                        if (data.data.status === 'completed') {
+                            self.addTerminalLine('Analysis completed successfully!');
+                            setTimeout(function() { self.hide(); }, 2000);
+                            self.stopPolling();
+
+                            // Trigger page reload or redirect
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 2500);
+                        } else if (data.data.status === 'cancelled') {
+                            self.addTerminalLine('Analysis cancelled by user.');
+                            setTimeout(function() { self.hide(); }, 2000);
+                            self.stopPolling();
+                        } else if (data.data.status === 'failed') {
+                            self.addTerminalLine('Analysis failed. Check logs for details.');
+                            setTimeout(function() { self.hide(); }, 3000);
+                            self.stopPolling();
+                        }
+                    } else {
+                        // API returned success=false
+                        var errorMsg = data.error ? data.error.message : 'Unknown API error';
+                        console.error('API error:', errorMsg);
+                        self.addTerminalLine('Error: ' + errorMsg);
+                    }
+                })
+                .catch(function(error) {
+                    retryCount++;
+                    console.error('Error polling status (attempt ' + retryCount + '):', error);
+
+                    if (retryCount >= maxRetries) {
+                        self.addTerminalLine('Error: Failed to fetch status after ' + maxRetries + ' attempts');
+                        self.addTerminalLine('The analysis may still be running. Refresh the page to check status.');
+                        self.stopPolling();
+                    } else {
+                        self.addTerminalLine('Warning: Status fetch failed (retry ' + retryCount + '/' + maxRetries + ')');
+                    }
+                });
+        };
+
+        // Initial poll
+        pollStatus();
+
+        // Continue polling every 2 seconds
+        this.pollingInterval = setInterval(pollStatus, 2000);
     };
 
     /**

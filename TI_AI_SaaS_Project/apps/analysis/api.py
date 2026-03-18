@@ -695,6 +695,9 @@ def rerun_analysis(request, job_id):
         # Task dispatched successfully - now safe to delete previous results
         previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
         AIAnalysisResult.objects.filter(job_listing=job).delete()
+        
+        # Set analysis_in_progress flag to keep state consistent with initiate_analysis
+        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
 
         return Response({
             'success': True,
