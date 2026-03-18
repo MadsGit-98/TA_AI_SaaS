@@ -124,39 +124,52 @@
         var self = this;
         var type = message.type;
         var data = message.data;
-        
+
         console.log('Received message:', type, data);
-        
+
         switch (type) {
             case 'subscribed':
                 // Acknowledgment from server that we're subscribed to job updates
-                console.log('Successfully subscribed to job:', data.job_id);
+                if (data && data.job_id) {
+                    console.log('Successfully subscribed to job:', data.job_id);
+                } else {
+                    console.log('Successfully subscribed to job (no job_id in response)');
+                }
                 break;
-                
+
             case 'analysis_progress':
-                if (self.callbacks.onProgress) {
+                if (data && self.callbacks.onProgress) {
                     self.callbacks.onProgress(data);
                 }
                 break;
-                
+
             case 'analysis_completed':
-                if (self.callbacks.onCompleted) {
+                if (data && self.callbacks.onCompleted) {
                     self.callbacks.onCompleted(data);
                 }
                 break;
-                
+
             case 'analysis_cancelled':
-                if (self.callbacks.onCancelled) {
+                if (data && self.callbacks.onCancelled) {
                     self.callbacks.onCancelled(data);
                 }
                 break;
-                
+
             case 'analysis_failed':
-                if (self.callbacks.onFailed) {
+                if (data && self.callbacks.onFailed) {
                     self.callbacks.onFailed(data);
                 }
                 break;
-                
+
+            case 'error':
+                // Handle error messages from server
+                if (data) {
+                    console.error('Server error:', data.error_code, data.error_message);
+                } else {
+                    console.error('Server error (no details)');
+                }
+                break;
+
             default:
                 console.warn('Unknown message type:', type);
         }
@@ -222,14 +235,14 @@
      */
     AnalysisWebSocket.prototype.fallbackToPolling = function() {
         var self = this;
-        
+
         if (this.fallbackPollingInterval) {
             return; // Already polling
         }
-        
+
         this.setConnectionState('fallback_mode');
         console.log('Falling back to HTTP polling');
-        
+
         // Start polling
         this.fallbackPollingInterval = setInterval(function() {
             if (self.jobId) {
@@ -239,12 +252,24 @@
     };
 
     /**
+     * Stop fallback polling
+     * Clears the polling interval and resets the state
+     */
+    AnalysisWebSocket.prototype.stopFallbackPolling = function() {
+        if (this.fallbackPollingInterval) {
+            clearInterval(this.fallbackPollingInterval);
+            this.fallbackPollingInterval = null;
+            console.log('Stopped fallback polling');
+        }
+    };
+
+    /**
      * Poll analysis status via HTTP
      * @param {string} jobId - Job ID to poll
      */
     AnalysisWebSocket.prototype.pollAnalysisStatus = function(jobId) {
         var self = this;
-        
+
         fetch('/api/analysis/jobs/' + jobId + '/analysis/status/', {
             method: 'GET',
             credentials: 'include'
@@ -259,7 +284,7 @@
             if (data.success) {
                 // Convert polling response to WebSocket message format
                 var status = data.data.status;
-                
+
                 if (status === 'processing') {
                     if (self.callbacks.onProgress) {
                         self.callbacks.onProgress({
@@ -277,12 +302,14 @@
                             status: 'completed',
                             processed_count: data.data.processed_count,
                             total_count: data.data.total_count,
-                            analyzed_count: data.data.results_summary ? 
+                            analyzed_count: data.data.results_summary ?
                                 (data.data.results_summary.analyzed_count || 0) : 0,
-                            unprocessed_count: data.data.results_summary ? 
+                            unprocessed_count: data.data.results_summary ?
                                 (data.data.results_summary.unprocessed_count || 0) : 0
                         });
                     }
+                    // Stop polling for terminal state
+                    self.stopFallbackPolling();
                 } else if (status === 'cancelled') {
                     if (self.callbacks.onCancelled) {
                         self.callbacks.onCancelled({
@@ -293,6 +320,21 @@
                             preserved_count: data.data.processed_count
                         });
                     }
+                    // Stop polling for terminal state
+                    self.stopFallbackPolling();
+                } else if (status === 'failed') {
+                    if (self.callbacks.onFailed) {
+                        self.callbacks.onFailed({
+                            job_id: jobId,
+                            status: 'failed',
+                            error_code: data.data.error_code || 'UNKNOWN_ERROR',
+                            error_message: data.data.error || data.data.failure_reason || 'Analysis failed',
+                            processed_count: data.data.processed_count || 0,
+                            total_count: data.data.total_count || 0
+                        });
+                    }
+                    // Stop polling for terminal state
+                    self.stopFallbackPolling();
                 }
             }
         })
@@ -386,6 +428,9 @@
 
     // Export to global scope
     window.AnalysisWebSocket = AnalysisWebSocket;
+    
+    // Global flag to indicate WebSocket is available and active
+    window.analysisWebSocketActive = false;
 
     /**
      * Initialize WebSocket on page load
@@ -440,6 +485,9 @@
             if (window.updateConnectionState) {
                 window.updateConnectionState(state);
             }
+            
+            // Set global flag based on state
+            window.analysisWebSocketActive = (state === 'connected');
         });
         
         // Connect to WebSocket
@@ -447,6 +495,9 @@
         
         // Store WebSocket instance globally
         window.analysisWebSocket = ws;
+        
+        // Set global flag
+        window.analysisWebSocketActive = true;
     }
 
     // Initialize when DOM is ready

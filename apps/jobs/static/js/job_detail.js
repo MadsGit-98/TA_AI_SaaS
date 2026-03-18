@@ -86,10 +86,8 @@
                 // Close modal
                 closeRerunModal();
 
-                // Start progress tracking
-                startProgressTracking(jobId);
-
                 // Reload page to show progress tag
+                // WebSocket will auto-initialize and track progress via analysis-websocket.js
                 window.location.reload();
             } else {
                 alert('Error: ' + (data.error?.message || 'Failed to re-run analysis'));
@@ -127,10 +125,8 @@
         })
         .then(function(data) {
             if (data.success) {
-                // Start progress tracking
-                startProgressTracking(jobId);
-                
                 // Reload page to show progress tag
+                // WebSocket will auto-initialize and track progress via analysis-websocket.js
                 window.location.reload();
             } else {
                 alert('Error: ' + (data.error?.message || 'Failed to start analysis'));
@@ -358,14 +354,10 @@
 
     // Expose progress tracking functions globally (deprecated)
     window.startProgressTracking = startProgressTracking;
+    window.stopProgressTracking = stopProgressTracking;
     window.initProgressTracking = initProgressTracking;
 
-    // Initialize progress tracking on page load - DEPRECATED
-    // WebSocket auto-initializes in analysis-websocket.js
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(() => {
-            initProgressTracking();
-        }, 100);
-    });
+    // Note: No auto-initialization needed here
+    // WebSocket auto-initializes in analysis-websocket.js when page loads
 
 })();

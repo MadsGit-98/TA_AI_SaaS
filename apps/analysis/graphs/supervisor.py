@@ -158,6 +158,9 @@ def map_workers_node(state: AnalysisState) -> dict:
 
     # Process applicants concurrently
     new_results = []
+    
+    # Track which milestones have been sent to avoid duplicate notifications
+    sent_milestones = set()
 
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
@@ -208,10 +211,10 @@ def map_workers_node(state: AnalysisState) -> dict:
 
                 # Update progress in Redis
                 update_analysis_progress(job_id, processed_count, len(applicants))
-                
+
                 # Send WebSocket notification at milestone checkpoints
                 percentage = int((processed_count / len(applicants)) * 100)
-                if percentage in [25, 50, 75, 90]:
+                if percentage in [25, 50, 75, 90] and percentage not in sent_milestones:
                     try:
                         user_id = str(job.created_by_id)
                         AnalysisNotificationConsumer.notify_progress(
@@ -225,6 +228,8 @@ def map_workers_node(state: AnalysisState) -> dict:
                             }
                         )
                         logger.info(f"Sent WebSocket progress update: {percentage}% for job {job_id}")
+                        # Mark this milestone as sent
+                        sent_milestones.add(percentage)
                     except Exception as e:
                         logger.error(f"Failed to send WebSocket progress update: {e}")
 
