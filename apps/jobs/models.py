@@ -32,6 +32,7 @@ class JobListing(models.Model):
     application_link = models.UUIDField(default=uuid.uuid4, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    analysis_in_progress = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     def save(self, *args, **kwargs):
