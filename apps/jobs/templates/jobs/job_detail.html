@@ -205,7 +205,11 @@
     <!-- Axios -->
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
     <script src="{% static 'js/auth-interceptor.js' %}"></script>
+    <!-- WebSocket client for real-time analysis updates - MUST load before job_detail.js -->
+    <script src="{% static 'js/analysis-websocket.js' %}"></script>
+    <!-- Analysis module for view toggling and UI -->
     <script src="{% static 'js/analysis.js' %}"></script>
+    <!-- Job detail page functionality -->
     <script src="{% static 'js/job_detail.js' %}"></script>
     {% endblock %}
 </body>
