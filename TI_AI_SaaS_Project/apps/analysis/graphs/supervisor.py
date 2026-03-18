@@ -13,6 +13,7 @@ Graph Flow:
 from typing import TypedDict, List, Any, Literal
 from langgraph.graph import StateGraph, END
 from apps.analysis.models import AIAnalysisResult
+from apps.analysis.consumers import AnalysisNotificationConsumer
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from apps.analysis.graphs.worker import create_worker_graph
 from services.ai_analysis_service import (
@@ -22,6 +23,7 @@ from services.ai_analysis_service import (
     clear_analysis_progress,
     clear_cancellation_flag,
 )
+from datetime import datetime, timezone
 import logging
 logger = logging.getLogger(__name__)
 
@@ -204,8 +206,27 @@ def map_workers_node(state: AnalysisState) -> dict:
                 new_results.append(result)
                 processed_count += 1
 
-                # Update progress
+                # Update progress in Redis
                 update_analysis_progress(job_id, processed_count, len(applicants))
+                
+                # Send WebSocket notification at milestone checkpoints
+                percentage = int((processed_count / len(applicants)) * 100)
+                if percentage in [25, 50, 75, 90]:
+                    try:
+                        user_id = str(job.created_by_id)
+                        AnalysisNotificationConsumer.notify_progress(
+                            job_id, user_id,
+                            {
+                                'progress_percentage': percentage,
+                                'processed_count': processed_count,
+                                'total_count': len(applicants),
+                                'message': f'Processing... {percentage}% complete',
+                                'timestamp': datetime.now(timezone.utc).isoformat()
+                            }
+                        )
+                        logger.info(f"Sent WebSocket progress update: {percentage}% for job {job_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send WebSocket progress update: {e}")
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed

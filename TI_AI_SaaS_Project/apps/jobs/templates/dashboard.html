@@ -127,6 +127,8 @@
     {% block extra_js %}
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
         <script src="{% static 'js/auth-interceptor.js' %}"></script>
+        <!-- WebSocket client for real-time analysis updates -->
+        <script src="{% static 'js/analysis-websocket.js' %}"></script>
         <script src="{% static 'js/dashboard.js' %}"></script>
     {% endblock %}
 </body>

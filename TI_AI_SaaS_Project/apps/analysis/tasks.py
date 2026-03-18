@@ -7,10 +7,12 @@ This module contains:
 - run_ai_analysis: Main Celery task for bulk applicant analysis
 - Progress tracking and cancellation handling
 - In-app notifications on completion
+- WebSocket notifications for real-time updates
 """
 
 import logging
 from typing import Dict, Any
+from datetime import datetime, timezone
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -20,6 +22,7 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.analysis.graphs.supervisor import create_supervisor_graph
 from apps.accounts.models import Notification
+from apps.analysis.consumers import AnalysisNotificationConsumer
 from services.ai_analysis_service import (
     release_analysis_lock,
     update_analysis_progress,
@@ -96,6 +99,22 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
 
         # Initialize progress tracking
         update_analysis_progress(job_id, 0, total_count)
+        
+        # Send initial progress notification (0%)
+        try:
+            user_id = str(job.created_by_id)
+            AnalysisNotificationConsumer.notify_progress(
+                job_id, user_id,
+                {
+                    'progress_percentage': 0,
+                    'processed_count': 0,
+                    'total_count': total_count,
+                    'message': f'Starting analysis for {total_count} applicants',
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to send initial progress notification: {e}")
 
         # Create supervisor graph
         supervisor_graph = create_supervisor_graph()
@@ -138,22 +157,46 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             release_analysis_lock(job_id, owner_id)
         # Clear progress tracking data
         clear_analysis_progress(job_id)
+        # Clear analysis_in_progress flag
+        JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
 
         # Create in-app notification for job owner on completion
         try:
             user = job.created_by
             if user:
+                user_id = str(user.id)
                 if cancelled:
                     Notification.objects.create(
                         user=user,
                         title='Analysis Cancelled',
                         message=f'Analysis cancelled for "{job.title}". {analyzed_count} applicants were analyzed before cancellation.'
                     )
+                    # Send WebSocket cancellation notification
+                    AnalysisNotificationConsumer.notify_cancelled(
+                        job_id, user_id,
+                        {
+                            'processed_count': processed_count,
+                            'total_count': total_count,
+                            'preserved_count': analyzed_count,
+                            'timestamp': datetime.now(timezone.utc).isoformat()
+                        }
+                    )
                 else:
                     Notification.objects.create(
                         user=user,
                         title='AI Analysis Completed',
                         message=f'AI analysis completed for "{job.title}"! {analyzed_count} applicants analyzed successfully.'
+                    )
+                    # Send WebSocket completion notification
+                    AnalysisNotificationConsumer.notify_completed(
+                        job_id, user_id,
+                        {
+                            'processed_count': processed_count,
+                            'total_count': total_count,
+                            'analyzed_count': analyzed_count,
+                            'unprocessed_count': unprocessed_count,
+                            'timestamp': datetime.now(timezone.utc).isoformat()
+                        }
                     )
         except Exception as e:
             logger.error(f"Failed to create completion notification: {e}")
@@ -171,6 +214,20 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Job listing not found: {job_id}")
         if owner_id:
             release_analysis_lock(job_id, owner_id)
+        
+        # Send failure notification
+        try:
+            job = JobListing.objects.get(id=job_id)
+            user_id = str(job.created_by_id)
+            AnalysisNotificationConsumer.notify_failed(
+                job_id, user_id,
+                'JOB_NOT_FOUND',
+                'Job listing not found',
+                0, 0
+            )
+        except Exception as e:
+            logger.error(f"Failed to send failure notification: {e}")
+        
         return {
             'job_id': job_id,
             'status': 'failed',
@@ -181,6 +238,22 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Analysis task timed out for job {job_id}: {str(e)}")
         if owner_id:
             release_analysis_lock(job_id, owner_id)
+        
+        # Send failure notification
+        try:
+            job = JobListing.objects.get(id=job_id)
+            user_id = str(job.created_by_id)
+            progress = get_analysis_progress(job_id)
+            AnalysisNotificationConsumer.notify_failed(
+                job_id, user_id,
+                'TASK_TIMEOUT',
+                f'Analysis task timed out: {str(e)}',
+                progress.get('processed', 0),
+                progress.get('total', 0)
+            )
+        except Exception as e:
+            logger.error(f"Failed to send failure notification: {e}")
+        
         return {
             'job_id': job_id,
             'status': 'failed',
@@ -191,6 +264,22 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
         logger.error(f"Analysis task failed for job {job_id}: {str(e)}", exc_info=True)
         if owner_id:
             release_analysis_lock(job_id, owner_id)
+        
+        # Send failure notification
+        try:
+            job = JobListing.objects.get(id=job_id)
+            user_id = str(job.created_by_id)
+            progress = get_analysis_progress(job_id)
+            AnalysisNotificationConsumer.notify_failed(
+                job_id, user_id,
+                'TASK_FAILURE',
+                f'Analysis task failed: {str(e)}',
+                progress.get('processed', 0),
+                progress.get('total', 0)
+            )
+        except Exception as e:
+            logger.error(f"Failed to send failure notification: {e}")
+        
         return {
             'job_id': job_id,
             'status': 'failed',

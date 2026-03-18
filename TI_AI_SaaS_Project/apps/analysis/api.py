@@ -160,6 +160,9 @@ def initiate_analysis(request, job_id):
                 }
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+        # Set analysis_in_progress flag
+        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
+
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
         estimated_duration = applicant_count * 6
 
@@ -218,8 +221,12 @@ def analysis_status(request, job_id):
     - Processed count
     - Total count
     - Started/completed timestamps
-    
+
     Note: Checks database first for completed analyses to avoid stale Redis data.
+    
+    DEPRECATED: This endpoint is deprecated in favor of WebSocket-based real-time updates.
+    The endpoint remains available for backward compatibility and fallback polling scenarios.
+    New implementations should use the WebSocket endpoint at /ws/analysis-notifications/
     """
     try:
         job = get_object_or_404(JobListing, id=job_id)
