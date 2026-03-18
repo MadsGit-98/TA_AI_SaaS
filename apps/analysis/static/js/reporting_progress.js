@@ -169,12 +169,18 @@
         // Find the progress tag in the toolbar
         const progressTag = document.querySelector('[data-progress-type="in-progress"]');
         if (progressTag) {
-            // Update the percentage text
-            const textSpan = progressTag.querySelector('.text-gray-900');
+            // Update the percentage text - matches job_detail.html structure
+            // Structure: <div data-progress-type="in-progress">
+            //              <span class="...animate-spin">⟳</span>
+            //              <span class="text-gray-900 tracking-wide uppercase">Analyzing... 25%</span>
+            //            </div>
+            const textSpan = progressTag.querySelector('span.text-gray-900');
             if (textSpan) {
                 textSpan.textContent = 'Analyzing... ' + percentage + '%';
+                console.log('Updated progress for job', jobId, 'to', percentage + '%');
+            } else {
+                console.warn('Could not find text span in progress tag for job', jobId);
             }
-            console.log('Updated progress for job', jobId, 'to', percentage + '%');
         } else {
             console.log('Progress tag not found for job', jobId);
         }
