@@ -1,12 +1,15 @@
 /**
  * Reporting Page Progress Tracking
  * Handles progress tracking for analysis re-run on the reporting page
+ * 
+ * DEPRECATED: This file now uses WebSocket-based updates via analysis-websocket.js
+ * The polling mechanism has been deprecated in favor of real-time WebSocket updates
  */
 
 (function() {
     'use strict';
 
-    // Track jobs currently being analyzed (jobId -> intervalId mapping)
+    // Track jobs currently being analyzed (jobId -> WebSocket instance mapping)
     const analyzingJobs = new Map();
 
     /**
@@ -19,11 +22,13 @@
     }
 
     /**
-     * Check analysis status for a job
+     * Check analysis status for a job (DEPRECATED - use WebSocket instead)
+     * @deprecated Use analysis-websocket.js instead
      * @param {string} jobId - The job ID to check
      * @returns {Promise<Object|null>} Status data or null
      */
     async function checkAnalysisStatus(jobId) {
+        console.warn('DEPRECATED: checkAnalysisStatus() is deprecated. Use analysis-websocket.js instead.');
         try {
             const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
                 method: 'GET',
@@ -44,7 +49,7 @@
     }
 
     /**
-     * Start progress tracking for a job analysis
+     * Start progress tracking for a job analysis using WebSocket
      * @param {string} jobId - The job ID to track
      */
     function startProgressTracking(jobId) {
@@ -54,28 +59,85 @@
             return;
         }
 
-        console.log('Starting progress tracking for job', jobId);
+        console.log('Starting WebSocket progress tracking for job', jobId);
 
+        // Check if AnalysisWebSocket is available
+        if (typeof window.AnalysisWebSocket !== 'function') {
+            console.warn('AnalysisWebSocket not available - falling back to polling for job', jobId);
+            // Fallback to polling if WebSocket is not available
+            startFallbackPolling(jobId);
+            return;
+        }
+
+        // Create WebSocket instance for this job
+        const ws = new window.AnalysisWebSocket();
+
+        // Set up callbacks
+        ws.onProgress(function(data) {
+            console.log('Progress update for job', jobId, ':', data);
+            const percentage = data.progress_percentage || 0;
+            updateJobProgress(jobId, percentage);
+        });
+
+        ws.onCompleted(function(data) {
+            console.log('Analysis completed for job', jobId);
+            stopProgressTracking(jobId);
+            window.location.reload();
+        });
+
+        ws.onCancelled(function(data) {
+            console.log('Analysis cancelled for job', jobId);
+            stopProgressTracking(jobId);
+            window.location.reload();
+        });
+
+        ws.onFailed(function(data) {
+            console.error('Analysis failed for job', jobId, ':', data.error_message);
+            stopProgressTracking(jobId);
+            window.location.reload();
+        });
+
+        ws.onStateChanged(function(state) {
+            console.log('WebSocket state changed for job', jobId, ':', state);
+            if (state === 'fallback_mode') {
+                console.log('WebSocket unavailable, using fallback polling');
+                startFallbackPolling(jobId);
+            }
+        });
+
+        // Connect to WebSocket
+        ws.connect(jobId);
+
+        // Store WebSocket instance
+        analyzingJobs.set(jobId, ws);
+    }
+
+    /**
+     * Fallback polling when WebSocket is unavailable (DEPRECATED)
+     * @deprecated Use WebSocket instead
+     * @param {string} jobId - The job ID to track
+     */
+    function startFallbackPolling(jobId) {
+        console.warn('DEPRECATED: Using fallback polling. WebSocket is recommended.');
+        
         const intervalId = setInterval(async () => {
             try {
                 const status = await checkAnalysisStatus(jobId);
 
                 if (status && status.status === 'processing') {
-                    // Update progress tag for this job
                     const percentage = status.progress_percentage || 0;
                     updateJobProgress(jobId, percentage);
                 } else if (status && (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled')) {
-                    // Stop tracking and reload the page
-                    console.log('Analysis completed/failed/cancelled for job', jobId, 'status:', status.status);
                     stopProgressTracking(jobId);
-                    window.location.reload(); // Refresh to show updated state
+                    clearInterval(intervalId);
+                    window.location.reload();
                 }
             } catch (error) {
-                console.error('Error in progress tracking for job', jobId, error);
+                console.error('Error in fallback polling for job', jobId, error);
             }
-        }, 6000); // Poll every 6 seconds (10 requests/minute, within 600/hour limit)
+        }, 6000);
 
-        analyzingJobs.set(jobId, intervalId);
+        analyzingJobs.set(jobId, { intervalId: intervalId, isFallback: true });
     }
 
     /**
@@ -83,11 +145,18 @@
      * @param {string} jobId - The job ID to stop tracking
      */
     function stopProgressTracking(jobId) {
-        const intervalId = analyzingJobs.get(jobId);
-        if (intervalId) {
-            clearInterval(intervalId);
+        const wsOrInterval = analyzingJobs.get(jobId);
+        if (wsOrInterval) {
+            if (wsOrInterval.close && typeof wsOrInterval.close === 'function') {
+                // It's a WebSocket instance
+                wsOrInterval.close();
+                console.log('Stopped WebSocket tracking for job', jobId);
+            } else if (wsOrInterval.intervalId) {
+                // It's a fallback polling interval
+                clearInterval(wsOrInterval.intervalId);
+                console.log('Stopped fallback polling for job', jobId);
+            }
             analyzingJobs.delete(jobId);
-            console.log('Stopped progress tracking for job', jobId);
         }
     }
 
@@ -106,6 +175,8 @@
                 textSpan.textContent = 'Analyzing... ' + percentage + '%';
             }
             console.log('Updated progress for job', jobId, 'to', percentage + '%');
+        } else {
+            console.log('Progress tag not found for job', jobId);
         }
     }
 
@@ -119,42 +190,11 @@
         if (progressTag) {
             const jobId = progressTag.getAttribute('data-job-id');
             if (jobId && !analyzingJobs.has(jobId)) {
-                console.log('Resuming progress tracking for job', jobId);
+                console.log('Resuming WebSocket progress tracking for job', jobId);
                 startProgressTracking(jobId);
             }
         }
     }
-
-    // Initialize progress tracking on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(() => {
-            initProgressTracking();
-        }, 100);
-        
-        // Set up rerun analysis button handler
-        const rerunBtn = document.getElementById('rerun-analysis-btn');
-        if (rerunBtn) {
-            rerunBtn.addEventListener('click', function() {
-                const jobId = this.dataset.jobId;
-                if (jobId && confirm('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.')) {
-                    rerunAnalysis(jobId);
-                }
-            });
-        }
-        
-        // Set up cancel analysis button handler
-        const cancelBtn = document.getElementById('cancel-analysis-btn');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', function() {
-                const jobId = this.dataset.jobId;
-                if (!jobId) {
-                    console.error('Cancel button missing data-job-id attribute');
-                    return;
-                }
-                cancelAnalysis(jobId);
-            });
-        }
-    });
 
     /**
      * Re-run AI analysis for a job
@@ -181,10 +221,9 @@
             const data = await response.json();
 
             if (data.success) {
-                // Start progress tracking
-                startProgressTracking(jobId);
-
+                console.log('Re-run analysis started for job', jobId);
                 // Reload page to show progress tag
+                // WebSocket will auto-initialize and track progress on page load
                 window.location.reload();
             } else {
                 const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to re-run analysis';
@@ -222,6 +261,7 @@
             const data = await response.json();
 
             if (data.success) {
+                console.log('Analysis cancelled for job', jobId);
                 alert(data.data.message || 'Analysis cancelled successfully.');
 
                 // Stop progress tracking
@@ -242,8 +282,41 @@
         }
     }
 
-    // Expose functions globally for toolbar use
+    // Initialize event handlers on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize progress tracking for jobs already in progress
+        setTimeout(() => {
+            initProgressTracking();
+        }, 100);
+
+        // Set up rerun analysis button handler
+        const rerunBtn = document.getElementById('rerun-analysis-btn');
+        if (rerunBtn) {
+            rerunBtn.addEventListener('click', function() {
+                const jobId = this.dataset.jobId;
+                if (jobId && confirm('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.')) {
+                    rerunAnalysis(jobId);
+                }
+            });
+        }
+
+        // Set up cancel analysis button handler
+        const cancelBtn = document.getElementById('cancel-analysis-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                const jobId = this.dataset.jobId;
+                if (!jobId) {
+                    console.error('Cancel button missing data-job-id attribute');
+                    return;
+                }
+                cancelAnalysis(jobId);
+            });
+        }
+    });
+
+    // Expose functions globally for external use
     window.startProgressTracking = startProgressTracking;
+    window.stopProgressTracking = stopProgressTracking;
     window.initProgressTracking = initProgressTracking;
     window.rerunAnalysis = rerunAnalysis;
     window.cancelAnalysis = cancelAnalysis;
