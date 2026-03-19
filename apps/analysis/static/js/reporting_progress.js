@@ -22,6 +22,83 @@
     }
 
     /**
+     * Show message in modal (reuses job_detail.html modal if available)
+     * @param {string} title - Modal title
+     * @param {string} message - Modal message
+     */
+    function showMessageModal(title, message) {
+        // Try to use the global message modal first
+        const modal = document.getElementById('message-modal');
+        const titleEl = document.getElementById('message-modal-title');
+        const messageEl = document.getElementById('message-modal-message');
+
+        if (modal && titleEl && messageEl) {
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+        } else {
+            // Fallback to alert if modal not found
+            console.warn('Message modal not found, using alert');
+            // Use setTimeout to avoid blocking the UI
+            setTimeout(() => {
+                alert(title + ': ' + message);
+            }, 100);
+        }
+    }
+
+    /**
+     * Close message modal
+     */
+    function closeMessageModal() {
+        const modal = document.getElementById('message-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    /**
+     * Show confirmation modal
+     * @param {string} message - Confirmation message
+     * @param {Function} onConfirm - Callback function when confirmed
+     * @param {string} title - Modal title (optional, default 'Confirm')
+     */
+    function showConfirmModal(message, onConfirm, title) {
+        const modal = document.getElementById('confirm-modal');
+        const titleEl = document.getElementById('confirm-modal-title');
+        const messageEl = document.getElementById('confirm-modal-message');
+        const cancelBtn = document.getElementById('confirm-modal-cancel');
+        const confirmBtn = document.getElementById('confirm-modal-confirm');
+        
+        if (modal && titleEl && messageEl && cancelBtn && confirmBtn) {
+            titleEl.textContent = title || 'Confirm';
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+            
+            // Remove old event listeners to prevent duplicates
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            
+            // Add new event listeners
+            newCancelBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+            });
+            
+            newConfirmBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+                if (onConfirm) onConfirm();
+            });
+        } else {
+            // Fallback to confirm if modal not found
+            console.warn('Confirmation modal not found, using confirm');
+            if (confirm(message)) {
+                if (onConfirm) onConfirm();
+            }
+        }
+    }
+
+    /**
      * Check analysis status for a job (DEPRECATED - use WebSocket instead)
      * @deprecated Use analysis-websocket.js instead
      * @param {string} jobId - The job ID to check
@@ -237,16 +314,19 @@
 
             if (data.success) {
                 console.log('Re-run analysis started for job', jobId);
-                // Reload page to show progress tag
-                // WebSocket will auto-initialize and track progress on page load
+                
+                // Reload page immediately to show progress tag and cancel button
+                // The backend sets analysis_rerunning=True when the task starts
+                // After reload, initProgressTracking() will find the tag and start WebSocket tracking
+                // The WebSocket will receive real-time progress updates
                 window.location.reload();
             } else {
                 const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to re-run analysis';
-                alert('Error: ' + errorMsg);
+                showMessageModal('Error', errorMsg);
             }
         } catch (error) {
             console.error('Error re-running analysis:', error);
-            alert('Failed to re-run analysis. Please try again.');
+            showMessageModal('Error', 'Failed to re-run analysis. Please try again.');
         }
     }
 
@@ -255,46 +335,46 @@
      * @param {string} jobId - The job ID to cancel analysis for
      */
     async function cancelAnalysis(jobId) {
-        if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) return;
+        showConfirmModal('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.', async function() {
+            try {
+                const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken(),
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'
+                });
 
-        try {
-            const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCsrfToken(),
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Cancel analysis request failed:', response.status, errorText);
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Cancel analysis request failed:', response.status, errorText);
-                throw new Error(`Request failed with status ${response.status}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    console.log('Analysis cancelled for job', jobId);
+                    showMessageModal('Success', data.data.message || 'Analysis cancelled successfully.');
+
+                    // Stop progress tracking
+                    stopProgressTracking(jobId);
+
+                    // Wait a moment to ensure cancellation flag is set in Redis
+                    // Then reload to get fresh data from server
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to cancel analysis';
+                    showMessageModal('Error', errorMsg);
+                }
+            } catch (error) {
+                console.error('Error cancelling analysis:', error);
+                showMessageModal('Error', 'Failed to cancel analysis. Please try again.');
             }
-
-            const data = await response.json();
-
-            if (data.success) {
-                console.log('Analysis cancelled for job', jobId);
-                alert(data.data.message || 'Analysis cancelled successfully.');
-
-                // Stop progress tracking
-                stopProgressTracking(jobId);
-
-                // Wait a moment to ensure cancellation flag is set in Redis
-                // Then reload to get fresh data from server
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            } else {
-                const errorMsg = data.error && data.error.message ? data.error.message : 'Failed to cancel analysis';
-                alert('Error: ' + errorMsg);
-            }
-        } catch (error) {
-            console.error('Error cancelling analysis:', error);
-            alert('Failed to cancel analysis. Please try again.');
-        }
+        });
     }
 
     // Initialize event handlers on page load
@@ -309,8 +389,10 @@
         if (rerunBtn) {
             rerunBtn.addEventListener('click', function() {
                 const jobId = this.dataset.jobId;
-                if (jobId && confirm('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.')) {
-                    rerunAnalysis(jobId);
+                if (jobId) {
+                    showConfirmModal('Are you sure you want to re-run the AI analysis? This will delete all previous results and start fresh. This action cannot be undone.', function() {
+                        rerunAnalysis(jobId);
+                    });
                 }
             });
         }
@@ -335,5 +417,6 @@
     window.initProgressTracking = initProgressTracking;
     window.rerunAnalysis = rerunAnalysis;
     window.cancelAnalysis = cancelAnalysis;
+    window.closeMessageModal = closeMessageModal;
 
 })();

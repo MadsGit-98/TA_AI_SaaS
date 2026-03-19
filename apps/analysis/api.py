@@ -34,6 +34,7 @@ from services.ai_analysis_service import (
     get_analysis_progress,
     check_cancellation_flag,
     clear_cancellation_flag,
+    update_analysis_progress,
 )
 
 logger = logging.getLogger(__name__)
@@ -790,9 +791,13 @@ def rerun_analysis(request, job_id):
         # Task dispatched successfully - now safe to delete previous results
         previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
         AIAnalysisResult.objects.filter(job_listing=job).delete()
-        
+
         # Set analysis_in_progress flag to keep state consistent with initiate_analysis
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
+        
+        # Initialize Redis progress tracking synchronously so view detects it immediately
+        # This ensures the progress tag appears after page reload
+        update_analysis_progress(str(job_id), 0, applicant_count)
 
         return Response({
             'success': True,
