@@ -28,6 +28,7 @@ from services.ai_analysis_service import (
     update_analysis_progress,
     clear_cancellation_flag,
     clear_analysis_progress,
+    get_analysis_progress,
 )
 import uuid
 

@@ -101,6 +101,15 @@
             console.log('WebSocket state changed for job', jobId, ':', state);
             if (state === 'fallback_mode') {
                 console.log('WebSocket unavailable, using fallback polling');
+                // Close the existing WebSocket before starting fallback polling
+                const existingWs = analyzingJobs.get(jobId);
+                if (existingWs && existingWs.close && typeof existingWs.close === 'function') {
+                    existingWs.close();
+                    console.log('Closed WebSocket for job', jobId, 'before fallback');
+                }
+                // Remove the old WebSocket from the map
+                analyzingJobs.delete(jobId);
+                // Start fallback polling
                 startFallbackPolling(jobId);
             }
         });

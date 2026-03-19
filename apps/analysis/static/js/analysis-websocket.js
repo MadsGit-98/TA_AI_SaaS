@@ -492,12 +492,12 @@
         
         // Connect to WebSocket
         ws.connect(jobId);
-        
+
         // Store WebSocket instance globally
         window.analysisWebSocket = ws;
-        
-        // Set global flag
-        window.analysisWebSocketActive = true;
+
+        // Note: window.analysisWebSocketActive will be set by onStateChanged callback
+        // when the WebSocket actually reaches the 'connected' state
     }
 
     // Initialize when DOM is ready

@@ -144,7 +144,7 @@
 
     {# Pagination #}
     {% if page_obj %}
-    <div class="flex justify-between items-center mt-6 p-4">
+    <div class="flex justify-between items-center mt-6 p-4" data-pagination-controls>
         <span class="text-sm text-secondary-text">
             Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
         </span>
