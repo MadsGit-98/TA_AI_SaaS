@@ -15,20 +15,93 @@
     }
 
     /**
+     * Show message in modal
+     * @param {string} title - Modal title
+     * @param {string} message - Modal message
+     */
+    function showMessageModal(title, message) {
+        const modal = document.getElementById('message-modal');
+        const titleEl = document.getElementById('message-modal-title');
+        const messageEl = document.getElementById('message-modal-message');
+        
+        if (modal && titleEl && messageEl) {
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+        } else {
+            // Fallback to alert if modal not found
+            console.warn('Message modal not found, using alert');
+            alert(message);
+        }
+    }
+
+    /**
+     * Close message modal
+     */
+    function closeMessageModal() {
+        const modal = document.getElementById('message-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    /**
+     * Show confirmation modal
+     * @param {string} message - Confirmation message
+     * @param {Function} onConfirm - Callback function when confirmed
+     * @param {string} title - Modal title (optional, default 'Confirm')
+     */
+    function showConfirmModal(message, onConfirm, title) {
+        const modal = document.getElementById('confirm-modal');
+        const titleEl = document.getElementById('confirm-modal-title');
+        const messageEl = document.getElementById('confirm-modal-message');
+        const cancelBtn = document.getElementById('confirm-modal-cancel');
+        const confirmBtn = document.getElementById('confirm-modal-confirm');
+        
+        if (modal && titleEl && messageEl && cancelBtn && confirmBtn) {
+            titleEl.textContent = title || 'Confirm';
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+            
+            // Remove old event listeners to prevent duplicates
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            
+            // Add new event listeners
+            newCancelBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+            });
+            
+            newConfirmBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+                if (onConfirm) onConfirm();
+            });
+        } else {
+            // Fallback to confirm if modal not found
+            console.warn('Confirmation modal not found, using confirm');
+            if (confirm(message)) {
+                if (onConfirm) onConfirm();
+            }
+        }
+    }
+
+    /**
      * Copy application link to clipboard
      * @param {string} jobId - The job ID to construct the application link
      */
     function copyApplicationLink(jobId) {
         if (!jobId) {
-            alert('No application link available');
+            showMessageModal('Error', 'No application link available');
             return;
         }
         var fullLink = window.location.origin + '/apply/' + jobId;
         navigator.clipboard.writeText(fullLink).then(function() {
-            alert('Application link copied to clipboard!');
+            showMessageModal('Success', 'Application link copied to clipboard!');
         }).catch(function(err) {
             console.error('Failed to copy link:', err);
-            alert('Failed to copy link');
+            showMessageModal('Error', 'Failed to copy link');
         });
     }
 
@@ -63,7 +136,7 @@
         // Validate JOB_DETAIL_CONFIG exists and has jobId
         if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
             console.error('Job ID not found in JOB_DETAIL_CONFIG');
-            alert('Error: Job information is not available. Please refresh the page and try again.');
+            showMessageModal('Error', 'Job information is not available. Please refresh the page and try again.');
             return;
         }
 
@@ -90,12 +163,12 @@
                 // WebSocket will auto-initialize and track progress via analysis-websocket.js
                 window.location.reload();
             } else {
-                alert('Error: ' + (data.error?.message || 'Failed to re-run analysis'));
+                showMessageModal('Error', data.error?.message || 'Failed to re-run analysis');
             }
         })
         .catch(function(error) {
             console.error('Error re-running analysis:', error);
-            alert('Failed to re-run analysis. Please try again.');
+            showMessageModal('Error', 'Failed to re-run analysis. Please try again.');
         });
     }
 
@@ -106,7 +179,7 @@
         // Validate JOB_DETAIL_CONFIG exists and has jobId
         if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
             console.error('Job ID not found in JOB_DETAIL_CONFIG');
-            alert('Error: Job information is not available. Please refresh the page and try again.');
+            showMessageModal('Error', 'Job information is not available. Please refresh the page and try again.');
             return;
         }
 
@@ -129,12 +202,12 @@
                 // WebSocket will auto-initialize and track progress via analysis-websocket.js
                 window.location.reload();
             } else {
-                alert('Error: ' + (data.error?.message || 'Failed to start analysis'));
+                showMessageModal('Error', data.error?.message || 'Failed to start analysis');
             }
         })
         .catch(function(error) {
             console.error('Error initiating analysis:', error);
-            alert('Failed to start analysis. Please try again.');
+            showMessageModal('Error', 'Failed to start analysis. Please try again.');
         });
     }
 
@@ -145,44 +218,42 @@
         // Validate JOB_DETAIL_CONFIG exists and has jobId
         if (!window.JOB_DETAIL_CONFIG || !window.JOB_DETAIL_CONFIG.jobId) {
             console.error('Job ID not found in JOB_DETAIL_CONFIG');
-            alert('Error: Job information is not available. Please refresh the page and try again.');
+            showMessageModal('Error', 'Job information is not available. Please refresh the page and try again.');
             return;
         }
 
         var jobId = window.JOB_DETAIL_CONFIG.jobId;
 
-        if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) {
-            return;
-        }
+        showConfirmModal('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.', function() {
+            fetch('/api/analysis/jobs/' + jobId + '/analysis/cancel/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            })
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.success) {
+                    // Stop progress tracking
+                    stopProgressTracking(jobId);
 
-        fetch('/api/analysis/jobs/' + jobId + '/analysis/cancel/', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include'
-        })
-        .then(function(response) {
-            return response.json();
-        })
-        .then(function(data) {
-            if (data.success) {
-                // Stop progress tracking
-                stopProgressTracking(jobId);
-                
-                // Wait a moment to ensure cancellation flag is set in Redis
-                // Then reload to get fresh data from server
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            } else {
-                alert('Error: ' + (data.error?.message || 'Failed to cancel analysis'));
-            }
-        })
-        .catch(function(error) {
-            console.error('Error cancelling analysis:', error);
-            alert('Failed to cancel analysis. Please try again.');
+                    // Wait a moment to ensure cancellation flag is set in Redis
+                    // Then reload to get fresh data from server
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    showMessageModal('Error', data.error?.message || 'Failed to cancel analysis');
+                }
+            })
+            .catch(function(error) {
+                console.error('Error cancelling analysis:', error);
+                showMessageModal('Error', 'Failed to cancel analysis. Please try again.');
+            });
         });
     }
 
@@ -259,6 +330,7 @@
     // Expose functions globally (for potential external use)
     window.openRerunModal = openRerunModal;
     window.closeRerunModal = closeRerunModal;
+    window.closeMessageModal = closeMessageModal;
     window.confirmRerunAnalysis = confirmRerunAnalysis;
     window.initiateAnalysis = initiateAnalysis;
     window.cancelAnalysis = cancelAnalysis;

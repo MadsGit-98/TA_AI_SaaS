@@ -476,7 +476,18 @@
         
         ws.onFailed(function(data) {
             console.error('Analysis failed:', data);
-            alert('Analysis failed: ' + data.error_message);
+            // Show error in modal if available, otherwise console only
+            const modal = document.getElementById('message-modal');
+            const titleEl = document.getElementById('message-modal-title');
+            const messageEl = document.getElementById('message-modal-message');
+            
+            if (modal && titleEl && messageEl) {
+                titleEl.textContent = 'Analysis Failed';
+                messageEl.textContent = data.error_message || 'An unexpected error occurred';
+                modal.style.display = 'flex';
+            }
+            // Note: We don't use alert() here to avoid blocking the UI
+            // The modal will be shown but user can continue working
         });
         
         ws.onStateChanged(function(state) {
