@@ -19,16 +19,29 @@ function escapeHtml(text) {
  * @param {string} title - Modal title
  * @param {string} message - Modal message
  * @param {string} type - 'success' or 'error' (optional, for future styling)
+ * @param {Function} onClose - Optional callback function to execute after closing modal
  */
-function showMessageModal(title, message, type) {
+function showMessageModal(title, message, type, onClose) {
     const modal = document.getElementById('message-modal');
     const titleEl = document.getElementById('message-modal-title');
     const messageEl = document.getElementById('message-modal-message');
-    
+    const okBtn = modal?.querySelector('button');
+
     if (modal && titleEl && messageEl) {
         titleEl.textContent = title;
         messageEl.textContent = message;
         modal.style.display = 'flex';
+        
+        // Remove old event listeners to prevent duplicates
+        if (okBtn) {
+            const newOkBtn = okBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+            
+            // Add new event listener with callback
+            newOkBtn.addEventListener('click', function() {
+                closeMessageModal(onClose);
+            });
+        }
     } else {
         // Fallback to inline messages if modal not found
         console.warn('Message modal not found, using inline messages');
@@ -37,16 +50,25 @@ function showMessageModal(title, message, type) {
         } else {
             showSuccess(message);
         }
+        // Execute callback immediately if modal not available
+        if (onClose && typeof onClose === 'function') {
+            setTimeout(onClose, 2000);
+        }
     }
 }
 
 /**
  * Close message modal
+ * @param {Function} onClose - Optional callback function to execute after closing modal
  */
-function closeMessageModal() {
+function closeMessageModal(onClose) {
     const modal = document.getElementById('message-modal');
     if (modal) {
         modal.style.display = 'none';
+        // Execute callback if provided
+        if (onClose && typeof onClose === 'function') {
+            onClose();
+        }
     }
 }
 
@@ -134,10 +156,24 @@ function createJobElement(job, container) {
     // Left side content
     const leftSide = document.createElement('div');
 
+    // Title and applicant count container
+    const titleContainer = document.createElement('div');
+    titleContainer.className = 'flex items-center gap-2 mb-2';
+
     const titleElement = document.createElement('h2');
     titleElement.className = 'text-xl font-semibold';
     titleElement.textContent = job.title;
-    leftSide.appendChild(titleElement);
+    titleContainer.appendChild(titleElement);
+
+    // Applicant count badge
+    const applicantCount = job.applicant_count || 0;
+    const applicantBadge = document.createElement('span');
+    applicantBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-code-block-bg text-primary-text';
+    applicantBadge.textContent = `${applicantCount} applicant${applicantCount !== 1 ? 's' : ''}`;
+    applicantBadge.title = `${applicantCount} applicant${applicantCount !== 1 ? 's' : ''} applied to this job`;
+    titleContainer.appendChild(applicantBadge);
+
+    leftSide.appendChild(titleContainer);
 
     const descElement = document.createElement('p');
     descElement.className = 'text-gray-600';
@@ -617,16 +653,20 @@ async function cancelAnalysis(jobId) {
                 showMessageModal('Success', data.data.message || 'Analysis cancellation requested.', 'success');
             } else {
                 const errorMessage = data.error ? data.error.message : 'Failed to cancel analysis';
-                showMessageModal('Error', `Error: ${errorMessage}`, 'error');
-                cancellingJobs.delete(jobId);
-                window.location.reload();
+                showMessageModal('Error', `Error: ${errorMessage}`, 'error', function() {
+                    // Reload page after user dismisses error modal
+                    cancellingJobs.delete(jobId);
+                    window.location.reload();
+                });
             }
         })
         .catch(error => {
             console.error('Error cancelling analysis:', error);
-            showMessageModal('Error', 'An error occurred while cancelling analysis.', 'error');
-            cancellingJobs.delete(jobId);
-            window.location.reload();
+            showMessageModal('Error', 'An error occurred while cancelling analysis.', 'error', function() {
+                // Reload page after user dismisses error modal
+                cancellingJobs.delete(jobId);
+                window.location.reload();
+            });
         });
     });
 }
