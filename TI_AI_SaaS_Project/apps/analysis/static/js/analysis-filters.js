@@ -94,8 +94,8 @@
             }
 
             // Update pagination
-            const oldPagination = document.querySelector('.flex.justify-between.items-center.mt-6');
-            const newPagination = doc.querySelector('.flex.justify-between.items-center.mt-6');
+            const oldPagination = document.querySelector('[data-pagination-controls]');
+            const newPagination = doc.querySelector('[data-pagination-controls]');
             if (oldPagination && newPagination) {
                 oldPagination.outerHTML = newPagination.outerHTML;
             }

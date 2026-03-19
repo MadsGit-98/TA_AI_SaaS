@@ -65,13 +65,13 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
 
         Args:
             job_id: UUID string of the job listing
-            
-        Raises:
-            PermissionError: If user is not authorized to access this job
+
+        Returns:
+            bool: True on successful subscription, False on any error/failure
         """
         from apps.jobs.models import JobListing
         from django.core.exceptions import ObjectDoesNotExist
-        
+
         # Authorization check: verify user has access to this job
         try:
             job = await JobListing.objects.aget(id=job_id)
@@ -83,7 +83,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                     'error_code': 'PERMISSION_DENIED',
                     'error_message': 'You do not have permission to access this job'
                 }))
-                return
+                return False
         except ObjectDoesNotExist:
             logger.warning(f"Job {job_id} not found for subscription by user {self.user_id}")
             await self.send(text_data=json.dumps({
@@ -91,7 +91,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 'error_code': 'JOB_NOT_FOUND',
                 'error_message': 'Job not found'
             }))
-            return
+            return False
         except Exception as e:
             logger.error(f"Error checking job authorization: {e}")
             await self.send(text_data=json.dumps({
@@ -99,8 +99,8 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 'error_code': 'INTERNAL_ERROR',
                 'error_message': 'Failed to verify job access'
             }))
-            return
-        
+            return False
+
         if not hasattr(self, 'subscribed_groups'):
             self.subscribed_groups = set()
 
@@ -113,6 +113,8 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             )
             self.subscribed_groups.add(group_name)
             logger.info(f"User {self.user_id} subscribed to job {job_id}")
+        
+        return True
     
     async def unsubscribe_from_job(self, job_id):
         """
@@ -134,7 +136,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         """
         Receive message from WebSocket - handles subscription requests.
-        
+
         Expected message format:
         {
             "type": "subscribe",
@@ -143,17 +145,19 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         """
         try:
             data = json.loads(text_data)
-            
+
             if data.get('type') == 'subscribe':
                 job_id = data.get('job_id')
                 if job_id:
-                    await self.subscribe_to_job(job_id)
-                    # Send acknowledgment
-                    await self.send(text_data=json.dumps({
-                        'type': 'subscribed',
-                        'job_id': job_id
-                    }))
-                    
+                    # Subscribe and only send ack if successful
+                    success = await self.subscribe_to_job(job_id)
+                    if success:
+                        # Send acknowledgment
+                        await self.send(text_data=json.dumps({
+                            'type': 'subscribed',
+                            'job_id': job_id
+                        }))
+
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON received: {text_data}")
         except Exception as e:

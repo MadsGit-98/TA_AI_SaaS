@@ -372,7 +372,7 @@
     // Global callback for WebSocket progress updates
     window.updateAnalysisProgress = function(data) {
         console.log('Received progress update:', data);
-        
+
         // Update AnalysisLoadingIndicator instance if it exists
         if (window.AnalysisLoadingIndicator && window.analysisLoadingIndicatorInstance) {
             window.analysisLoadingIndicatorInstance.updateProgress(
@@ -380,11 +380,12 @@
                 data.total_count
             );
         }
-        
+
         // Update progress tags (for dashboard/rerunning tag)
         const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
         progressTags.forEach(function(tag) {
-            const percentage = data.progress_percentage || Math.round((data.processed_count / data.total_count) * 100);
+            // Safe percentage calculation with proper null/NaN/Infinity handling
+            const percentage = data.progress_percentage ?? (Number(data.total_count) > 0 ? Math.round((Number(data.processed_count) / Number(data.total_count)) * 100) : 0);
             const textSpan = tag.querySelector('.rerun-text, .text-gray-900');
             if (textSpan) {
                 textSpan.textContent = 'Analyzing... ' + percentage + '%';
