@@ -33,6 +33,7 @@ class WorkerState(TypedDict):
     job_requirements: Dict[str, Any]  # Job requirements from retrieval_node
     classified_data: Dict[str, Any]
     relevance_assessment: Dict[str, Any]  # Relevance assessment from elimination_node
+    relevance_level: str  # Relevance level: 'high', 'partial', or 'low'
     scores: Dict[str, int]
     overall_score: int
     category: str
@@ -485,19 +486,23 @@ def elimination_node(state: WorkerState) -> dict:
     Elimination Node: Assess relevance of candidate profile to job requirements.
 
     This node uses LLM to evaluate whether the candidate's skills, education,
-    and experience are relevant to the job's domain and requirements. If the
-    candidate is fundamentally mismatched (e.g., accounting candidate for a
-    software engineering role), this node flags them for automatic "Mismatched"
-    categorization.
+    and experience are relevant to the job's domain and requirements.
+
+    Relevance Levels:
+    - 'high': Direct domain match - candidate's background aligns well with job requirements
+    - 'partial': Transferable skills - candidate has some relevant skills/experience but from
+      a different domain (e.g., finance candidate for tech role with transferable analytical skills)
+    - 'low': Fundamental mismatch - candidate's background is in a completely different field
 
     Args:
         state: Current worker state
 
     Returns:
         Updated state with relevance_assessment dict containing:
-        - is_relevant: bool (True if candidate is relevant to job)
+        - relevance_level: str ('high', 'partial', or 'low')
         - relevance_score: int 0-100 (higher = more relevant)
         - reason: str (explanation of relevance assessment)
+        - is_relevant: bool (derived from relevance_level for backward compatibility)
     """
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
@@ -525,13 +530,15 @@ def elimination_node(state: WorkerState) -> dict:
         if not job_requirements:
             missing.append('job_requirements')
         logger.warning(f"[Elimination] Missing classified data or job requirements for applicant {applicant_id}. Missing: {', '.join(missing)}. This may indicate an issue with previous nodes.")
-        # Default to relevant if we can't assess
+        # Default to high relevance if we can't assess
         return {
             'relevance_assessment': {
                 'is_relevant': True,
+                'relevance_level': 'high',
                 'relevance_score': 100,
                 'reason': 'Unable to assess relevance due to missing data',
-            }
+            },
+            'relevance_level': 'high',
         }
 
     try:
@@ -550,8 +557,8 @@ def elimination_node(state: WorkerState) -> dict:
         experience = classified_data.get('professional_experience', {})
 
         elimination_prompt = f"""
-You are a job-candidate relevance assessor. Your task is to determine if the candidate's 
-profile is fundamentally relevant to the job requirements. This is a domain/field relevance 
+You are a job-candidate relevance assessor. Your task is to determine if the candidate's
+profile is fundamentally relevant to the job requirements. This is a domain/field relevance
 check, not a quality assessment.
 
 Job Requirements:
@@ -579,17 +586,32 @@ Assess the following:
    (e.g., Software development experience for software jobs)
 
 Important Guidelines:
-- A candidate with ALL skills/experience/education in a completely different field should 
-  be marked as NOT relevant (e.g., Accounting/Finance background for a Software Engineering role)
-- A candidate with SOME transferable skills or related field should be marked as partially relevant
-- A candidate whose background directly aligns with the job domain should be marked as highly relevant
-- Focus on FIELD/DOMAIN relevance, not quality or seniority level
+Assign ONE of three relevance levels based on the candidate's domain/field alignment:
+
+**HIGH Relevance (relevance_score 70-100):**
+- Candidate's skills, education, AND experience all align with this job's domain
+- Direct domain match (e.g., Software Engineer applying for Software Engineer role)
+- All or most required skills are present in the same field
+
+**PARTIAL Relevance (relevance_score 40-69):**
+- Candidate has SOME transferable skills but from a different domain
+- Education or experience is in a related but different field
+- Example: Finance professional with strong analytical skills applying for Data Analyst role
+- Example: Teacher with communication skills applying for Customer Success role
+- Candidate could potentially grow into the role but needs training
+
+**LOW Relevance (relevance_score 0-39):**
+- Candidate's skills/experience/education are ALL in a completely different field
+- Fundamental domain mismatch (e.g., Accounting background for Software Engineering role)
+- No transferable skills that would apply to this job type
+
+Focus on FIELD/DOMAIN relevance, not quality or seniority level.
 
 Output ONLY valid JSON in this exact format:
 {{
-  "is_relevant": true/false,
+  "relevance_level": "high" | "partial" | "low",
   "relevance_score": 0-100,
-  "reason": "Brief explanation of why the candidate is or isn't relevant to this job domain"
+  "reason": "Brief explanation of the candidate's relevance level and domain alignment"
 }}
 """
 
@@ -610,48 +632,87 @@ Output ONLY valid JSON in this exact format:
             logger.info(f"[Elimination] JSON parsed successfully for applicant {applicant_id}")
 
             # Validate and normalize the assessment
-            if 'is_relevant' not in relevance_assessment:
-                relevance_assessment['is_relevant'] = True
+            if 'relevance_level' not in relevance_assessment:
+                # Derive relevance_level from relevance_score if not provided
+                if 'relevance_score' in relevance_assessment:
+                    score = relevance_assessment['relevance_score']
+                    if score >= 70:
+                        relevance_assessment['relevance_level'] = 'high'
+                    elif score >= 40:
+                        relevance_assessment['relevance_level'] = 'partial'
+                    else:
+                        relevance_assessment['relevance_level'] = 'low'
+                else:
+                    relevance_assessment['relevance_level'] = 'high'
+                    
             if 'relevance_score' not in relevance_assessment:
-                relevance_assessment['relevance_score'] = 100
+                # Default score based on relevance_level
+                level = relevance_assessment['relevance_level']
+                if level == 'high':
+                    relevance_assessment['relevance_score'] = 85
+                elif level == 'partial':
+                    relevance_assessment['relevance_score'] = 55
+                else:
+                    relevance_assessment['relevance_score'] = 20
             else:
                 # Clamp relevance_score to 0-100
                 relevance_assessment['relevance_score'] = max(0, min(100, int(relevance_assessment['relevance_score'])))
+                
             if 'reason' not in relevance_assessment:
                 relevance_assessment['reason'] = 'Relevance assessment completed'
 
-            # Enforce consistency: if relevance_score < 30, is_relevant must be False
-            if relevance_assessment['relevance_score'] < 30:
-                relevance_assessment['is_relevant'] = False
-            # If is_relevant is False, cap relevance_score at 40
-            elif not relevance_assessment['is_relevant']:
-                relevance_assessment['relevance_score'] = min(relevance_assessment['relevance_score'], 40)
+            # Enforce consistency between relevance_level and relevance_score
+            score = relevance_assessment['relevance_score']
+            level = relevance_assessment['relevance_level']
+            
+            # Adjust level if score is outside expected range
+            if score >= 70 and level != 'high':
+                relevance_assessment['relevance_level'] = 'high'
+            elif 40 <= score < 70 and level != 'partial':
+                relevance_assessment['relevance_level'] = 'partial'
+            elif score < 40 and level != 'low':
+                relevance_assessment['relevance_level'] = 'low'
+            
+            # Adjust score if level implies a different range
+            if level == 'high' and score < 70:
+                relevance_assessment['relevance_score'] = 70
+            elif level == 'partial' and (score < 40 or score >= 70):
+                relevance_assessment['relevance_score'] = max(40, min(69, score))
+            elif level == 'low' and score >= 40:
+                relevance_assessment['relevance_score'] = min(39, score)
 
-            logger.info(f"[Elimination] Relevance assessment: is_relevant={relevance_assessment['is_relevant']}, score={relevance_assessment['relevance_score']}")
+            # Derive is_relevant for backward compatibility
+            relevance_assessment['is_relevant'] = relevance_assessment['relevance_level'] in ['high', 'partial']
+
+            logger.info(f"[Elimination] Relevance assessment: level={relevance_assessment['relevance_level']}, score={relevance_assessment['relevance_score']}, is_relevant={relevance_assessment['is_relevant']}")
 
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             logger.warning(f"[Elimination] Failed to parse relevance JSON for applicant {applicant_id}: {e}")
-            # Default to relevant if parsing fails
+            # Default to high relevance if parsing fails
             relevance_assessment = {
                 'is_relevant': True,
+                'relevance_level': 'high',
                 'relevance_score': 100,
-                'reason': 'Failed to parse relevance assessment, defaulting to relevant',
+                'reason': 'Failed to parse relevance assessment, defaulting to high relevance',
             }
 
         logger.info(f"[Elimination] Completed for applicant {applicant_id}")
         return {
             'relevance_assessment': relevance_assessment,
+            'relevance_level': relevance_assessment['relevance_level'],
         }
 
     except Exception as e:
         logger.error(f"[Elimination] Exception for applicant {applicant_id}: {e}", exc_info=True)
-        # Default to relevant if assessment fails
+        # Default to high relevance if assessment fails
         return {
             'relevance_assessment': {
                 'is_relevant': True,
+                'relevance_level': 'high',
                 'relevance_score': 100,
                 'reason': f'Relevance assessment failed: {str(e)}',
-            }
+            },
+            'relevance_level': 'high',
         }
 
 
@@ -665,8 +726,10 @@ def scoring_node(state: WorkerState) -> dict:
     - Experience
     - Supplemental Information
 
-    If the elimination node determined the candidate is not relevant to the job domain,
-    scores are capped at 30 to guarantee a "Mismatched" category.
+    Score capping based on relevance level:
+    - 'high': No cap - LLM scores as normal (can achieve any category)
+    - 'partial': Soft cap at 70 - allows Partial Match (50-69) but prevents Best Match
+    - 'low': Hard cap at 30 - ensures Mismatched category (0-49)
 
     Args:
         state: Current worker state
@@ -677,10 +740,12 @@ def scoring_node(state: WorkerState) -> dict:
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
     relevance_assessment = state.get('relevance_assessment', {})
+    relevance_level = state.get('relevance_level', 'high')
     applicant = state.get('applicant')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
     logger.info(f"[Scoring] Starting for applicant {applicant_id}")
+    logger.info(f"[Scoring] Relevance level: {relevance_level}")
 
     if not classified_data or not job_requirements:
         logger.warning(f"[Scoring] Missing classified data or job requirements for applicant {applicant_id}")
@@ -689,22 +754,26 @@ def scoring_node(state: WorkerState) -> dict:
             'error_message': 'Missing classified data or job requirements',
         }
 
-    # Check if candidate was marked as not relevant by elimination node
-    is_relevant = relevance_assessment.get('is_relevant', True)
-    relevance_score = relevance_assessment.get('relevance_score', 100)
-    relevance_reason = relevance_assessment.get('reason', '')
-
-    if not is_relevant:
-        logger.info(f"[Scoring] Candidate marked as not relevant for applicant {applicant_id}. Capping scores at 30.")
-        # Cap scores at 30 for irrelevant candidates (guarantees "Mismatched" category)
+    # Determine score cap based on relevance level
+    if relevance_level == 'low':
+        # Hard cap at 30 for low relevance - guarantees Mismatched category
+        logger.info(f"[Scoring] Candidate has LOW relevance for applicant {applicant_id}. Capping scores at 30.")
         return {
             'scores': {
-                'education': min(30, relevance_score),
-                'skills': min(30, relevance_score),
-                'experience': min(30, relevance_score),
-                'supplemental': min(30, relevance_score),
+                'education': 30,
+                'skills': 30,
+                'experience': 30,
+                'supplemental': 30,
             }
         }
+    elif relevance_level == 'partial':
+        # Soft cap at 70 for partial relevance - allows Partial Match (50-69) but prevents Best Match (90+)
+        # This ensures candidates with transferable skills can still score in the Partial Match range
+        logger.info(f"[Scoring] Candidate has PARTIAL relevance for applicant {applicant_id}. Will apply soft cap at 70 after LLM scoring.")
+        # Continue to LLM scoring, then apply cap
+    else:
+        # High relevance - no cap
+        logger.info(f"[Scoring] Candidate has HIGH relevance for applicant {applicant_id}. No score cap applied.")
 
     try:
         llm = get_llm(temperature=0.1, format="json")
@@ -774,6 +843,14 @@ Output ONLY valid JSON in this exact format:
                     logger.warning(f"[Scoring] Missing {key} score, defaulting to 0")
                 else:
                     scores[key] = max(0, min(100, int(scores[key])))
+
+            # Apply soft cap for partial relevance candidates
+            if relevance_level == 'partial':
+                logger.info(f"[Scoring] Applying soft cap at 70 for partial relevance candidate {applicant_id}")
+                for key in scores:
+                    if scores[key] > 70:
+                        scores[key] = 70
+                logger.info(f"[Scoring] Scores after cap: {scores}")
 
             logger.info(f"[Scoring] Scores validated: {scores}")
         except (json.JSONDecodeError, ValueError, KeyError) as e:
@@ -858,8 +935,10 @@ def justification_node(state: WorkerState) -> dict:
     - Each scored metric (Education, Skills, Experience, Supplemental)
     - Overall category assignment
 
-    If the candidate was marked as not relevant by the elimination node,
-    the justifications will reflect this in the overall justification.
+    The justifications reflect the candidate's relevance level:
+    - 'high': Emphasize strong domain alignment
+    - 'partial': Note transferable skills and potential for growth with training
+    - 'low': Explain fundamental domain mismatch
 
     Args:
         state: Current worker state
@@ -873,10 +952,12 @@ def justification_node(state: WorkerState) -> dict:
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
     relevance_assessment = state.get('relevance_assessment', {})
+    relevance_level = state.get('relevance_level', 'high')
     applicant = state.get('applicant')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
 
     logger.info(f"[Justification] Starting for applicant {applicant_id}")
+    logger.info(f"[Justification] Relevance level: {relevance_level}")
 
     if not scores or not category:
         logger.warning(f"[Justification] Missing scores or category for applicant {applicant_id}")
@@ -886,20 +967,25 @@ def justification_node(state: WorkerState) -> dict:
         }
 
     # Get relevance assessment info
-    is_relevant = relevance_assessment.get('is_relevant', True)
     relevance_reason = relevance_assessment.get('reason', '')
 
     try:
         llm = get_llm(temperature=0.3, format="json")
         logger.info(f"[Justification] LLM initialized for applicant {applicant_id}")
 
-        # Add relevance context to the prompt
+        # Add relevance context to the prompt based on relevance level
         relevance_context = ""
-        if not is_relevant:
+        if relevance_level == 'low':
             relevance_context = f"""
-IMPORTANT: This candidate was assessed as NOT RELEVANT to the job domain.
+IMPORTANT: This candidate was assessed as having LOW RELEVANCE to the job domain.
 Relevance Assessment: {relevance_reason}
-This mismatch is the primary reason for the low scores and "Mismatched" category.
+This fundamental mismatch is the primary reason for the low scores and "Mismatched" category.
+"""
+        elif relevance_level == 'partial':
+            relevance_context = f"""
+NOTE: This candidate was assessed as having PARTIAL RELEVANCE to the job domain.
+Relevance Assessment: {relevance_reason}
+The candidate has transferable skills but may need training to fully meet job requirements.
 """
 
         justification_prompt = f"""
@@ -914,17 +1000,18 @@ Candidate Scores:
 - Supplemental: {scores.get('supplemental', 0)}/100
 - Overall: {overall_score}/100
 - Category: {category}
+- Relevance Level: {relevance_level}
 {relevance_context}
 Candidate Profile Summary:
 {classified_data}
 
 Provide a 1-2 sentence justification for EACH metric and an overall justification:
 
-Education Justification: [Why this score? If not relevant, mention the field mismatch]
-Skills Justification: [Why this score? If not relevant, mention the skills are in a different domain]
-Experience Justification: [Why this score? If not relevant, mention the experience is in a different field]
-Supplemental Justification: [Why this score?]
-Overall Justification: [Why this category? If not relevant, emphasize the domain mismatch as the primary reason]
+Education Justification: [Why this score? Mention field/degree relevance. For partial relevance, note transferable education. For low relevance, note field mismatch.]
+Skills Justification: [Why this score? Mention skill alignment. For partial relevance, note transferable skills. For low relevance, note skills are in different domain.]
+Experience Justification: [Why this score? Mention experience alignment. For partial relevance, note related experience. For low relevance, note experience is in different field.]
+Supplemental Justification: [Why this score? Consider projects, awards, volunteer work.]
+Overall Justification: [Why this category? For low relevance, emphasize domain mismatch. For partial relevance, note potential with training. For high relevance, emphasize strong alignment.]
 
 Output ONLY valid JSON in this exact format:
 {{
@@ -958,11 +1045,19 @@ Output ONLY valid JSON in this exact format:
         except json.JSONDecodeError:
             logger.warning(f"[Justification] Failed to parse justification JSON for applicant {applicant_id}")
             # Include relevance reason in fallback justifications
-            if not is_relevant:
+            if relevance_level == 'low':
                 justifications = {
                     'education': f"Score: {scores.get('education', 0)}/100 - Field/degree not relevant to job requirements.",
                     'skills': f"Score: {scores.get('skills', 0)}/100 - Skills are in a different domain than required.",
                     'experience': f"Score: {scores.get('experience', 0)}/100 - Work experience is not aligned with job field.",
+                    'supplemental': f"Score: {scores.get('supplemental', 0)}/100",
+                    'overall': f"Overall: {overall_score}/100 - {category}. {relevance_reason}",
+                }
+            elif relevance_level == 'partial':
+                justifications = {
+                    'education': f"Score: {scores.get('education', 0)}/100 - Education shows some transferable knowledge but may need additional training.",
+                    'skills': f"Score: {scores.get('skills', 0)}/100 - Has transferable skills that could apply to this role with development.",
+                    'experience': f"Score: {scores.get('experience', 0)}/100 - Experience is in a related field with potential for growth.",
                     'supplemental': f"Score: {scores.get('supplemental', 0)}/100",
                     'overall': f"Overall: {overall_score}/100 - {category}. {relevance_reason}",
                 }
