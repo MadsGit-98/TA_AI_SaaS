@@ -8,12 +8,14 @@ This module contains:
 - analysis_status: Get analysis progress
 - analysis_results: Get all results for a job
 - analysis_result_detail: Get detailed result for specific applicant
+- get_applicant_resume: Get applicant's resume file info
 - cancel_analysis: Cancel running analysis
 - rerun_analysis: Re-run analysis
 - analysis_statistics: Get aggregate statistics
 """
 
 import logging
+import os
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -22,9 +24,10 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
-from apps.applications.models import ApplicationAnswer
+from apps.applications.models import ApplicationAnswer, Applicant
 from apps.analysis.tasks import run_ai_analysis
 from django.db.models import Avg, Count
 from services.ai_analysis_service import (
@@ -953,6 +956,80 @@ def analysis_result_detail(request, result_id):
 
     except Exception as e:
         logger.error(f"Error getting analysis result detail for {result_id}: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': 'An internal server error occurred'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([AnalysisResultDetailThrottle])
+def get_applicant_resume(request, applicant_id):
+    """
+    API endpoint to get applicant's resume file information.
+
+    GET /api/analysis/applicants/{applicant_id}/resume/
+
+    Returns the resume file URL and parsed text for viewing in the browser.
+    """
+    try:
+        applicant = get_object_or_404(
+            Applicant.objects.select_related('job_listing'),
+            id=applicant_id
+        )
+
+        # Authorization check: only job owner or staff can view resume
+        if applicant.job_listing.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view this applicant's resume.")
+
+        # Get resume file URL
+        resume_url = ''
+        if applicant.resume_file:
+            resume_url = applicant.resume_file.url
+
+        # Get file info
+        file_name = ''
+        file_type = ''
+        if applicant.resume_file:
+            file_name = os.path.basename(applicant.resume_file.name)
+            file_type = applicant.resume_file.content_type if hasattr(applicant.resume_file, 'content_type') else ''
+
+        return Response({
+            'success': True,
+            'data': {
+                'applicant_id': str(applicant.id),
+                'applicant_name': f"{applicant.first_name} {applicant.last_name}",
+                'resume_url': resume_url,
+                'file_name': file_name,
+                'file_type': file_type,
+                'parsed_text': applicant.resume_parsed_text or '',
+            }
+        })
+
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Applicant not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    except Exception as e:
+        logger.error(f"Error getting resume for applicant {applicant_id}: {e}", exc_info=True)
         return Response({
             'success': False,
             'error': {
