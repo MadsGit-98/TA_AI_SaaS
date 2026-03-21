@@ -72,6 +72,15 @@
             });
         });
 
+        // View resume buttons
+        document.querySelectorAll('.btn-view-resume').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const applicantId = this.dataset.applicantId;
+                const applicantName = this.dataset.applicantName;
+                openResumeModal(applicantId, applicantName);
+            });
+        });
+
         // Modal close button
         const modalClose = document.querySelector('.modal-close');
         if (modalClose) {
@@ -82,6 +91,16 @@
                 }
             });
         }
+
+        // Resume modal close buttons
+        document.querySelectorAll('.resume-modal-close').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const modal = document.getElementById('resume-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
 
         // Refresh button
         const refreshBtn = document.getElementById('refresh-results');
@@ -336,6 +355,125 @@
     }
 
     /**
+     * Open resume modal
+     * @param {string} applicantId - The applicant ID to fetch resume for
+     * @param {string} applicantName - The applicant's name for display
+     */
+    function openResumeModal(applicantId, applicantName) {
+        var modalBody = document.getElementById('resume-modal-body');
+        var modal = document.getElementById('resume-modal');
+        var titleName = document.getElementById('resume-applicant-name');
+        var downloadLink = document.getElementById('resume-download-link');
+
+        // Set applicant name in title
+        if (titleName) {
+            titleName.textContent = applicantName;
+        }
+
+        // Show loading state
+        if (modalBody) {
+            modalBody.innerHTML = '<div class="flex items-center justify-center h-full"><div class="text-center"><div class="animate-spin text-4xl text-primary-text mb-2">⟳</div><p class="text-secondary-text">Loading resume...</p></div></div>';
+        }
+
+        // Fetch resume data
+        fetch('/api/analysis/applicants/' + applicantId + '/resume/')
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.success) {
+                    // Update download link
+                    if (downloadLink && data.data.resume_url) {
+                        downloadLink.href = data.data.resume_url;
+                        downloadLink.style.display = 'inline-block';
+                    }
+
+                    // Display resume content
+                    var content = buildResumeContent(data.data);
+                    if (modalBody) {
+                        modalBody.innerHTML = content;
+                    }
+                    if (modal) {
+                        modal.style.display = 'flex';
+                    }
+                } else {
+                    var errorMsg = data.error && data.error.message ? data.error.message : 'Failed to load resume';
+                    if (modalBody) {
+                        modalBody.innerHTML = '<div class="p-6 text-center text-red-600"><p>Error: ' + escapeHtml(errorMsg) + '</p></div>';
+                    }
+                    if (modal) {
+                        modal.style.display = 'flex';
+                    }
+                }
+            })
+            .catch(function(error) {
+                console.error('Error loading resume:', error);
+                if (modalBody) {
+                    modalBody.innerHTML = '<div class="p-6 text-center text-red-600"><p>Error: Unable to load resume. Please try again.</p></div>';
+                }
+                if (modal) {
+                    modal.style.display = 'flex';
+                }
+            });
+    }
+
+    /**
+     * Build resume content HTML
+     * @param {Object} data - The resume data
+     * @returns {string} HTML string
+     */
+    function buildResumeContent(data) {
+        var resumeUrl = data.resume_url || '';
+        var parsedText = data.parsed_text || 'No parsed text available.';
+        var fileName = data.file_name || 'Resume';
+
+        // Check if PDF
+        var isPdf = resumeUrl.toLowerCase().includes('.pdf') || data.file_type === 'application/pdf';
+
+        if (isPdf && resumeUrl) {
+            return [
+                '<div class="resume-container h-full">',
+                '    <div class="text-center p-4 bg-code-block-bg border-b border-secondary-text">',
+                '        <p class="text-sm text-secondary-text">File: ' + escapeHtml(fileName) + '</p>',
+                '        <p class="text-xs text-secondary-text mt-1">PDF detected - displaying preview. Use Download button for full view.</p>',
+                '    </div>',
+                '    <iframe src="' + escapeHtml(resumeUrl) + '" class="w-full h-full border-0" title="Resume PDF Preview" aria-label="Resume PDF Preview"></iframe>',
+                '</div>'
+            ].join('\n');
+        } else if (resumeUrl) {
+            return [
+                '<div class="resume-container h-full">',
+                '    <div class="text-center p-4 bg-code-block-bg border-b border-secondary-text">',
+                '        <p class="text-sm text-secondary-text">File: ' + escapeHtml(fileName) + '</p>',
+                '    </div>',
+                '    <div class="p-6">',
+                '        <p class="text-secondary-text mb-4">This resume format cannot be previewed in the browser. Please use the Download button to view the file.</p>',
+                '        <h5 class="font-semibold text-primary-text mb-2">Parsed Text Content:</h5>',
+                '        <div class="bg-white p-4 rounded border border-secondary-text text-sm text-secondary-text whitespace-pre-wrap" style="max-height: 500px; overflow-y: auto;">',
+                '            ' + escapeHtml(parsedText),
+                '        </div>',
+                '    </div>',
+                '</div>'
+            ].join('\n');
+        } else {
+            // Fallback to parsed text only
+            return [
+                '<div class="resume-container h-full">',
+                '    <div class="p-6">',
+                '        <h5 class="font-semibold text-primary-text mb-2">Parsed Resume Text:</h5>',
+                '        <div class="bg-white p-4 rounded border border-secondary-text text-sm text-secondary-text whitespace-pre-wrap" style="max-height: 600px; overflow-y: auto;">',
+                '            ' + escapeHtml(parsedText),
+                '        </div>',
+                '    </div>',
+                '</div>'
+            ].join('\n');
+        }
+    }
+
+    /**
      * Close modal when clicking outside
      * @param {Event} event - Click event
      */
@@ -343,6 +481,12 @@
         const modal = document.getElementById('result-detail-modal');
         if (modal && event.target === modal) {
             modal.style.display = 'none';
+        }
+        
+        // Handle resume modal
+        const resumeModal = document.getElementById('resume-modal');
+        if (resumeModal && event.target === resumeModal) {
+            resumeModal.style.display = 'none';
         }
     }
 
@@ -366,7 +510,8 @@
 
     // Expose functions globally if needed
     window.AnalysisModule = {
-        openResultDetail: openResultDetail
+        openResultDetail: openResultDetail,
+        openResumeModal: openResumeModal
     };
     
     // Global callback for WebSocket progress updates
