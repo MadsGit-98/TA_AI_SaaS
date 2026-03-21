@@ -716,13 +716,13 @@ def level_assessment_node(state: WorkerState) -> dict:
             'total_experience_years': 0.0,
             'experience_gaps': [],
             'level_assessment': {
-                'experience_level_match': 'insufficient',
+                'experience_level_match': 'partial',
                 'candidate_years': 0.0,
                 'required_years': job_requirements.get('required_experience', 0),
                 'difference': 0.0,
-                'reason': 'Unable to assess - missing data',
+                'reason': 'Unable to assess - system error or missing data',
             },
-            'experience_level_match': 'insufficient',
+            'experience_level_match': 'partial',
         }
     
     try:
@@ -844,13 +844,13 @@ Output ONLY valid JSON in this exact format:
             'total_experience_years': 0.0,
             'experience_gaps': [],
             'level_assessment': {
-                'experience_level_match': 'insufficient',
+                'experience_level_match': 'partial',
                 'candidate_years': 0.0,
                 'required_years': required_experience,
                 'difference': 0.0,
-                'reason': f'Level assessment failed: {str(e)}',
+                'reason': 'Unable to assess - system error or missing data',
             },
-            'experience_level_match': 'insufficient',
+            'experience_level_match': 'partial',
         }
 
 
@@ -1068,7 +1068,7 @@ Output ONLY valid JSON in this exact format:
             # Enforce consistency between relevance_level and relevance_score
             score = relevance_assessment['relevance_score']
             level = relevance_assessment['relevance_level']
-            
+
             # Adjust level if score is outside expected range
             if score >= 70 and level != 'high':
                 relevance_assessment['relevance_level'] = 'high'
@@ -1076,13 +1076,16 @@ Output ONLY valid JSON in this exact format:
                 relevance_assessment['relevance_level'] = 'partial'
             elif score < 40 and level != 'low':
                 relevance_assessment['relevance_level'] = 'low'
-            
+
+            # Re-read level after potential mutation to ensure consistency
+            updated_level = relevance_assessment['relevance_level']
+
             # Adjust score if level implies a different range
-            if level == 'high' and score < 70:
+            if updated_level == 'high' and score < 70:
                 relevance_assessment['relevance_score'] = 70
-            elif level == 'partial' and (score < 40 or score >= 70):
+            elif updated_level == 'partial' and (score < 40 or score >= 70):
                 relevance_assessment['relevance_score'] = max(40, min(69, score))
-            elif level == 'low' and score >= 40:
+            elif updated_level == 'low' and score >= 40:
                 relevance_assessment['relevance_score'] = min(39, score)
 
             # Derive is_relevant for backward compatibility
