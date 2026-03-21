@@ -50,9 +50,11 @@ function showMessageModal(title, message, type, onClose) {
         } else {
             showSuccess(message);
         }
-        // Execute callback immediately if modal not available
+        // Execute callback after inline message completes
+        // Use same duration as showError (5000ms) or showSuccess (3000ms)
         if (onClose && typeof onClose === 'function') {
-            setTimeout(onClose, 2000);
+            const duration = type === 'error' ? 5000 : 3000;
+            setTimeout(onClose, duration);
         }
     }
 }
