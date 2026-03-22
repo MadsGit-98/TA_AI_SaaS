@@ -131,6 +131,7 @@ def run_ai_analysis(self, job_id: str, owner_id: str = None) -> Dict[str, Any]:
             'total_count': total_count,
             'cancelled': False,
             'owner_id': owner_id,
+            'sent_milestones': set(),  # Initialize empty set for tracking sent milestones
         }
 
         # Run the graph
