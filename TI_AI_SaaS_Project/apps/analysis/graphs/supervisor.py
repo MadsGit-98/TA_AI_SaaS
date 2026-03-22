@@ -37,6 +37,7 @@ class AnalysisState(TypedDict):
     total_count: int
     cancelled: bool
     current_index: int  # Index of current applicant being processed
+    sent_milestones: set  # Set of milestone percentages already sent (25, 50, 75, 90)
 
 
 def create_supervisor_graph():
@@ -158,9 +159,9 @@ def map_workers_node(state: AnalysisState) -> dict:
 
     # Process applicants concurrently
     new_results = []
-    
-    # Track which milestones have been sent to avoid duplicate notifications
-    sent_milestones = set()
+
+    # Get sent_milestones from state (persists across batch cycles to avoid duplicate notifications)
+    sent_milestones = state.get('sent_milestones', set())
 
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
@@ -190,6 +191,7 @@ def map_workers_node(state: AnalysisState) -> dict:
                     'processed_count': processed_count,
                     'current_index': current_index,
                     'cancelled': True,
+                    'sent_milestones': sent_milestones,
                 }
 
             try:
@@ -204,6 +206,7 @@ def map_workers_node(state: AnalysisState) -> dict:
                         'processed_count': processed_count + 1,
                         'current_index': current_index,
                         'cancelled': True,
+                        'sent_milestones': sent_milestones,
                     }
 
                 new_results.append(result)
@@ -253,6 +256,7 @@ def map_workers_node(state: AnalysisState) -> dict:
         'results': results + new_results,
         'processed_count': processed_count,
         'current_index': new_index,
+        'sent_milestones': sent_milestones,  # Persist milestones across batch cycles
     }
 
 

@@ -562,10 +562,9 @@ def calculate_experience_duration(employment_dates: List[Dict[str, str]]) -> flo
     
     # Calculate total months from merged ranges
     for start_date, end_date in merged_ranges:
-        months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-        # Add 1 month if start and end are in the same month (at least 1 month of experience)
-        if months == 0 and start_date.month <= end_date.month:
-            months = 1
+        # Calculate inclusive months: add 1 to include the end month
+        # Example: Jan 2020 to Dec 2020 = 12 months, not 11
+        months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
         total_months += max(0, months)
     
     # Convert to years
@@ -624,24 +623,46 @@ def identify_employment_gaps(employment_dates: List[Dict[str, str]], min_gap_mon
     
     if not parsed_dates:
         return []
-    
+
     # Sort by start date
     parsed_dates.sort(key=lambda x: x[0])
-    
+
+    # Merge overlapping/nested ranges to avoid false gap detection
+    merged_dates = []
+    current_start, current_end, _ = parsed_dates[0]
+
+    for i in range(1, len(parsed_dates)):
+        next_start, next_end, _ = parsed_dates[i]
+
+        # If next period starts before or when current period ends, merge them
+        if next_start <= current_end:
+            # Extend current_end if next period ends later
+            current_end = max(current_end, next_end)
+        else:
+            # No overlap - save current merged range and start new one
+            merged_dates.append((current_start, current_end))
+            current_start, current_end = next_start, next_end
+
+    # Don't forget the last merged range
+    merged_dates.append((current_start, current_end))
+
+    # Calculate gaps between merged (non-overlapping) ranges
     gaps = []
-    for i in range(len(parsed_dates) - 1):
-        _, current_end, _ = parsed_dates[i]
-        next_start, _, _ = parsed_dates[i + 1]
-        
-        # Calculate gap in months
-        gap_months = (next_start.year - current_end.year) * 12 + (next_start.month - current_end.month)
-        
-        if gap_months > min_gap_months:
+    for i in range(len(merged_dates) - 1):
+        current_end = merged_dates[i][1]
+        next_start = merged_dates[i + 1][0]
+
+        # Calculate gap in months (exclusive of end month)
+        # Example: Jan 2020 end to Feb 2020 start = 0 months gap (no gap)
+        # Example: Jan 2020 end to Mar 2020 start = 1 month gap (Feb is the gap)
+        gap_months = (next_start.year * 12 + next_start.month) - (current_end.year * 12 + current_end.month) - 1
+
+        if gap_months >= min_gap_months:
             years = gap_months // 12
             months = gap_months % 12
             gap_desc = f"{years} year{'s' if years != 1 else ''} {months} month{'s' if months != 1 else ''}" if years > 0 else f"{months} months"
             gaps.append(f"Employment gap of {gap_desc} between {current_end.strftime('%Y-%m')} and {next_start.strftime('%Y-%m')}")
-    
+
     return gaps
 
 
@@ -1095,12 +1116,12 @@ Output ONLY valid JSON in this exact format:
 
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             logger.warning(f"[Elimination] Failed to parse relevance JSON for applicant {applicant_id}: {e}")
-            # Default to high relevance if parsing fails
+            # Default to LOW relevance if parsing fails (conservative fallback to prevent bypass)
             relevance_assessment = {
-                'is_relevant': True,
-                'relevance_level': 'high',
-                'relevance_score': 100,
-                'reason': 'Failed to parse relevance assessment, defaulting to high relevance',
+                'is_relevant': False,
+                'relevance_level': 'low',
+                'relevance_score': 0,
+                'reason': f'Failed to parse relevance assessment: {str(e)}',
             }
 
         logger.info(f"[Elimination] Completed for applicant {applicant_id}")
@@ -1111,15 +1132,15 @@ Output ONLY valid JSON in this exact format:
 
     except Exception as e:
         logger.error(f"[Elimination] Exception for applicant {applicant_id}: {e}", exc_info=True)
-        # Default to high relevance if assessment fails
+        # Default to LOW relevance if assessment fails (conservative fallback to prevent bypass)
         return {
             'relevance_assessment': {
-                'is_relevant': True,
-                'relevance_level': 'high',
-                'relevance_score': 100,
+                'is_relevant': False,
+                'relevance_level': 'low',
+                'relevance_score': 0,
                 'reason': f'Relevance assessment failed: {str(e)}',
             },
-            'relevance_level': 'high',
+            'relevance_level': 'low',
         }
 
 
@@ -1167,6 +1188,9 @@ def scoring_node(state: WorkerState) -> dict:
         }
 
     # Determine score cap based on relevance level AND experience level match
+    # IMPORTANT: Check experience_level_match == 'insufficient' BEFORE relevance_level
+    # to ensure hard cap is applied even when relevance is 'partial'
+    
     if relevance_level == 'low':
         # Hard cap at 30 for low relevance - guarantees Mismatched category
         logger.info(f"[Scoring] Candidate has LOW relevance for applicant {applicant_id}. Capping scores at 30.")
@@ -1178,12 +1202,9 @@ def scoring_node(state: WorkerState) -> dict:
                 'supplemental': 30,
             }
         }
-    elif relevance_level == 'partial':
-        # Soft cap at 70 for partial relevance - allows Partial Match (50-69) but prevents Best Match (90+)
-        logger.info(f"[Scoring] Candidate has PARTIAL relevance for applicant {applicant_id}. Will apply soft cap at 70 after LLM scoring.")
-        # Continue to LLM scoring, then apply cap
     elif experience_level_match == 'insufficient':
         # Hard cap at 49 for insufficient experience - ensures Mismatched category
+        # This check MUST come before relevance_level == 'partial' to prevent bypass
         logger.info(f"[Scoring] Candidate has INSUFFICIENT experience ({total_experience_years} years) for applicant {applicant_id}. Capping scores at 49.")
         return {
             'scores': {
@@ -1193,6 +1214,10 @@ def scoring_node(state: WorkerState) -> dict:
                 'supplemental': 49,
             }
         }
+    elif relevance_level == 'partial':
+        # Soft cap at 70 for partial relevance - allows Partial Match (50-69) but prevents Best Match (90+)
+        logger.info(f"[Scoring] Candidate has PARTIAL relevance for applicant {applicant_id}. Will apply soft cap at 70 after LLM scoring.")
+        # Continue to LLM scoring, then apply cap
     elif experience_level_match == 'partial':
         # Soft cap at 70 for partial experience match
         logger.info(f"[Scoring] Candidate has PARTIAL experience match ({total_experience_years} years) for applicant {applicant_id}. Will apply soft cap at 70 after LLM scoring.")

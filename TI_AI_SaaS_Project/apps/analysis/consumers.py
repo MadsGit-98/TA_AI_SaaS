@@ -152,10 +152,12 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                     # Subscribe and only send ack if successful
                     success = await self.subscribe_to_job(job_id)
                     if success:
-                        # Send acknowledgment
+                        # Send acknowledgment with job_id inside data object
                         await self.send(text_data=json.dumps({
                             'type': 'subscribed',
-                            'job_id': job_id
+                            'data': {
+                                'job_id': job_id
+                            }
                         }))
 
         except json.JSONDecodeError:

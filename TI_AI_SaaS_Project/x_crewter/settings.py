@@ -372,7 +372,8 @@ CSRF_COOKIE_HTTPONLY = True  # Prevent CSRF token access from JavaScript
 SESSION_COOKIE_HTTPONLY = True  # Prevent session cookie access from JavaScript
 SESSION_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
 CSRF_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
-X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='DENY')
+# Allow same-origin framing for resume preview (CSP_FRAME_ANCESTORS controls actual framing policy)
+X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='SAMEORIGIN')
 
 # Additional SSL/Security Configuration
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # For use with reverse proxies

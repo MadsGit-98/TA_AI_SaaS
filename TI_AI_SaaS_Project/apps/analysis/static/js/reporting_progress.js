@@ -68,25 +68,33 @@
         const messageEl = document.getElementById('confirm-modal-message');
         const cancelBtn = document.getElementById('confirm-modal-cancel');
         const confirmBtn = document.getElementById('confirm-modal-confirm');
-        
+
         if (modal && titleEl && messageEl && cancelBtn && confirmBtn) {
             titleEl.textContent = title || 'Confirm';
             messageEl.textContent = message;
             modal.style.display = 'flex';
-            
+            // Accessibility: toggle aria-hidden when showing modal
+            modal.setAttribute('aria-hidden', 'false');
+            // Set focus to modal for screen readers
+            modal.focus();
+
             // Remove old event listeners to prevent duplicates
             const newCancelBtn = cancelBtn.cloneNode(true);
             cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
             const newConfirmBtn = confirmBtn.cloneNode(true);
             confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-            
+
             // Add new event listeners
             newCancelBtn.addEventListener('click', function() {
                 modal.style.display = 'none';
+                // Accessibility: toggle aria-hidden when hiding modal
+                modal.setAttribute('aria-hidden', 'true');
             });
-            
+
             newConfirmBtn.addEventListener('click', function() {
                 modal.style.display = 'none';
+                // Accessibility: toggle aria-hidden when hiding modal
+                modal.setAttribute('aria-hidden', 'true');
                 if (onConfirm) onConfirm();
             });
         } else {
