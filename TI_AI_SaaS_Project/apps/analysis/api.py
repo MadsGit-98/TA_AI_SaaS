@@ -16,6 +16,7 @@ This module contains:
 
 import logging
 import os
+import mimetypes
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -991,12 +992,12 @@ def get_applicant_resume(request, applicant_id):
         if applicant.resume_file:
             resume_url = applicant.resume_file.url
 
-        # Get file info
+        # Get file info using mimetypes to infer MIME type
         file_name = ''
         file_type = ''
         if applicant.resume_file:
             file_name = os.path.basename(applicant.resume_file.name)
-            file_type = applicant.resume_file.content_type if hasattr(applicant.resume_file, 'content_type') else ''
+            file_type = mimetypes.guess_type(file_name)[0] or ''
 
         return Response({
             'success': True,
