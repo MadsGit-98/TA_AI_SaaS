@@ -16,6 +16,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-04
 - Sqlite3 (initial), Amazon S3 or Google Cloud Storage for files (django-storages backend), media/ for local dev (008-job-application-submission)
 - Python 3.11 + Django 5.2.9, DRF 3.15.2, LangChain 1.1.x, LangGraph 1.0.x, Celery 5.4.0, Redis 7.1.0 (009-ai-analysis-scoring)
 - Sqlite3 (initial), Amazon S3 for files (django-storages) (009-ai-analysis-scoring)
+- Python 3.11, JavaScript (ES6) + Django 5.2.9, Django Channels 4.x, Celery 5.4.0, Redis 7.1.0 (010-websocket-analysis-status)
+- Sqlite3 (initial), Redis for channel layer (010-websocket-analysis-status)
 
 - Python 3.11 + Django, Django REST Framework (DRF), Tailwind CSS, shadcn_django (002-compliant-home-page)
 
@@ -67,9 +69,9 @@ Python 3.11: Follow standard conventions
 3. **Test Execution**: Do not use pytest to run any of the tests created. You must use the "python manage.py test" command.
 
 ## Recent Changes
+- 010-websocket-analysis-status: Added Python 3.11, JavaScript (ES6) + Django 5.2.9, Django Channels 4.x, Celery 5.4.0, Redis 7.1.0
 - 009-ai-analysis-scoring: Added Python 3.11 + Django 5.2.9, DRF 3.15.2, LangChain 1.1.x, LangGraph 1.0.x, Celery 5.4.0, Redis 7.1.0
 - 008-job-application-submission: Added Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2
-- 007-job-listings: Added Python 3.11 + Django, Django REST Framework (DRF), djangorestframework-simplejwt, djoser, Celery, Redis, uuid, shadcn_django
 
 
 <!-- MANUAL ADDITIONS START -->

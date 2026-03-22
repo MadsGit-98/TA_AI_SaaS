@@ -8,12 +8,15 @@ This module contains:
 - analysis_status: Get analysis progress
 - analysis_results: Get all results for a job
 - analysis_result_detail: Get detailed result for specific applicant
+- get_applicant_resume: Get applicant's resume file info
 - cancel_analysis: Cancel running analysis
 - rerun_analysis: Re-run analysis
 - analysis_statistics: Get aggregate statistics
 """
 
 import logging
+import os
+import mimetypes
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -22,9 +25,10 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
-from apps.applications.models import ApplicationAnswer
+from apps.applications.models import ApplicationAnswer, Applicant
 from apps.analysis.tasks import run_ai_analysis
 from django.db.models import Avg, Count
 from services.ai_analysis_service import (
@@ -34,6 +38,7 @@ from services.ai_analysis_service import (
     get_analysis_progress,
     check_cancellation_flag,
     clear_cancellation_flag,
+    update_analysis_progress,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,6 +165,9 @@ def initiate_analysis(request, job_id):
                 }
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+        # Set analysis_in_progress flag
+        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
+
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
         estimated_duration = applicant_count * 6
 
@@ -218,8 +226,12 @@ def analysis_status(request, job_id):
     - Processed count
     - Total count
     - Started/completed timestamps
-    
+
     Note: Checks database first for completed analyses to avoid stale Redis data.
+    
+    DEPRECATED: This endpoint is deprecated in favor of WebSocket-based real-time updates.
+    The endpoint remains available for backward compatibility and fallback polling scenarios.
+    New implementations should use the WebSocket endpoint at /ws/analysis-notifications/
     """
     try:
         job = get_object_or_404(JobListing, id=job_id)
@@ -371,6 +383,12 @@ def analysis_results(request, job_id):
     - status: Filter by status (Analyzed, Unprocessed)
     - min_score: Minimum overall score
     - max_score: Maximum overall score
+    - min_education_score: Minimum education score
+    - max_education_score: Maximum education score
+    - min_skills_score: Minimum skills score
+    - max_skills_score: Maximum skills score
+    - min_experience_score: Minimum experience score
+    - max_experience_score: Maximum experience score
     - page: Page number (default 1)
     - page_size: Items per page (default 20, max 100)
     - ordering: Order by field (default -overall_score)
@@ -399,6 +417,14 @@ def analysis_results(request, job_id):
         status_filter = request.query_params.get('status')
         min_score_param = request.query_params.get('min_score')
         max_score_param = request.query_params.get('max_score')
+        
+        # Individual metric filters
+        min_education_param = request.query_params.get('min_education_score')
+        max_education_param = request.query_params.get('max_education_score')
+        min_skills_param = request.query_params.get('min_skills_score')
+        max_skills_param = request.query_params.get('max_skills_score')
+        min_experience_param = request.query_params.get('min_experience_score')
+        max_experience_param = request.query_params.get('max_experience_score')
 
         if category:
             results = results.filter(category=category)
@@ -406,7 +432,7 @@ def analysis_results(request, job_id):
         if status_filter:
             results = results.filter(status=status_filter)
 
-        # Validate and apply score filters
+        # Validate and apply overall score filters
         if min_score_param:
             try:
                 min_score = int(min_score_param)
@@ -432,6 +458,87 @@ def analysis_results(request, job_id):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
             results = results.filter(overall_score__lte=max_score)
+        
+        # Validate and apply education score filters
+        if min_education_param:
+            try:
+                min_education = int(min_education_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_education_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(education_score__gte=min_education)
+        
+        if max_education_param:
+            try:
+                max_education = int(max_education_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_education_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(education_score__lte=max_education)
+        
+        # Validate and apply skills score filters
+        if min_skills_param:
+            try:
+                min_skills = int(min_skills_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_skills_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(skills_score__gte=min_skills)
+        
+        if max_skills_param:
+            try:
+                max_skills = int(max_skills_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_skills_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(skills_score__lte=max_skills)
+        
+        # Validate and apply experience score filters
+        if min_experience_param:
+            try:
+                min_experience = int(min_experience_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'min_experience_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(experience_score__gte=min_experience)
+        
+        if max_experience_param:
+            try:
+                max_experience = int(max_experience_param)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_PARAMETER',
+                        'message': 'max_experience_score must be a valid integer'
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            results = results.filter(experience_score__lte=max_experience)
 
         # Validate and apply pagination parameters
         page_param = request.query_params.get('page', '1')
@@ -689,6 +796,13 @@ def rerun_analysis(request, job_id):
         previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
         AIAnalysisResult.objects.filter(job_listing=job).delete()
 
+        # Set analysis_in_progress flag to keep state consistent with initiate_analysis
+        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
+        
+        # Initialize Redis progress tracking synchronously so view detects it immediately
+        # This ensures the progress tag appears after page reload
+        update_analysis_progress(str(job_id), 0, applicant_count)
+
         return Response({
             'success': True,
             'data': {
@@ -843,6 +957,80 @@ def analysis_result_detail(request, result_id):
 
     except Exception as e:
         logger.error(f"Error getting analysis result detail for {result_id}: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': 'An internal server error occurred'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([AnalysisResultDetailThrottle])
+def get_applicant_resume(request, applicant_id):
+    """
+    API endpoint to get applicant's resume file information.
+
+    GET /api/analysis/applicants/{applicant_id}/resume/
+
+    Returns the resume file URL and parsed text for viewing in the browser.
+    """
+    try:
+        applicant = get_object_or_404(
+            Applicant.objects.select_related('job_listing'),
+            id=applicant_id
+        )
+
+        # Authorization check: only job owner or staff can view resume
+        if applicant.job_listing.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to view this applicant's resume.")
+
+        # Get resume file URL
+        resume_url = ''
+        if applicant.resume_file:
+            resume_url = applicant.resume_file.url
+
+        # Get file info using mimetypes to infer MIME type
+        file_name = ''
+        file_type = ''
+        if applicant.resume_file:
+            file_name = os.path.basename(applicant.resume_file.name)
+            file_type = mimetypes.guess_type(file_name)[0] or ''
+
+        return Response({
+            'success': True,
+            'data': {
+                'applicant_id': str(applicant.id),
+                'applicant_name': f"{applicant.first_name} {applicant.last_name}",
+                'resume_url': resume_url,
+                'file_name': file_name,
+                'file_type': file_type,
+                'parsed_text': applicant.resume_parsed_text or '',
+            }
+        })
+
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Applicant not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    except Exception as e:
+        logger.error(f"Error getting resume for applicant {applicant_id}: {e}", exc_info=True)
         return Response({
             'success': False,
             'error': {

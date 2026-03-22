@@ -105,6 +105,12 @@ def reporting_page_view(request, job_id):
         category = request.GET.get('category')
         min_score = request.GET.get('min_score')
         max_score = request.GET.get('max_score')
+        min_education = request.GET.get('min_education_score')
+        max_education = request.GET.get('max_education_score')
+        min_skills = request.GET.get('min_skills_score')
+        max_skills = request.GET.get('max_skills_score')
+        min_experience = request.GET.get('min_experience_score')
+        max_experience = request.GET.get('max_experience_score')
 
         # Track active filters for UI
         active_filters = {}
@@ -126,6 +132,57 @@ def reporting_page_view(request, job_id):
                 max_score_int = int(max_score)
                 results = results.filter(overall_score__lte=max_score_int)
                 active_filters['max_score'] = max_score
+            except (ValueError, TypeError):
+                pass
+        
+        # Apply education score filters
+        if min_education:
+            try:
+                min_education_int = int(min_education)
+                results = results.filter(education_score__gte=min_education_int)
+                active_filters['min_education_score'] = min_education
+            except (ValueError, TypeError):
+                pass
+        
+        if max_education:
+            try:
+                max_education_int = int(max_education)
+                results = results.filter(education_score__lte=max_education_int)
+                active_filters['max_education_score'] = max_education
+            except (ValueError, TypeError):
+                pass
+        
+        # Apply skills score filters
+        if min_skills:
+            try:
+                min_skills_int = int(min_skills)
+                results = results.filter(skills_score__gte=min_skills_int)
+                active_filters['min_skills_score'] = min_skills
+            except (ValueError, TypeError):
+                pass
+        
+        if max_skills:
+            try:
+                max_skills_int = int(max_skills)
+                results = results.filter(skills_score__lte=max_skills_int)
+                active_filters['max_skills_score'] = max_skills
+            except (ValueError, TypeError):
+                pass
+        
+        # Apply experience score filters
+        if min_experience:
+            try:
+                min_experience_int = int(min_experience)
+                results = results.filter(experience_score__gte=min_experience_int)
+                active_filters['min_experience_score'] = min_experience
+            except (ValueError, TypeError):
+                pass
+        
+        if max_experience:
+            try:
+                max_experience_int = int(max_experience)
+                results = results.filter(experience_score__lte=max_experience_int)
+                active_filters['max_experience_score'] = max_experience
             except (ValueError, TypeError):
                 pass
 

@@ -372,7 +372,8 @@ CSRF_COOKIE_HTTPONLY = True  # Prevent CSRF token access from JavaScript
 SESSION_COOKIE_HTTPONLY = True  # Prevent session cookie access from JavaScript
 SESSION_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
 CSRF_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF attacks
-X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='DENY')
+# Allow same-origin framing for resume preview (CSP_FRAME_ANCESTORS controls actual framing policy)
+X_FRAME_OPTIONS = env('X_FRAME_OPTIONS', default='SAMEORIGIN')
 
 # Additional SSL/Security Configuration
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # For use with reverse proxies
@@ -385,7 +386,7 @@ CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com")
 CSP_IMG_SRC = ("'self'", "data:", "https:")
 CSP_FONT_SRC = ("'self'",)
 CSP_CONNECT_SRC = ("'self'", "ws:", "wss:", "https://cdn.jsdelivr.net")
-CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_FRAME_ANCESTORS = ("'self'",)  # Allow framing from same origin (for resume preview)
 CSP_BASE_URI = ("'self'",)
 CSP_FORM_ACTION = ("'self'",)
 

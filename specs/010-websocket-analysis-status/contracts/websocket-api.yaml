@@ -1,0 +1,429 @@
+# WebSocket API Contract: Analysis Status Notifications
+
+**Version**: 1.0.0  
+**Branch**: `010-websocket-analysis-status`  
+**Date**: 2026-03-18
+
+---
+
+## Overview
+
+This document defines the WebSocket API contract for real-time AI analysis status notifications. The API enables clients to receive push notifications when analysis progress updates occur, completes, is cancelled, or fails.
+
+---
+
+## Connection
+
+### Endpoint
+
+```
+WS /ws/analysis-notifications/
+```
+
+### Protocol
+
+- **WebSocket** (RFC 6455)
+- **Sub-protocol**: None (default)
+- **Message Format**: JSON
+
+### Authentication
+
+**Method**: JWT token from cookies
+
+**Headers**:
+```http
+Cookie: access_token=<JWT_TOKEN>; csrftoken=<CSRF_TOKEN>
+```
+
+**Middleware**: `apps.accounts.websocket_auth.JWTAuthMiddleware`
+
+**Authentication Flow**:
+1. Client initiates WebSocket connection
+2. Middleware extracts `access_token` from cookies
+3. Middleware validates JWT and populates `scope['user']`
+4. Consumer accepts connection if `scope['user'].is_authenticated`
+5. Consumer closes connection with code 403 if unauthenticated
+
+**Response Codes**:
+- `1000`: Normal closure (authenticated user disconnects)
+- `4003`: Forbidden (unauthenticated user)
+
+---
+
+## Subscription Model
+
+### Group Naming
+
+**Format**: `analysis_{job_id}_{user_id}`
+
+**Example**: `analysis_550e8400-e29b-41d4-a716-446655440000_123`
+
+### Subscription Lifecycle
+
+1. **Connect**: User connects to WebSocket endpoint
+2. **Auto-Subscribe**: User automatically subscribed to groups for jobs they own
+3. **Receive**: User receives messages for subscribed jobs
+4. **Disconnect**: User removed from all groups on disconnect
+
+**Note**: Unlike traditional pub/sub, subscription is implicit based on user ownership. No explicit subscribe/unsubscribe messages required.
+
+---
+
+## Message Format
+
+### Base Structure
+
+All messages follow this JSON structure:
+
+```json
+{
+  "type": "<message_type>",
+  "data": {
+    // Message-specific payload
+  }
+}
+```
+
+### Message Types
+
+| Type | Direction | Description |
+|------|-----------|-------------|
+| `analysis_progress` | Server → Client | Progress update at milestone checkpoints |
+| `analysis_completed` | Server → Client | Analysis completed successfully |
+| `analysis_cancelled` | Server → Client | Analysis cancelled by user |
+| `analysis_failed` | Server → Client | Analysis failed due to error |
+
+---
+
+## Server → Client Messages
+
+### analysis_progress
+
+**Trigger**: Analysis reaches milestone checkpoint (0%, 25%, 50%, 75%, 90%)
+
+**Schema**:
+```json
+{
+  "type": "analysis_progress",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "processing",
+    "progress_percentage": 45,
+    "processed_count": 45,
+    "total_count": 100,
+    "message": "Processing applicant 45 of 100",
+    "timestamp": "2026-03-18T14:30:00Z"
+  }
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `job_id` | UUID | Yes | Job listing being analyzed |
+| `status` | String | Yes | Always `"processing"` for progress updates |
+| `progress_percentage` | Integer | Yes | 0-100, percentage complete |
+| `processed_count` | Integer | Yes | Number of applicants processed |
+| `total_count` | Integer | Yes | Total applicants to process |
+| `message` | String | No | Human-readable status message |
+| `timestamp` | ISO-8601 | Yes | Server timestamp (UTC) |
+
+**Validation**:
+- `progress_percentage` MUST be 0-100
+- `processed_count` MUST be <= `total_count`
+- `timestamp` MUST be valid ISO-8601
+
+---
+
+### analysis_completed
+
+**Trigger**: All applicants processed successfully
+
+**Schema**:
+```json
+{
+  "type": "analysis_completed",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "completed",
+    "processed_count": 100,
+    "total_count": 100,
+    "analyzed_count": 95,
+    "unprocessed_count": 5,
+    "timestamp": "2026-03-18T14:35:00Z"
+  }
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `job_id` | UUID | Yes | Job listing analyzed |
+| `status` | String | Yes | Always `"completed"` |
+| `processed_count` | Integer | Yes | Total applicants processed |
+| `total_count` | Integer | Yes | Total applicants |
+| `analyzed_count` | Integer | Yes | Successfully analyzed applicants |
+| `unprocessed_count` | Integer | Yes | Applicants marked "Unprocessed" |
+| `timestamp` | ISO-8601 | Yes | Server timestamp (UTC) |
+
+**Validation**:
+- `analyzed_count` + `unprocessed_count` MUST equal `processed_count`
+- `processed_count` MUST equal `total_count`
+
+---
+
+### analysis_cancelled
+
+**Trigger**: User cancels running analysis
+
+**Schema**:
+```json
+{
+  "type": "analysis_cancelled",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "cancelled",
+    "processed_count": 50,
+    "total_count": 100,
+    "preserved_count": 50,
+    "timestamp": "2026-03-18T14:32:00Z"
+  }
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `job_id` | UUID | Yes | Job listing cancelled |
+| `status` | String | Yes | Always `"cancelled"` |
+| `processed_count` | Integer | Yes | Applicants processed before cancellation |
+| `total_count` | Integer | Yes | Original total applicants |
+| `preserved_count` | Integer | Yes | Results preserved (equals processed_count) |
+| `timestamp` | ISO-8601 | Yes | Server timestamp (UTC) |
+
+**Validation**:
+- `preserved_count` MUST equal `processed_count`
+
+---
+
+### analysis_failed
+
+**Trigger**: Analysis task fails due to error or timeout
+
+**Schema**:
+```json
+{
+  "type": "analysis_failed",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "failed",
+    "error_code": "TASK_TIMEOUT",
+    "error_message": "Analysis task timed out after 300 seconds",
+    "processed_count": 30,
+    "total_count": 100,
+    "timestamp": "2026-03-18T14:33:00Z"
+  }
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `job_id` | UUID | Yes | Job listing failed |
+| `status` | String | Yes | Always `"failed"` |
+| `error_code` | String | Yes | Machine-readable error code |
+| `error_message` | String | Yes | Human-readable description |
+| `processed_count` | Integer | Yes | Applicants processed before failure |
+| `total_count` | Integer | Yes | Original total applicants |
+| `timestamp` | ISO-8601 | Yes | Server timestamp (UTC) |
+
+**Error Codes**:
+
+| Code | HTTP Equivalent | Description |
+|------|-----------------|-------------|
+| `TASK_TIMEOUT` | 504 | Celery task exceeded time limit |
+| `TASK_FAILURE` | 500 | Unhandled exception in task |
+| `LOCK_ACQUISITION_FAILED` | 409 | Analysis already running |
+| `JOB_NOT_FOUND` | 404 | Job listing doesn't exist |
+| `PERMISSION_DENIED` | 403 | User lacks permission |
+| `REDIS_UNAVAILABLE` | 503 | Channel layer connection failed |
+
+---
+
+## Client → Server Messages
+
+**Note**: Initial implementation does NOT require client → server messages. Subscription is implicit based on user ownership and job access permissions.
+
+Future extensions may support:
+- Explicit subscription to specific jobs
+- Heartbeat/ping messages
+- Acknowledgment of message receipt
+
+---
+
+## Error Handling
+
+### Connection Errors
+
+**WebSocket Close Codes**:
+
+| Code | Meaning | Client Action |
+|------|---------|---------------|
+| 1000 | Normal closure | No action (user initiated) |
+| 1001 | Going away | Reconnect (server shutdown) |
+| 1006 | Abnormal closure | Reconnect (network issue) |
+| 4003 | Forbidden | Redirect to login (auth failed) |
+
+### Message Errors
+
+**Invalid JSON**:
+```json
+{
+  "type": "error",
+  "data": {
+    "error_code": "INVALID_JSON",
+    "error_message": "Failed to parse message as JSON"
+  }
+}
+```
+
+**Invalid Message Type**:
+```json
+{
+  "type": "error",
+  "data": {
+    "error_code": "UNKNOWN_MESSAGE_TYPE",
+    "error_message": "Unknown message type: xyz"
+  }
+}
+```
+
+---
+
+## Rate Limiting
+
+### Server → Client
+
+**Progress Updates**: Maximum 10 messages per minute per job (milestone-based)
+
+**Rationale**: Milestone checkpoints (0%, 25%, 50%, 75%, 90%, 100%) naturally limit frequency
+
+### Client → Server
+
+**Not Applicable**: Initial implementation does not require client messages
+
+---
+
+## Security Considerations
+
+### Authentication
+
+- JWT token MUST be present in cookies
+- Token MUST be valid and not expired
+- Unauthenticated connections MUST be closed with code 4003
+
+### Authorization
+
+- User MUST own job OR have staff status
+- User MUST NOT receive updates for jobs they don't have access to
+- Group naming includes both job_id and user_id for isolation
+
+### Data Validation
+
+- All UUIDs MUST be validated before use
+- All integers MUST be validated for range
+- All timestamps MUST be validated for format
+
+### Rate Limiting
+
+- Implement per-user rate limiting on server side
+- Prevent abuse via excessive connection attempts
+- Monitor Redis memory usage for channel layer
+
+---
+
+## Performance Considerations
+
+### Message Size
+
+**Average Message Size**: ~300 bytes (JSON, minified)
+
+**Estimated Bandwidth**:
+- 10 messages/analysis × 300 bytes = 3 KB per analysis
+- 100 concurrent analyses = 300 KB total
+
+### Connection Limits
+
+**Per User**: Maximum 10 concurrent connections (multi-tab support)
+
+**Per Server**: Configurable based on deployment (default: 1000 concurrent connections)
+
+### Redis Configuration
+
+**Recommended**:
+```python
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+            "capacity": 1500,  # Max messages per channel
+            "expiry": 10,      # Message expiry in seconds
+        },
+    },
+}
+```
+
+---
+
+## Versioning
+
+**Current Version**: 1.0.0
+
+**Backward Compatibility**:
+- Additive changes (new fields) are backward compatible
+- Breaking changes require version bump to 2.0.0
+- Clients should ignore unknown fields
+
+**Version Negotiation** (Future):
+```json
+{
+  "version": "1.0",
+  "type": "analysis_progress",
+  "data": { ... }
+}
+```
+
+---
+
+## Testing
+
+### Connection Test
+
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/analysis-notifications/');
+ws.onopen = () => console.log('Connected');
+ws.onmessage = (event) => console.log(JSON.parse(event.data));
+ws.onerror = (error) => console.error('Error:', error);
+ws.onclose = (event) => console.log('Closed:', event.code);
+```
+
+### Expected Behavior
+
+1. **Authenticated User**: Connection accepted, messages received
+2. **Unauthenticated User**: Connection closed with code 4003
+3. **Invalid Token**: Connection closed with code 4003
+4. **No Job Access**: No messages received for inaccessible jobs
+
+---
+
+## References
+
+- WebSocket RFC 6455: https://tools.ietf.org/html/rfc6455
+- Django Channels Documentation: https://channels.readthedocs.io/
+- JSON Specification: https://www.json.org/
+- ISO-8601 Timestamp Format: https://en.wikipedia.org/wiki/ISO_8601

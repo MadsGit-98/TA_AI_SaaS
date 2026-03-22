@@ -14,7 +14,109 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-// Helper function to show error message
+/**
+ * Show message in modal
+ * @param {string} title - Modal title
+ * @param {string} message - Modal message
+ * @param {string} type - 'success' or 'error' (optional, for future styling)
+ * @param {Function} onClose - Optional callback function to execute after closing modal
+ */
+function showMessageModal(title, message, type, onClose) {
+    const modal = document.getElementById('message-modal');
+    const titleEl = document.getElementById('message-modal-title');
+    const messageEl = document.getElementById('message-modal-message');
+    const okBtn = modal?.querySelector('button');
+
+    if (modal && titleEl && messageEl) {
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        modal.style.display = 'flex';
+        
+        // Remove old event listeners to prevent duplicates
+        if (okBtn) {
+            const newOkBtn = okBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+            
+            // Add new event listener with callback
+            newOkBtn.addEventListener('click', function() {
+                closeMessageModal(onClose);
+            });
+        }
+    } else {
+        // Fallback to inline messages if modal not found
+        console.warn('Message modal not found, using inline messages');
+        if (type === 'error') {
+            showError(message);
+        } else {
+            showSuccess(message);
+        }
+        // Execute callback after inline message completes
+        // Use same duration as showError (5000ms) or showSuccess (3000ms)
+        if (onClose && typeof onClose === 'function') {
+            const duration = type === 'error' ? 5000 : 3000;
+            setTimeout(onClose, duration);
+        }
+    }
+}
+
+/**
+ * Close message modal
+ * @param {Function} onClose - Optional callback function to execute after closing modal
+ */
+function closeMessageModal(onClose) {
+    const modal = document.getElementById('message-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        // Execute callback if provided
+        if (onClose && typeof onClose === 'function') {
+            onClose();
+        }
+    }
+}
+
+/**
+ * Show confirmation modal
+ * @param {string} message - Confirmation message
+ * @param {Function} onConfirm - Callback function when confirmed
+ * @param {string} title - Modal title (optional, default 'Confirm')
+ */
+function showConfirmModal(message, onConfirm, title) {
+    const modal = document.getElementById('confirm-modal');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const confirmBtn = document.getElementById('confirm-modal-confirm');
+    
+    if (modal && titleEl && messageEl && cancelBtn && confirmBtn) {
+        titleEl.textContent = title || 'Confirm';
+        messageEl.textContent = message;
+        modal.style.display = 'flex';
+        
+        // Remove old event listeners to prevent duplicates
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        
+        // Add new event listeners
+        newCancelBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+        });
+        
+        newConfirmBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            if (onConfirm) onConfirm();
+        });
+    } else {
+        // Fallback to confirm if modal not found
+        console.warn('Confirmation modal not found, using confirm');
+        if (confirm(message)) {
+            if (onConfirm) onConfirm();
+        }
+    }
+}
+
+// Helper function to show error message (kept for backward compatibility)
 function showError(message) {
     const errorMessage = document.getElementById('job-error-message');
     const errorText = document.getElementById('job-error-text');
@@ -27,7 +129,7 @@ function showError(message) {
     }
 }
 
-// Helper function to show success message
+// Helper function to show success message (kept for backward compatibility)
 function showSuccess(message) {
     const successMessage = document.getElementById('job-success-message');
     const successText = document.getElementById('job-success-text');
@@ -56,10 +158,24 @@ function createJobElement(job, container) {
     // Left side content
     const leftSide = document.createElement('div');
 
+    // Title and applicant count container
+    const titleContainer = document.createElement('div');
+    titleContainer.className = 'flex items-center gap-2 mb-2';
+
     const titleElement = document.createElement('h2');
     titleElement.className = 'text-xl font-semibold';
     titleElement.textContent = job.title;
-    leftSide.appendChild(titleElement);
+    titleContainer.appendChild(titleElement);
+
+    // Applicant count badge
+    const applicantCount = job.applicant_count || 0;
+    const applicantBadge = document.createElement('span');
+    applicantBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-code-block-bg text-primary-text';
+    applicantBadge.textContent = `${applicantCount} applicant${applicantCount !== 1 ? 's' : ''}`;
+    applicantBadge.title = `${applicantCount} applicant${applicantCount !== 1 ? 's' : ''} applied to this job`;
+    titleContainer.appendChild(applicantBadge);
+
+    leftSide.appendChild(titleContainer);
 
     const descElement = document.createElement('p');
     descElement.className = 'text-gray-600';
@@ -406,109 +522,105 @@ function editJob(jobId) {
 }
 
 async function activateJob(jobId) {
-    if (!confirm('Are you sure you want to activate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/activate/`, {
+    showConfirmModal('Are you sure you want to activate this job?', function() {
+        fetch(`/dashboard/jobs/${jobId}/activate/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken()
             },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            showMessageModal('Success', 'Job activated successfully!', 'success');
+            loadJobListings();
+        })
+        .catch(error => {
+            console.error('Error activating job:', error);
+            showMessageModal('Error', 'An error occurred while activating the job.', 'error');
         });
-
-        if (response.ok) {
-            showSuccess('Job activated successfully!');
-            loadJobListings(); // Refresh the list
-        } else {
-            const errorData = await response.json();
-            showError(`Error activating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error activating job:', error);
-        showError('An error occurred while activating the job.');
-    }
+    });
 }
 
 async function deactivateJob(jobId) {
-    if (!confirm('Are you sure you want to deactivate this job?')) return;
-
-    try {
-        const response = await fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
+    showConfirmModal('Are you sure you want to deactivate this job?', function() {
+        fetch(`/dashboard/jobs/${jobId}/deactivate/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken()
             },
-            credentials: 'include'  // Include cookies in request (handles JWT tokens automatically)
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            showMessageModal('Success', 'Job deactivated successfully!', 'success');
+            loadJobListings();
+        })
+        .catch(error => {
+            console.error('Error deactivating job:', error);
+            showMessageModal('Error', 'An error occurred while deactivating the job.', 'error');
         });
-
-        if (response.ok) {
-            showSuccess('Job deactivated successfully!');
-            loadJobListings(); // Refresh the list
-        } else {
-            const errorData = await response.json();
-            showError(`Error deactivating job: ${JSON.stringify(errorData)}`);
-        }
-    } catch (error) {
-        console.error('Error deactivating job:', error);
-        showError('An error occurred while deactivating the job.');
-    }
+    });
 }
 
 function copyApplicationLink(link) {
     const fullLink = `${window.location.origin}/apply/${link}`;
     navigator.clipboard.writeText(fullLink)
         .then(() => {
-            showSuccess('Application link copied to clipboard!');
+            showMessageModal('Success', 'Application link copied to clipboard!', 'success');
         })
         .catch(err => {
             console.error('Failed to copy link: ', err);
-            showError('Failed to copy link to clipboard.');
+            showMessageModal('Error', 'Failed to copy link to clipboard.', 'error');
         });
 }
 
 // AI Analysis functions
 async function initiateAnalysis(jobId) {
-    if (!confirm('Are you sure you want to initiate AI analysis for all applicants? This process may take several minutes depending on the number of applicants.')) return;
-
-    try {
-        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/initiate/`, {
+    showConfirmModal('Are you sure you want to initiate AI analysis for all applicants? This process may take several minutes depending on the number of applicants.', function() {
+        fetch(`/api/analysis/jobs/${jobId}/analysis/initiate/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken(),
                 'Content-Type': 'application/json',
             },
             credentials: 'include'
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            // Defensive check: ensure data.data exists before accessing properties
-            if (!data.data) {
-                console.error('API response missing data.data:', data);
-                showError('Analysis started but response data is incomplete.');
-                return;
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            const applicantCount = data.data.applicant_count;
-            const estimatedMinutes = Math.ceil(data.data.estimated_duration_seconds / 60);
-            showSuccess(`AI analysis started for ${applicantCount} applicants. Estimated time: ~${estimatedMinutes} minute(s).`);
-
-            // Start progress tracking for this job
-            startProgressTracking(jobId);
-
-            // Refresh job list to show "Analyzing..." tag
-            setTimeout(() => {
-                loadJobListings();
-            }, 500);
-        } else {
-            const errorMessage = data.error ? data.error.message : 'Failed to initiate analysis';
-            showError(`Error: ${errorMessage}`);
-        }
-    } catch (error) {
-        console.error('Error initiating analysis:', error);
-        showError('An error occurred while initiating AI analysis.');
-    }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                const applicantCount = data.data.applicant_count;
+                const estimatedMinutes = Math.ceil(data.data.estimated_duration_seconds / 60);
+                showMessageModal('Success', `AI analysis started for ${applicantCount} applicants. Estimated time: ~${estimatedMinutes} minute(s).`, 'success');
+                startProgressTracking(jobId);
+                setTimeout(() => {
+                    loadJobListings();
+                }, 500);
+            } else {
+                const errorMessage = data.error ? data.error.message : 'Failed to initiate analysis';
+                showMessageModal('Error', `Error: ${errorMessage}`, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error initiating analysis:', error);
+            showMessageModal('Error', 'An error occurred while initiating AI analysis.', 'error');
+        });
+    });
 }
 
 /**
@@ -516,50 +628,49 @@ async function initiateAnalysis(jobId) {
  * @param {string} jobId - The job ID to cancel analysis for
  */
 async function cancelAnalysis(jobId) {
-    // Prevent multiple cancellation requests
     if (cancellingJobs.has(jobId)) {
         console.log('Already cancelling job', jobId);
         return;
     }
-    
-    if (!confirm('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.')) return;
 
-    try {
-        // Mark as cancelling immediately for UI feedback
+    showConfirmModal('Are you sure you want to cancel the analysis? Results for already processed applicants will be preserved.', function() {
         markJobAsCancelling(jobId);
 
-        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
+        fetch(`/api/analysis/jobs/${jobId}/analysis/cancel/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCsrfToken(),
                 'Content-Type': 'application/json',
             },
             credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                showMessageModal('Success', data.data.message || 'Analysis cancellation requested.', 'success');
+            } else {
+                const errorMessage = data.error ? data.error.message : 'Failed to cancel analysis';
+                showMessageModal('Error', `Error: ${errorMessage}`, 'error', function() {
+                    // Reload page after user dismisses error modal
+                    cancellingJobs.delete(jobId);
+                    window.location.reload();
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error cancelling analysis:', error);
+            showMessageModal('Error', 'An error occurred while cancelling analysis.', 'error', function() {
+                // Reload page after user dismisses error modal
+                cancellingJobs.delete(jobId);
+                window.location.reload();
+            });
         });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            console.log('Cancellation requested for job', jobId);
-            // Don't reload here - the polling will detect when task finishes and reload automatically
-            // Just show a brief success message
-            showSuccess(data.data.message || 'Analysis cancellation requested.');
-        } else {
-            const errorMessage = data.error ? data.error.message : 'Failed to cancel analysis';
-            showError(`Error: ${errorMessage}`);
-            // Remove from cancelling set on error
-            cancellingJobs.delete(jobId);
-            // Reload to restore normal state
-            window.location.reload();
-        }
-    } catch (error) {
-        console.error('Error cancelling analysis:', error);
-        showError('An error occurred while cancelling analysis.');
-        // Remove from cancelling set on error
-        cancellingJobs.delete(jobId);
-        // Reload to restore normal state
-        window.location.reload();
-    }
+    });
 }
 
 function viewAnalysis(jobId) {
@@ -567,7 +678,14 @@ function viewAnalysis(jobId) {
     window.location.href = `/analysis/reporting/${jobId}/`;
 }
 
+/**
+ * Check analysis status for a job (DEPRECATED - WebSocket handles this automatically)
+ * @deprecated Use analysis-websocket.js instead
+ * @param {string} jobId - The job ID to check
+ * @returns {Promise<Object|null>} Status data or null
+ */
 async function checkAnalysisStatus(jobId) {
+    console.warn('DEPRECATED: checkAnalysisStatus() is deprecated. Use analysis-websocket.js instead.');
     try {
         const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
             method: 'GET',
@@ -588,17 +706,17 @@ async function checkAnalysisStatus(jobId) {
 }
 
 // =============================================================================
-// Progress Tracking Functions
+// WebSocket-based Progress Tracking Functions (replaces polling)
 // =============================================================================
 
-// Track jobs currently being analyzed (jobId -> intervalId mapping)
+// Track jobs currently being analyzed (jobId -> WebSocket subscription)
 const analyzingJobs = new Map();
 
 // Track jobs being cancelled (jobId -> {started: timestamp, lastStatus: string})
 const cancellingJobs = new Map();
 
 /**
- * Start progress tracking for a job analysis
+ * Start progress tracking for a job analysis using WebSocket
  * @param {string} jobId - The job ID to track
  */
 function startProgressTracking(jobId) {
@@ -608,51 +726,126 @@ function startProgressTracking(jobId) {
         return;
     }
 
-    console.log('Starting progress tracking for job', jobId);
+    console.log('Starting WebSocket progress tracking for job', jobId);
 
+    // Defensive check: ensure AnalysisWebSocket class is available
+    if (typeof window.AnalysisWebSocket !== 'function') {
+        console.warn('AnalysisWebSocket class not found - falling back to polling for job', jobId);
+        // Fallback to polling if WebSocket class is not available
+        startFallbackPolling(jobId);
+        return;
+    }
+
+    // Create WebSocket instance for this job
+    const ws = new window.AnalysisWebSocket();
+    
+    // Set up callbacks
+    ws.onProgress(function(data) {
+        console.log('Progress update for job', jobId, ':', data);
+        
+        // Check if this job is being cancelled
+        const cancellingInfo = cancellingJobs.get(jobId);
+        
+        if (cancellingInfo) {
+            // Job is in cancellation state - keep showing cancelling tag
+            console.log('Job', jobId, 'still cancelling...');
+        } else {
+            // Normal progress tracking - update percentage
+            const percentage = data.progress_percentage || 0;
+            updateJobProgress(jobId, percentage);
+        }
+    });
+    
+    ws.onCompleted(function(data) {
+        console.log('Analysis completed for job', jobId);
+        stopProgressTracking(jobId);
+        window.location.reload();
+    });
+    
+    ws.onCancelled(function(data) {
+        console.log('Analysis cancelled for job', jobId);
+        cancellingJobs.delete(jobId);
+        stopProgressTracking(jobId);
+        window.location.reload();
+    });
+    
+    ws.onFailed(function(data) {
+        console.error('Analysis failed for job', jobId, ':', data.error_message);
+        stopProgressTracking(jobId);
+        window.location.reload();
+    });
+    
+    ws.onStateChanged(function(state) {
+        console.log('WebSocket state changed for job', jobId, ':', state);
+
+        // Handle fallback mode
+        if (state === 'fallback_mode') {
+            console.log('WebSocket unavailable, using fallback polling');
+            // Close the WebSocket before starting fallback polling to prevent resource leak
+            if (ws && typeof ws.close === 'function') {
+                try {
+                    ws.close();
+                } catch (closeError) {
+                    // Ignore errors if already closed
+                    console.log('WebSocket already closed for job', jobId);
+                }
+            }
+            // Remove from analyzingJobs to prevent duplicate tracking
+            analyzingJobs.delete(jobId);
+            // Start fallback polling
+            startFallbackPolling(jobId);
+        }
+    });
+    
+    // Connect to WebSocket
+    ws.connect(jobId);
+    
+    // Store WebSocket instance
+    analyzingJobs.set(jobId, ws);
+}
+
+/**
+ * Fallback polling when WebSocket is unavailable
+ * @param {string} jobId - The job ID to track
+ */
+function startFallbackPolling(jobId) {
     const intervalId = setInterval(async () => {
         try {
-            console.log('Polling status for job', jobId);
             const status = await checkAnalysisStatus(jobId);
-            console.log('Status for job', jobId, ':', status);
 
-            // Check if this job is being cancelled
             const cancellingInfo = cancellingJobs.get(jobId);
-            
+
             if (cancellingInfo) {
                 // Job is in cancellation state
                 if (status && status.status === 'cancelled') {
-                    // Still cancelling - keep showing the tag
-                    console.log('Job', jobId, 'still cancelling...');
-                    // Don't update UI, keep showing "Cancelling..."
-                } else {
-                    // Status changed from 'cancelled' - task finished!
-                    console.log('Task finished after cancellation, reloading page');
+                    // Cancellation confirmed - stop polling and reload
+                    console.log('Job', jobId, 'cancellation confirmed, reloading...');
                     cancellingJobs.delete(jobId);
                     stopProgressTracking(jobId);
-                    // Full page reload to ensure all state is fresh
+                    clearInterval(intervalId);
                     window.location.reload();
                     return;
+                } else {
+                    // Still waiting for cancellation to complete
+                    console.log('Job', jobId, 'still cancelling...');
                 }
             } else {
                 // Not cancelling - normal progress tracking
                 if (status && status.status === 'processing') {
-                    // Update progress tag for this job
                     const percentage = status.progress_percentage || 0;
                     updateJobProgress(jobId, percentage);
                 } else if (status && (status.status === 'completed' || status.status === 'failed')) {
-                    // Stop tracking and reload
-                    console.log('Analysis completed/failed for job', jobId, 'status:', status.status);
                     stopProgressTracking(jobId);
+                    clearInterval(intervalId);
                     window.location.reload();
                 }
             }
         } catch (error) {
-            console.error('Error in progress tracking for job', jobId, error);
+            console.error('Error in fallback polling for job', jobId, error);
         }
-    }, 2000); // Poll every 2 seconds for faster cancellation response
+    }, 5000); // Poll every 5 seconds in fallback mode
 
-    analyzingJobs.set(jobId, intervalId);
+    analyzingJobs.set(jobId, { intervalId: intervalId, isFallback: true });
 }
 
 /**
@@ -660,11 +853,18 @@ function startProgressTracking(jobId) {
  * @param {string} jobId - The job ID to stop tracking
  */
 function stopProgressTracking(jobId) {
-    const intervalId = analyzingJobs.get(jobId);
-    if (intervalId) {
-        clearInterval(intervalId);
+    const wsOrInterval = analyzingJobs.get(jobId);
+    if (wsOrInterval) {
+        if (wsOrInterval.close) {
+            // It's a WebSocket instance
+            wsOrInterval.close();
+            console.log('Stopped WebSocket tracking for job', jobId);
+        } else if (wsOrInterval.intervalId) {
+            // It's a fallback polling interval
+            clearInterval(wsOrInterval.intervalId);
+            console.log('Stopped fallback polling for job', jobId);
+        }
         analyzingJobs.delete(jobId);
-        console.log('Stopped progress tracking for job', jobId);
     }
 }
 
@@ -791,7 +991,7 @@ function initProgressTracking() {
     progressTags.forEach(tag => {
         const jobId = tag.getAttribute('data-job-id');
         if (jobId && !analyzingJobs.has(jobId)) {
-            console.log('Resuming progress tracking for job', jobId);
+            console.log('Resuming WebSocket progress tracking for job', jobId);
             startProgressTracking(jobId);
         }
     });
@@ -799,8 +999,14 @@ function initProgressTracking() {
 
 // Stop all progress tracking (useful when navigating away)
 function stopAllProgressTracking() {
-    analyzingJobs.forEach((intervalId, jobId) => {
-        clearInterval(intervalId);
+    analyzingJobs.forEach((wsOrInterval, jobId) => {
+        if (wsOrInterval.close) {
+            // It's a WebSocket instance
+            wsOrInterval.close();
+        } else if (wsOrInterval.intervalId) {
+            // It's a fallback polling interval
+            clearInterval(wsOrInterval.intervalId);
+        }
     });
     analyzingJobs.clear();
     console.log('Stopped all progress tracking');
@@ -855,3 +1061,6 @@ document.addEventListener('DOMContentLoaded', () => {
         initProgressTracking();
     });
 });
+
+// Expose modal functions globally
+window.closeMessageModal = closeMessageModal;

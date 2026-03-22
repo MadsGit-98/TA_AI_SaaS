@@ -54,7 +54,40 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
 <script src="{% static 'js/auth-interceptor.js' %}"></script>
-<script src="{% static 'js/analysis.js' %}"></script>
 <script src="{% static 'js/logout.js' %}"></script>
+<!-- Pass job ID to JavaScript -->
+<script>
+    window.JOB_ID = '{{ job_listing.id }}';
+</script>
+<!-- WebSocket client for real-time updates - MUST load before reporting_progress.js -->
+<script src="{% static 'js/analysis-websocket.js' %}"></script>
+<!-- Analysis module for view toggling and UI -->
+<script src="{% static 'js/analysis.js' %}"></script>
+<!-- Reporting page progress tracking and button handlers -->
 <script src="{% static 'js/reporting_progress.js' %}"></script>
+<!-- Analysis results filtering with real-time updates -->
+<script src="{% static 'js/analysis-filters.js' %}"></script>
+
+<!-- Confirmation Modal (for reporting page) -->
+<!-- Accessibility: role="dialog" and aria-modal="true" for screen readers -->
+<div id="confirm-modal"
+     class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center"
+     style="display: none;"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="confirm-modal-title"
+     aria-describedby="confirm-modal-message"
+     tabindex="-1"
+     aria-hidden="true">
+    <div class="bg-white rounded-lg max-w-md w-full mx-4">
+        <div class="p-6">
+            <h3 id="confirm-modal-title" class="text-xl font-semibold text-primary-text mb-4">Confirm</h3>
+            <p id="confirm-modal-message" class="text-secondary-text mb-6"></p>
+            <div class="flex gap-4">
+                <button type="button" id="confirm-modal-cancel" class="flex-1 bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Cancel</button>
+                <button type="button" id="confirm-modal-confirm" class="flex-1 bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

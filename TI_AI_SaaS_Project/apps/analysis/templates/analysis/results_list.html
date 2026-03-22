@@ -4,10 +4,11 @@
 {% load analysis_tags %}
 
 {# Filter Controls #}
-<div class="filter-controls flex gap-4 items-end mb-6 p-4 bg-code-block-bg rounded-lg no-print">
-    <div class="flex flex-col gap-1">
-        <label for="category-filter" class="text-xs font-semibold text-primary-text">Category:</label>
-        <select id="category-filter" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white">
+<div class="filter-controls flex flex-wrap gap-4 items-end mb-6 p-4 bg-code-block-bg rounded-lg no-print">
+    {# Category Filter #}
+    <div class="flex flex-col gap-1" style="min-width: 150px;">
+        <label for="category-filter" class="block text-xs font-semibold text-gray-700">Category</label>
+        <select id="category-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" data-filter-type="category">
             <option value="">All Categories</option>
             <option value="Best Match" {% if active_filters.category == "Best Match" %}selected{% endif %}>Best Match (90-100)</option>
             <option value="Good Match" {% if active_filters.category == "Good Match" %}selected{% endif %}>Good Match (70-89)</option>
@@ -17,27 +18,51 @@
         </select>
     </div>
 
-    <div class="flex flex-col gap-1">
-        <label for="min-score" class="text-xs font-semibold text-primary-text">Min Score:</label>
-        <input type="number" id="min-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="0" value="{{ active_filters.min_score|default:'' }}" />
+    {# Overall Score Filters #}
+    <div class="flex flex-col gap-1" style="min-width: 120px;">
+        <label class="block text-xs font-semibold text-gray-700">Overall Score</label>
+        <div class="flex gap-1">
+            <input type="number" id="min-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Min" value="{{ active_filters.min_score|default:'' }}" data-filter-type="min_score" />
+            <input type="number" id="max-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Max" value="{{ active_filters.max_score|default:'' }}" data-filter-type="max_score" />
+        </div>
     </div>
 
-    <div class="flex flex-col gap-1">
-        <label for="max-score" class="text-xs font-semibold text-primary-text">Max Score:</label>
-        <input type="number" id="max-score" class="px-3 py-2 border border-secondary-text rounded text-sm min-w-[150px] text-primary-text bg-white" min="0" max="100" placeholder="100" value="{{ active_filters.max_score|default:'' }}" />
+    {# Education Score Filters #}
+    <div class="flex flex-col gap-1" style="min-width: 120px;">
+        <label class="block text-xs font-semibold text-gray-700">Education</label>
+        <div class="flex gap-1">
+            <input type="number" id="min-education-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Min" value="{{ active_filters.min_education_score|default:'' }}" data-filter-type="min_education_score" />
+            <input type="number" id="max-education-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Max" value="{{ active_filters.max_education_score|default:'' }}" data-filter-type="max_education_score" />
+        </div>
     </div>
 
-    <div class="flex gap-2">
-        <button id="apply-filters" class="bg-accent-cta text-cta-text px-5 py-2 rounded text-sm font-medium hover:brightness-110 transition" type="button">Apply Filters</button>
-        {% if active_filters %}
-        <a href="{% url 'analysis:reporting_page' job_listing.id %}" class="bg-code-block-bg text-primary-text px-5 py-2 rounded text-sm font-medium hover:bg-gray-300 transition" type="button">Clear Filters</a>
-        {% endif %}
+    {# Skills Score Filters #}
+    <div class="flex flex-col gap-1" style="min-width: 120px;">
+        <label class="block text-xs font-semibold text-gray-700">Skills</label>
+        <div class="flex gap-1">
+            <input type="number" id="min-skills-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Min" value="{{ active_filters.min_skills_score|default:'' }}" data-filter-type="min_skills_score" />
+            <input type="number" id="max-skills-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Max" value="{{ active_filters.max_skills_score|default:'' }}" data-filter-type="max_skills_score" />
+        </div>
+    </div>
+
+    {# Experience Score Filters #}
+    <div class="flex flex-col gap-1" style="min-width: 120px;">
+        <label class="block text-xs font-semibold text-gray-700">Experience</label>
+        <div class="flex gap-1">
+            <input type="number" id="min-experience-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Min" value="{{ active_filters.min_experience_score|default:'' }}" data-filter-type="min_experience_score" />
+            <input type="number" id="max-experience-score" class="w-1/2 px-2 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707] text-sm" min="0" max="100" placeholder="Max" value="{{ active_filters.max_experience_score|default:'' }}" data-filter-type="max_experience_score" />
+        </div>
+    </div>
+
+    {# Clear Filters Button #}
+    <div class="flex gap-2 items-end">
+        <button id="clear-filters" class="bg-code-block-bg text-primary-text px-5 py-2 rounded text-sm font-medium hover:bg-gray-300 transition" type="button" title="Clear all filters">Clear Filters</button>
     </div>
 </div>
 
 {# Results Table #}
-    <div class="overflow-x-auto rounded-lg border border-secondary-text">
-        <table class="w-full border-collapse bg-white">
+<div class="overflow-x-auto rounded-lg border border-secondary-text">
+    <table class="w-full border-collapse bg-white">
             <thead>
                 <tr>
                     <th class="bg-code-block-bg text-primary-text font-semibold text-sm text-left p-3 border-b-2 border-secondary-text">Applicant</th>
@@ -98,6 +123,9 @@
                                 <button class="bg-accent-cta text-cta-text px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-800 transition btn-view-detail" data-result-id="{{ result.id }}" type="button">
                                     View Details
                                 </button>
+                                <button class="bg-code-block-bg text-primary-text px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-300 transition btn-view-resume" data-applicant-id="{{ result.applicant.id }}" data-applicant-name="{{ result.applicant.first_name }} {{ result.applicant.last_name }}" type="button">
+                                    View Resume
+                                </button>
                             {% else %}
                                 <span class="text-red-600 text-xs" title="{{ result.error_message }}">
                                     ⚠️ {{ result.error_message|truncatechars:50 }}
@@ -119,7 +147,7 @@
 
     {# Pagination #}
     {% if page_obj %}
-    <div class="flex justify-between items-center mt-6 p-4">
+    <div class="flex justify-between items-center mt-6 p-4" data-pagination-controls>
         <span class="text-sm text-secondary-text">
             Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
         </span>
@@ -146,6 +174,29 @@
         </div>
         <div class="p-6" id="modal-body-content">
             {# Content loaded via AJAX #}
+        </div>
+    </div>
+</div>
+
+{# Resume View Modal #}
+<div id="resume-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title">
+    <div class="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
+        <div class="flex justify-between items-center p-5 border-b border-secondary-text">
+            <h3 id="resume-modal-title" class="text-xl font-semibold text-primary-text">Resume - <span id="resume-applicant-name"></span></h3>
+            <button class="resume-modal-close text-2xl text-secondary-text hover:text-primary-text transition" type="button" aria-label="Close Resume">&times;</button>
+        </div>
+        <div class="p-0" id="resume-modal-body" style="height: calc(90vh - 80px); overflow-y: auto;">
+            <!-- Resume content loaded via AJAX -->
+            <div class="flex items-center justify-center h-full">
+                <div class="text-center">
+                    <div class="animate-spin text-4xl text-primary-text mb-2">⟳</div>
+                    <p class="text-secondary-text">Loading resume...</p>
+                </div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-secondary-text bg-code-block-bg flex justify-end gap-2">
+            <button type="button" class="resume-modal-close bg-code-block-bg text-primary-text px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition">Close</button>
+            <a id="resume-download-link" href="#" target="_blank" class="bg-accent-cta text-cta-text px-4 py-2 rounded text-sm font-medium hover:brightness-110 transition" style="display: none;">Download Resume</a>
         </div>
     </div>
 </div>

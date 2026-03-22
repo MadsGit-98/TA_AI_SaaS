@@ -13,6 +13,7 @@ Graph Flow:
 from typing import TypedDict, List, Any, Literal
 from langgraph.graph import StateGraph, END
 from apps.analysis.models import AIAnalysisResult
+from apps.analysis.consumers import AnalysisNotificationConsumer
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from apps.analysis.graphs.worker import create_worker_graph
 from services.ai_analysis_service import (
@@ -22,6 +23,7 @@ from services.ai_analysis_service import (
     clear_analysis_progress,
     clear_cancellation_flag,
 )
+from datetime import datetime, timezone
 import logging
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class AnalysisState(TypedDict):
     total_count: int
     cancelled: bool
     current_index: int  # Index of current applicant being processed
+    sent_milestones: set  # Set of milestone percentages already sent (25, 50, 75, 90)
 
 
 def create_supervisor_graph():
@@ -157,6 +160,9 @@ def map_workers_node(state: AnalysisState) -> dict:
     # Process applicants concurrently
     new_results = []
 
+    # Get sent_milestones from state (persists across batch cycles to avoid duplicate notifications)
+    sent_milestones = state.get('sent_milestones', set())
+
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
     logger.info(f"[MapWorkers] Using {max_workers} workers for batch of {batch_size} applicants")
@@ -185,6 +191,7 @@ def map_workers_node(state: AnalysisState) -> dict:
                     'processed_count': processed_count,
                     'current_index': current_index,
                     'cancelled': True,
+                    'sent_milestones': sent_milestones,
                 }
 
             try:
@@ -199,13 +206,35 @@ def map_workers_node(state: AnalysisState) -> dict:
                         'processed_count': processed_count + 1,
                         'current_index': current_index,
                         'cancelled': True,
+                        'sent_milestones': sent_milestones,
                     }
 
                 new_results.append(result)
                 processed_count += 1
 
-                # Update progress
+                # Update progress in Redis
                 update_analysis_progress(job_id, processed_count, len(applicants))
+
+                # Send WebSocket notification at milestone checkpoints
+                percentage = int((processed_count / len(applicants)) * 100)
+                if percentage in [25, 50, 75, 90] and percentage not in sent_milestones:
+                    try:
+                        user_id = str(job.created_by_id)
+                        AnalysisNotificationConsumer.notify_progress(
+                            job_id, user_id,
+                            {
+                                'progress_percentage': percentage,
+                                'processed_count': processed_count,
+                                'total_count': len(applicants),
+                                'message': f'Processing... {percentage}% complete',
+                                'timestamp': datetime.now(timezone.utc).isoformat()
+                            }
+                        )
+                        logger.info(f"Sent WebSocket progress update: {percentage}% for job {job_id}")
+                        # Mark this milestone as sent
+                        sent_milestones.add(percentage)
+                    except Exception as e:
+                        logger.error(f"Failed to send WebSocket progress update: {e}")
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
@@ -227,6 +256,7 @@ def map_workers_node(state: AnalysisState) -> dict:
         'results': results + new_results,
         'processed_count': processed_count,
         'current_index': new_index,
+        'sent_milestones': sent_milestones,  # Persist milestones across batch cycles
     }
 
 

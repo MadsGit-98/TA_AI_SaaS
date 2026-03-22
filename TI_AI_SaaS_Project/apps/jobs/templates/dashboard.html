@@ -122,11 +122,40 @@
     </div>
 </main>
 
+    <!-- Generic Message Modal -->
+    <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;">
+        <div class="bg-white rounded-lg max-w-md w-full mx-4">
+            <div class="p-6">
+                <h3 id="message-modal-title" class="text-xl font-semibold text-primary-text mb-4">Message</h3>
+                <p id="message-modal-message" class="text-secondary-text mb-6"></p>
+                <div class="flex gap-4">
+                    <button type="button" onclick="closeMessageModal()" class="flex-1 bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;">
+        <div class="bg-white rounded-lg max-w-md w-full mx-4">
+            <div class="p-6">
+                <h3 id="confirm-modal-title" class="text-xl font-semibold text-primary-text mb-4">Confirm</h3>
+                <p id="confirm-modal-message" class="text-secondary-text mb-6"></p>
+                <div class="flex gap-4">
+                    <button type="button" id="confirm-modal-cancel" class="flex-1 bg-code-block-bg text-primary-text px-5 py-2.5 rounded text-sm font-medium hover:bg-gray-300 transition">Cancel</button>
+                    <button type="button" id="confirm-modal-confirm" class="flex-1 bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% include 'components/legal_footer.html' %}
 
     {% block extra_js %}
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" crossorigin="anonymous"></script>
         <script src="{% static 'js/auth-interceptor.js' %}"></script>
+        <!-- WebSocket client for real-time analysis updates -->
+        <script src="{% static 'js/analysis-websocket.js' %}"></script>
         <script src="{% static 'js/dashboard.js' %}"></script>
     {% endblock %}
 </body>
