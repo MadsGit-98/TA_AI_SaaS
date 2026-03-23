@@ -115,7 +115,7 @@ As a Talent Acquisition Specialist, I want clear feedback when approaching uploa
 - **FR-015**: The "Start Upload" button MUST navigate the user to a dedicated bulk upload page for the specific job listing
 - **FR-016**: System MUST allow TAS to start AI analysis on uploaded resumes after bulk upload completion
 - **FR-017**: System MUST allow TAS to edit job listing details after bulk upload initiation
-- **FR-018**: System MUST comply with Dark Mode high contrast color grading as defined in project constitution
+- **FR-018**: System MUST comply with Light Mode high contrast color grading as defined in project constitution (primary-bg #FFFFFF, primary-text #000000, secondary-text #A0A0A0, accent-cta #080707)
 - **FR-019**: System MUST achieve minimum 90% unit test coverage
 - **FR-020**: System MUST include End-to-End tests for critical upload workflows
 
@@ -131,9 +131,22 @@ As a Talent Acquisition Specialist, I want clear feedback when approaching uploa
 ### Measurable Outcomes
 
 - **SC-001**: Talent Acquisition Specialists can upload 100 resumes in under 2 minutes from start to finish
+  - *Measurement*: E2E test with 100 sample resume files, measure time from first file drop to "Upload Complete" message
+  
 - **SC-002**: System successfully processes 95% of uploaded resumes without manual intervention required
+  - *Measurement*: Count resumes with parsing_status='complete' vs total uploaded; target 95/100
+  
 - **SC-003**: Duplicate detection accuracy achieves 98% precision in identifying true duplicate applicants
+  - *Measurement*: Test with 50 known duplicates + 50 unique resumes; precision = true_positives / (true_positives + false_positives); target ≥0.98
+  
 - **SC-004**: Users successfully complete bulk upload workflow on first attempt in 90% of cases
+  - *Measurement*: Analytics tracking - count sessions with successful commit / total upload sessions initiated; target ≥90%
+  
 - **SC-005**: System provides upload status feedback within 3 seconds of each file upload completion
+  - *Measurement*: Frontend performance timing - measure time from file upload complete to UI status update; p95 ≤3 seconds
+  
 - **SC-006**: Applicant information extraction achieves 85% accuracy for name, email, and phone number fields
+  - *Measurement*: Test with 100 resumes with known contact info; field-level accuracy = correct_fields / total_fields; target ≥85% (name: 2 fields, email: 1 field, phone: 1 field = 4 fields per resume)
+  
 - **SC-007**: Reduce manual data entry time by 80% compared to individual applicant creation workflow
+  - *Measurement*: Time study - bulk upload 100 resumes vs manual creation of 100 applicants; target: bulk_time ≤ 0.2 × manual_time

@@ -43,7 +43,7 @@ Talent Acquisition Specialists can securely upload multiple applicant resumes in
 - [x] Code Style: PEP 8 compliance required (documented in quickstart.md)
 - [x] AI Disclaimer: Clear disclosure that AI results are supplementary (FR-016, AI analysis started after upload completion)
 - [x] Data Integrity: Applicant state persisted immediately upon submission (FR-007, commit creates Applicant instances synchronously)
-- [x] Color Grading: Dark Mode high contrast (primary-bg #FFFFFF, primary-text #000000, etc.) as defined in constitution
+- [x] Color Grading: Light Mode high contrast (primary-bg #FFFFFF, primary-text #000000, secondary-text #A0A0A0, accent-cta #080707, code-block-bg #E0E0E0, cta-text #FFFFFF) as defined in constitution §6
 
 **Status**: All constitution requirements satisfied. Design is compliant.
 
