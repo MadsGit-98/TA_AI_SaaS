@@ -4,12 +4,15 @@ Template Views for Applications App
 Renders HTML templates for:
 - Application form
 - Success confirmation page
+- Bulk upload interface
 """
 
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
 from apps.jobs.models import JobListing
-from apps.applications.models import Applicant
+from apps.applications.models import Applicant, UploadBatch
+from apps.accounts.permissions import IsTAS
 
 
 def application_form_view(request, application_link):
@@ -68,3 +71,80 @@ def applications_submit_view(request):
     Future implementation will handle resume uploads.
     """
     return JsonResponse({'status': 'placeholder', 'message': 'Application submission endpoint will be implemented in future features'})
+
+
+@login_required
+def bulk_upload_view(request, job_listing_id):
+    """
+    Render the bulk upload interface for a job listing.
+    
+    Only accessible by Talent Acquisition Specialists (TAS).
+    """
+    # Check if user is TAS
+    if not hasattr(request.user, 'is_tas') or not request.user.is_tas:
+        return render(request, '403.html', status=403)
+    
+    job_listing = get_object_or_404(JobListing, id=job_listing_id)
+    
+    # Check if bulk upload is allowed
+    if job_listing.upload_type != 'bulk':
+        return redirect('dashboard_jobs:job_detail', job_listing_id=job_listing.id)
+    
+    context = {
+        'job_listing': job_listing,
+    }
+    
+    return render(request, 'applications/bulk_upload.html', context)
+
+
+@login_required
+def bulk_upload_summary_view(request, batch_id):
+    """
+    Render the bulk upload summary page after commit.
+    
+    Only accessible by the TAS who uploaded the batch or staff.
+    """
+    # Check if user is TAS
+    if not hasattr(request.user, 'is_tas') or not request.user.is_tas:
+        return render(request, '403.html', status=403)
+    
+    batch = get_object_or_404(
+        UploadBatch.objects.select_related('job_listing', 'uploaded_by'),
+        id=batch_id
+    )
+    
+    # Check permission
+    if batch.uploaded_by != request.user and not request.user.is_staff:
+        return render(request, '403.html', status=403)
+    
+    # Get applicants from this batch
+    applicants = batch.applicants.all().order_by('submitted_at')
+    
+    # Build summary
+    summary = {
+        'total_files': batch.file_count,
+        'successful': applicants.count(),
+        'duplicates_skipped': len([f for f in batch.temp_files if f.get('action') == 'skip']),
+        'failed': len([f for f in batch.temp_files if f.get('status') == 'failed'])
+    }
+    
+    # Format applicants for display
+    applicants_data = [
+        {
+            'id': a.id,
+            'reference_number': a.reference_number,
+            'filename': a.resume_file.name.split('/')[-1],
+            'parsing_status': a.get_parsing_status(),
+            'access_token': a.access_token
+        }
+        for a in applicants
+    ]
+    
+    context = {
+        'batch': batch,
+        'job_listing': batch.job_listing,
+        'summary': summary,
+        'applicants': applicants_data,
+    }
+    
+    return render(request, 'applications/bulk_upload_summary.html', context)

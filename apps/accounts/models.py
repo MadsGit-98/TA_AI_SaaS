@@ -40,6 +40,18 @@ class CustomUser(AbstractUser):
             ])
         )
 
+    @property
+    def is_tas(self):
+        """
+        Check if user is a Talent Acquisition Specialist.
+        
+        Returns True if the user has a profile with is_talent_acquisition_specialist=True.
+        """
+        try:
+            return hasattr(self, 'profile') and self.profile.is_talent_acquisition_specialist
+        except UserProfile.DoesNotExist:
+            return False
+
     def save(self, *args, **kwargs):
         """
         Override save method to generate UUID slug and track field changes

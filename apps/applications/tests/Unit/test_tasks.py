@@ -33,6 +33,7 @@ class EmailTaskTest(TestCase):
             job_level='Junior',
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
+            upload_type='form',
             created_by=self.user
         )
 

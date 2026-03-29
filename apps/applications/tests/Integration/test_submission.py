@@ -37,6 +37,7 @@ class ApplicationSubmissionIntegrationTest(TestCase):
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
             status='Active',
+            upload_type='form',
             created_by=self.user
         )
 

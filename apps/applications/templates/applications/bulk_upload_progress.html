@@ -1,0 +1,89 @@
+{% comment %}
+Bulk Upload Progress Modal Template
+
+This template is included in bulk_upload.html and displays real-time upload progress.
+It's designed to be shown as a modal overlay during the upload process.
+{% endcomment %}
+
+<div id="bulk-upload-progress-modal" class="progress-modal" style="display: none;">
+    <div class="progress-modal-content">
+        <div class="progress-modal-header">
+            <h3>Uploading Resumes</h3>
+            <button class="progress-modal-close" id="progress-modal-close" type="button">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+        
+        <div class="progress-modal-body">
+            <!-- Overall Progress -->
+            <div class="overall-progress">
+                <div class="progress-info">
+                    <span class="progress-label">Overall Progress</span>
+                    <span class="progress-percentage" id="overall-progress-percent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="overall-progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="progress-stats">
+                    <div class="stat">
+                        <span class="stat-value" id="stat-uploaded">0</span>
+                        <span class="stat-label">Uploaded</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="stat-validating">0</span>
+                        <span class="stat-label">Validating</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="stat-complete">0</span>
+                        <span class="stat-label">Complete</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="stat-errors">0</span>
+                        <span class="stat-label">Errors</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Current File Progress -->
+            <div class="current-file-progress">
+                <h4>Current File</h4>
+                <div class="file-info">
+                    <span class="file-name" id="current-file-name">-</span>
+                    <span class="file-size" id="current-file-size">-</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill current" id="current-file-progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <!-- File List -->
+            <div class="progress-file-list">
+                <h4>Files</h4>
+                <div id="progress-files-container" class="progress-files-container">
+                    <!-- File items will be added here dynamically -->
+                </div>
+            </div>
+            
+            <!-- Status Messages -->
+            <div id="progress-messages" class="progress-messages">
+                <!-- Status messages will be added here -->
+            </div>
+        </div>
+        
+        <div class="progress-modal-footer">
+            <button class="btn btn-secondary" id="cancel-upload-progress" type="button">
+                Cancel Upload
+            </button>
+            <button class="btn btn-primary" id="minimize-progress" type="button">
+                Minimize
+            </button>
+        </div>
+    </div>
+</div>
+
+{% comment %}
+Usage in bulk_upload.js:
+- Show modal when upload starts
+- Update progress bars via JavaScript
+- Hide modal when upload completes or is cancelled
+{% endcomment %}

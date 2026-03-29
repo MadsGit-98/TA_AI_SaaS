@@ -249,6 +249,18 @@ function createJobElement(job, container) {
     const rightSide = document.createElement('div');
     rightSide.className = 'flex flex-col space-y-2';
 
+    // Start Upload button (for bulk upload type jobs)
+    if (job.upload_type === 'bulk') {
+        const uploadButton = document.createElement('button');
+        uploadButton.className = 'bg-accent-cta text-cta-text px-4 py-2 rounded-md text-sm font-medium hover:brightness-110 transition duration-150 ease-in-out text-center';
+        uploadButton.textContent = 'Start Upload';
+        uploadButton.title = 'Upload resumes in bulk for this job';
+        uploadButton.addEventListener('click', () => {
+            window.location.href = `/bulk-upload/${job.id}/`;
+        });
+        rightSide.appendChild(uploadButton);
+    }
+
     // Edit button
     const editButton = document.createElement('button');
     editButton.className = 'text-blue-600 hover:text-blue-800 text-sm';

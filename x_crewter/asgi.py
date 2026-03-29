@@ -26,6 +26,7 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 # Import routing after Django initialization
 from apps.accounts import routing as accounts_routing
 from apps.analysis import routing as analysis_routing
+from apps.applications import routing as applications_routing
 # Import custom JWT authentication middleware for WebSockets
 from apps.accounts.websocket_auth import JWTAuthMiddleware
 
@@ -34,7 +35,8 @@ application = ProtocolTypeRouter({
     "websocket": JWTAuthMiddleware(
         URLRouter(
             accounts_routing.websocket_urlpatterns +
-            analysis_routing.websocket_urlpatterns
+            analysis_routing.websocket_urlpatterns +
+            applications_routing.websocket_urlpatterns
         )
     ),
 })

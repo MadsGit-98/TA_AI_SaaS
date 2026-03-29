@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Bulk Upload Resumes - {{ job_listing.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/bulk_upload.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="bulk-upload-container">
+    <!-- Header -->
+    <div class="bulk-upload-header">
+        <h1>Bulk Upload Resumes</h1>
+        <p class="job-title">{{ job_listing.title }}</p>
+        
+        <!-- Upload Limits Info -->
+        <div class="upload-limits-info">
+            <div class="limit-badge">
+                <span class="limit-label">Batch:</span>
+                <span class="limit-value">{{ job_listing.batch_count }}/3</span>
+            </div>
+            <div class="limit-badge">
+                <span class="limit-label">Total Resumes:</span>
+                <span class="limit-value">{{ job_listing.total_resumes }}/300</span>
+            </div>
+            <div class="limit-badge">
+                <span class="limit-label">Files per Batch:</span>
+                <span class="limit-value">0/100</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Area -->
+    <div class="upload-section">
+        <div id="drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+                <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <h3>Drag & Drop Resume Files</h3>
+                <p>or click to browse</p>
+                <p class="file-requirements">
+                    Accepted formats: PDF, DOCX | Size: 50KB - 10MB | Max: 100 files per batch
+                </p>
+            </div>
+            <input type="file" id="file-input" multiple accept=".pdf,.docx" style="display: none;">
+        </div>
+
+        <!-- Upload Controls -->
+        <div class="upload-controls" id="upload-controls" style="display: none;">
+            <button id="start-upload-btn" class="btn btn-primary">
+                Start Upload (<span id="file-count">0</span> files)
+            </button>
+            <button id="cancel-upload-btn" class="btn btn-secondary">
+                Cancel
+            </button>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="progress-section" style="display: none;">
+            <div class="progress-header">
+                <h4>Upload Progress</h4>
+                <span id="progress-text">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="progress-stats">
+                <span>Uploaded: <span id="uploaded-count">0</span></span>
+                <span>Validated: <span id="validated-count">0</span></span>
+                <span>Errors: <span id="error-count">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- File List -->
+    <div id="file-list-section" class="file-list-section" style="display: none;">
+        <h4>Files (<span id="total-files">0</span>)</h4>
+        <div id="file-list" class="file-list">
+            <!-- File items will be added here dynamically -->
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="upload-actions" id="upload-actions" style="display: none;">
+        <button id="validate-btn" class="btn btn-primary">
+            Check for Duplicates
+        </button>
+        <button id="clear-all-btn" class="btn btn-secondary">
+            Clear All
+        </button>
+    </div>
+
+    <!-- Duplicate Review Modal -->
+    <div id="duplicate-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Duplicate Detection Results</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="duplicate-summary">
+                    Found <span id="duplicate-count">0</span> potential duplicates.
+                    Review each file and decide whether to include or skip.
+                </p>
+                <div class="duplicate-actions">
+                    <button id="skip-all-btn" class="btn btn-secondary">Skip All</button>
+                    <button id="include-all-btn" class="btn btn-primary">Include All</button>
+                </div>
+                <div id="duplicate-list" class="duplicate-list">
+                    <!-- Duplicate items will be added here dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-decisions-btn" class="btn btn-primary btn-lg">
+                    Continue with Selected Files
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commit Section -->
+    <div id="commit-section" class="commit-section" style="display: none;">
+        <div class="commit-summary">
+            <h4>Ready to Commit</h4>
+            <p>
+                <span id="files-to-commit">0</span> files will be processed.
+                This action cannot be undone.
+            </p>
+        </div>
+        <div class="commit-actions">
+            <button id="commit-btn" class="btn btn-success btn-lg">
+                Commit and Create Applicants
+            </button>
+            <button id="go-back-btn" class="btn btn-secondary">
+                Go Back
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- AI Disclaimer -->
+<div id="ai-disclaimer" class="ai-disclaimer" style="display: none;">
+    <div class="disclaimer-content">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <p>
+            <strong>AI Analysis Notice:</strong> After upload completion, you can start AI analysis 
+            to get supplementary insights about candidates. AI results are provided as additional 
+            information and should not be used as the sole criteria for hiring decisions.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/bulk_upload.js' %}"></script>
+<script>
+    // Initialize bulk upload with job listing data
+    window.bulkUploadConfig = {
+        jobListingId: '{{ job_listing.id }}',
+        batchId: null,
+        csrfToken: '{{ csrf_token }}',
+        wsUrl: window.location.hostname === 'localhost' 
+            ? `ws://${window.location.host}/ws/bulk-upload/` 
+            : `wss://${window.location.host}/ws/bulk-upload/`,
+        maxFilesPerBatch: 100,
+        maxBatchCount: 3,
+        maxTotalResumes: 300,
+        minFileSize: 50 * 1024,  // 50KB
+        maxFileSize: 10 * 1024 * 1024  // 10MB
+    };
+</script>
+{% endblock %}

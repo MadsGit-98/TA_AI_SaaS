@@ -5,15 +5,22 @@ Handles:
 - Application submission (public, unauthenticated)
 - File validation (async duplication check)
 - Contact validation (async duplication check)
+- Bulk resume upload (authenticated TAS only)
 """
 
 import logging
+import uuid
+import re
 from django.db import IntegrityError, transaction
+from django.core.files.base import ContentFile
+from django.conf import settings
+from django.core.files.storage import default_storage
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from apps.applications.models import Applicant
+from rest_framework.views import APIView
+from apps.applications.models import Applicant, UploadBatch
 from apps.applications.throttles import (
     ApplicationSubmissionIPThrottle,
     ApplicationValidationIPThrottle,
@@ -23,10 +30,18 @@ from apps.applications.serializers import (
     ApplicantCreateResponseSerializer,
     FileValidationRequestSerializer,
     ContactValidationRequestSerializer,
+    BulkUploadInitSerializer,
+    BulkUploadFileSerializer,
+    BulkUploadCommitSerializer,
+    BulkUploadValidateSerializer,
+    BulkUploadDecisionSerializer,
 )
+from apps.accounts.permissions import IsTAS
 from services.duplication_service import DuplicationService
 from apps.applications.tasks import send_application_confirmation_email
-from services.resume_parsing_service import ResumeParserService
+from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
 
@@ -286,3 +301,548 @@ def validate_contact(request):
         },
         status=status.HTTP_200_OK
     )
+
+
+# Bulk Upload API Views
+
+class BulkUploadInitView(APIView):
+    """
+    Initialize a bulk upload session.
+    
+    POST /api/applications/bulk-upload/init/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def post(self, request):
+        serializer = BulkUploadInitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        job_listing = serializer.validated_data['job_listing_id']
+        
+        # Check if bulk upload is allowed
+        can_upload, message = job_listing.can_upload_more(0)
+        if not can_upload:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create UploadBatch
+        batch = UploadBatch.objects.create(
+            job_listing=job_listing,
+            batch_number=job_listing.batch_count + 1,
+            uploaded_by=request.user,
+            status='pending'
+        )
+        
+        return Response({
+            'batch_id': str(batch.id),
+            'batch_number': batch.batch_number,
+            'max_files': 100,
+            'remaining_capacity': 100,
+            'status': batch.status
+        }, status=status.HTTP_201_CREATED)
+
+
+class BulkUploadView(APIView):
+    """
+    Upload a single file to a batch.
+    
+    POST /api/applications/bulk-upload/upload/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def post(self, request):
+        serializer = BulkUploadFileSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        batch = serializer.validated_data['batch_id']
+        file = request.FILES.get('file')
+        
+        if not file:
+            return Response(
+                {'error': 'No file provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Read file content
+        file_content = file.read()
+        
+        # Validate file using existing service
+        validation_result = DuplicationService.validate_resume_file(
+            file_content,
+            file.name
+        )
+        
+        if not validation_result['valid']:
+            return Response({
+                'error': validation_result['errors'][0]['code'],
+                'message': validation_result['errors'][0]['message']
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Store in temp location
+        temp_path = f'{settings.AWS_TEMP_LOCATION}/{batch.id}/{uuid.uuid4()}_{file.name}'
+        default_storage.save(temp_path, ContentFile(file_content))
+        
+        # Add to batch
+        file_metadata = {
+            'file_id': str(uuid.uuid4()),
+            'filename': file.name,
+            'file_hash': validation_result['file_hash'],
+            'size': len(file_content),
+            'temp_path': temp_path,
+            'status': 'uploaded'
+        }
+        batch.add_file(file_metadata)
+        
+        # Update batch status
+        batch.status = 'uploading'
+        batch.save()
+        
+        # Send WebSocket progress update
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'bulk_upload_{batch.id}',
+            {
+                'type': 'upload_progress',
+                'file_id': file_metadata['file_id'],
+                'filename': file.name,
+                'status': 'success',
+                'progress_percent': 100
+            }
+        )
+        
+        return Response(file_metadata)
+
+
+class BulkUploadValidateView(APIView):
+    """
+    Validate batch and check for duplicates.
+    
+    POST /api/applications/bulk-upload/validate/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def post(self, request):
+        serializer = BulkUploadValidateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        batch = serializer.validated_data['batch_id']
+        
+        duplicates = []
+        valid_files = []
+        
+        for file_meta in batch.temp_files:
+            # Check file hash duplicate
+            if DuplicationService.check_resume_duplicate(
+                batch.job_listing,
+                file_meta['file_hash']
+            ):
+                duplicates.append({
+                    'file_id': file_meta['file_id'],
+                    'filename': file_meta['filename'],
+                    'duplicate_type': 'file_hash'
+                })
+                continue
+            
+            # Extract contact info for further checks
+            try:
+                file_content = default_storage.open(file_meta['temp_path']).read()
+                # Determine file type from extension and extract text
+                filename = file_meta.get('filename', '').lower()
+                if filename.endswith('.pdf'):
+                    text = ResumeParserService.extract_text_from_pdf(file_content)
+                elif filename.endswith('.docx'):
+                    text = ResumeParserService.extract_text_from_docx(file_content)
+                else:
+                    # Fallback: try DOCX first, then PDF
+                    try:
+                        text = ResumeParserService.extract_text_from_docx(file_content)
+                    except Exception:
+                        text = ResumeParserService.extract_text_from_pdf(file_content)
+                contact_info = self._extract_contact_info(text)
+                
+                # Check email duplicate
+                if contact_info.get('email') and DuplicationService.check_email_duplicate(
+                    batch.job_listing,
+                    contact_info['email']
+                ):
+                    duplicates.append({
+                        'file_id': file_meta['file_id'],
+                        'filename': file_meta['filename'],
+                        'duplicate_type': 'email',
+                        'email': contact_info['email']
+                    })
+                    continue
+                
+                # Check phone duplicate
+                if contact_info.get('phone') and DuplicationService.check_phone_duplicate(
+                    batch.job_listing,
+                    contact_info['phone']
+                ):
+                    duplicates.append({
+                        'file_id': file_meta['file_id'],
+                        'filename': file_meta['filename'],
+                        'duplicate_type': 'phone',
+                        'phone': contact_info['phone']
+                    })
+                    continue
+                
+                valid_files.append(file_meta)
+            except Exception as e:
+                logger.error(f"Error processing file {file_meta['filename']}: {str(e)}")
+                file_meta['status'] = 'failed'
+                file_meta['error'] = 'Failed to process file'
+        
+        batch.duplicate_summary = {
+            'duplicates': duplicates,
+            'valid_files': valid_files
+        }
+        batch.status = 'awaiting_review'
+        batch.save()
+        
+        # Send WebSocket update
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'bulk_upload_{batch.id}',
+            {
+                'type': 'validation_complete',
+                'total_files': len(batch.temp_files),
+                'valid_files': len(valid_files),
+                'duplicates': len(duplicates),
+                'failed_files': len([f for f in batch.temp_files if f.get('status') == 'failed']),
+                'ready_for_review': True
+            }
+        )
+        
+        return Response({
+            'batch_id': str(batch.id),
+            'total_files': len(batch.temp_files),
+            'valid_files': len(valid_files),
+            'duplicates': duplicates,
+            'status': batch.status
+        })
+    
+    def _extract_contact_info(self, text: str) -> dict:
+        """Extract contact information from parsed resume text."""
+        import re
+        
+        # Simple email extraction
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        emails = re.findall(email_pattern, text)
+        email = emails[0] if emails else None
+
+        # Simple phone extraction (very basic)
+        # Note: - is escaped to avoid being interpreted as a character range
+        phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
+        phones = re.findall(phone_pattern, text)
+        phone = phones[0] if phones else None
+
+        return {'email': email, 'phone': phone}
+
+
+class BulkUploadCommitView(APIView):
+    """
+    Commit a batch and create Applicant instances.
+
+    POST /api/applications/bulk-upload/commit/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+
+    def _extract_contact_info(self, text: str) -> dict:
+        """Extract contact information from parsed resume text."""
+        # Simple email extraction
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        emails = re.findall(email_pattern, text)
+        email = emails[0] if emails else None
+
+        # Simple phone extraction (very basic)
+        # Note: - is escaped to avoid being interpreted as a character range
+        phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
+        phones = re.findall(phone_pattern, text)
+        phone = phones[0] if phones else None
+
+        return {'email': email, 'phone': phone}
+
+    def post(self, request):
+        serializer = BulkUploadCommitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        batch = serializer.validated_data['batch_id']
+        
+        applicants_created = []
+        
+        with transaction.atomic():
+            for file_meta in batch.temp_files:
+                # Skip files marked for skipping
+                if file_meta.get('action') == 'skip':
+                    continue
+                
+                # Skip failed files
+                if file_meta.get('status') == 'failed':
+                    continue
+                
+                try:
+                    # Move file to permanent storage
+                    permanent_path = f'applications/resumes/{batch.job_listing.id}/{uuid.uuid4()}_{file_meta["filename"]}'
+                    file_content = default_storage.open(file_meta['temp_path']).read()
+                    default_storage.save(permanent_path, ContentFile(file_content))
+                    default_storage.delete(file_meta['temp_path'])
+
+                    # Determine file type from extension and extract text
+                    filename = file_meta.get('filename', '').lower()
+                    if filename.endswith('.pdf'):
+                        text = ResumeParserService.extract_text_from_pdf(file_content)
+                    elif filename.endswith('.docx'):
+                        text = ResumeParserService.extract_text_from_docx(file_content)
+                    else:
+                        # Fallback: try DOCX first, then PDF
+                        try:
+                            text = ResumeParserService.extract_text_from_docx(file_content)
+                        except Exception:
+                            text = ResumeParserService.extract_text_from_pdf(file_content)
+                    
+                    # Extract and redact text
+                    redacted_text = ConfidentialInfoFilter.redact(text)
+
+                    # Extract contact info BEFORE redaction
+                    contact_info = self._extract_contact_info(text)
+
+                    # Create Applicant with extracted contact info
+                    applicant = Applicant.objects.create(
+                        job_listing=batch.job_listing,
+                        upload_batch=batch,
+                        first_name='',  # Would be extracted from resume
+                        last_name='',
+                        email=contact_info.get('email') or '',
+                        phone=contact_info.get('phone') or '',
+                        resume_file=permanent_path,
+                        resume_file_hash=file_meta['file_hash'],
+                        resume_parsed_text=redacted_text,
+                        status=Applicant.STATUS_SUBMITTED
+                    )
+                    
+                    applicants_created.append({
+                        'id': str(applicant.id),
+                        'reference_number': applicant.reference_number,
+                        'filename': file_meta['filename']
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Error creating applicant for {file_meta['filename']}: {str(e)}")
+                    continue
+            
+            # Update JobListing counters
+            batch.job_listing.batch_count += 1
+            batch.job_listing.total_resumes += len(applicants_created)
+            batch.job_listing.save()
+            
+            batch.status = 'committed'
+            batch.save()
+        
+        return Response({
+            'batch_id': str(batch.id),
+            'status': 'committed',
+            'applicants_created': len(applicants_created),
+            'applicants': applicants_created
+        })
+
+
+class BulkUploadCancelView(APIView):
+    """
+    Cancel a batch and clean up temporary files.
+    
+    DELETE /api/applications/bulk-upload/cancel/<batch_id>/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def delete(self, request, batch_id):
+        try:
+            batch = UploadBatch.objects.get(
+                id=batch_id,
+                uploaded_by=request.user
+            )
+            
+            # Delete temp files
+            files_deleted = 0
+            for file_meta in batch.temp_files:
+                try:
+                    default_storage.delete(file_meta['temp_path'])
+                    files_deleted += 1
+                except Exception as e:
+                    logger.error(f"Error deleting temp file {file_meta['temp_path']}: {str(e)}")
+            
+            batch.status = 'cancelled'
+            batch.save()
+            
+            return Response({
+                'batch_id': str(batch.id),
+                'status': 'cancelled',
+                'files_deleted': files_deleted,
+                'message': 'Batch cancelled successfully'
+            })
+            
+        except UploadBatch.DoesNotExist:
+            return Response(
+                {'error': 'Batch not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class BulkUploadStatusView(APIView):
+    """
+    Get batch upload status.
+    
+    GET /api/applications/bulk-upload/status/<batch_id>/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def get(self, request, batch_id):
+        try:
+            batch = UploadBatch.objects.get(id=batch_id)
+            
+            # Check permission
+            if batch.uploaded_by != request.user and not request.user.is_staff:
+                return Response(
+                    {'error': 'Permission denied'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            return Response({
+                'batch_id': str(batch.id),
+                'status': batch.status,
+                'progress': {
+                    'files_uploaded': batch.file_count,
+                    'files_total': 100,
+                    'files_validated': len(batch.duplicate_summary.get('valid_files', [])) if batch.duplicate_summary else 0,
+                    'files_with_errors': len([f for f in batch.temp_files if f.get('status') == 'failed'])
+                },
+                'files': batch.temp_files[:20]  # Limit to first 20 for performance
+            })
+            
+        except UploadBatch.DoesNotExist:
+            return Response(
+                {'error': 'Batch not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class BulkUploadSummaryView(APIView):
+    """
+    Get batch upload summary.
+    
+    GET /api/applications/bulk-upload/summary/<batch_id>/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def get(self, request, batch_id):
+        try:
+            batch = UploadBatch.objects.get(id=batch_id)
+            
+            # Check permission
+            if batch.uploaded_by != request.user and not request.user.is_staff:
+                return Response(
+                    {'error': 'Permission denied'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            if batch.status != 'committed':
+                return Response(
+                    {'error': 'Batch not yet committed'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            applicants = batch.applicants.all()[:100]  # Limit to first 100
+            
+            return Response({
+                'batch_id': str(batch.id),
+                'job_listing': {
+                    'id': str(batch.job_listing.id),
+                    'title': batch.job_listing.title
+                },
+                'batch_number': batch.batch_number,
+                'uploaded_at': batch.uploaded_at,
+                'uploaded_by': {
+                    'id': str(batch.uploaded_by.id),
+                    'name': batch.uploaded_by.get_full_name() or batch.uploaded_by.username
+                },
+                'summary': {
+                    'total_files': batch.file_count,
+                    'successful': applicants.count(),
+                    'duplicates_skipped': len([f for f in batch.temp_files if f.get('action') == 'skip']),
+                    'failed': len([f for f in batch.temp_files if f.get('status') == 'failed'])
+                },
+                'applicants': [
+                    {
+                        'id': str(a.id),
+                        'reference_number': a.reference_number,
+                        'filename': a.resume_file.name.split('/')[-1],
+                        'parsing_status': a.get_parsing_status()
+                    }
+                    for a in applicants
+                ]
+            })
+            
+        except UploadBatch.DoesNotExist:
+            return Response(
+                {'error': 'Batch not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class BulkUploadDecisionView(APIView):
+    """
+    Submit decisions for duplicate files.
+    
+    POST /api/applications/bulk-upload/decisions/
+    """
+    permission_classes = [IsAuthenticated, IsTAS]
+    
+    def post(self, request):
+        serializer = BulkUploadDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        batch = serializer.validated_data['batch_id']
+        decisions = serializer.validated_data['decisions']
+        
+        # Process decisions
+        skip_all = False
+        include_all = False
+
+        for decision in decisions:
+            action = decision['action']
+
+            if action == 'skip_all':
+                skip_all = True
+                break
+            elif action == 'include_all':
+                include_all = True
+                break
+            elif action in ['skip', 'include']:
+                file_id = decision['file_id']
+                for file_meta in batch.temp_files:
+                    if file_meta['file_id'] == file_id:
+                        file_meta['action'] = action
+                        break
+
+        # Apply skip_all or include_all
+        if skip_all:
+            for dup in batch.duplicate_summary.get('duplicates', []):
+                for file_meta in batch.temp_files:
+                    if file_meta['file_id'] == dup['file_id']:
+                        file_meta['action'] = 'skip'
+        elif include_all:
+            for dup in batch.duplicate_summary.get('duplicates', []):
+                for file_meta in batch.temp_files:
+                    if file_meta['file_id'] == dup['file_id']:
+                        file_meta['action'] = 'include'
+        
+        batch.save()
+        
+        files_to_process = len([f for f in batch.temp_files if f.get('action') != 'skip'])
+        files_skipped = len([f for f in batch.temp_files if f.get('action') == 'skip'])
+        
+        return Response({
+            'batch_id': str(batch.id),
+            'decisions_recorded': len(decisions),
+            'files_to_process': files_to_process,
+            'files_skipped': files_skipped,
+            'status': 'ready_to_commit'
+        })
