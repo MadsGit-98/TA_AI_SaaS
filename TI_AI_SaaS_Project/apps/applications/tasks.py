@@ -15,6 +15,9 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Count
+from django.db import transaction
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from apps.applications.models import Applicant, UploadBatch
 from apps.jobs.models import JobListing
 from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
@@ -154,9 +157,9 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
     2. Extracts text based on file type (PDF or DOCX)
     3. Extracts contact information using ResumeParserService
     4. Redacts confidential information
-    5. Creates Applicant instance with extracted data
+    5. Creates Applicant instance with extracted data (idempotent - uses get_or_create)
     6. Uses filename as fallback if extraction fails
-    7. Updates batch progress via WebSocket
+    7. Updates batch progress via WebSocket (after DB commit)
 
     Args:
         file_metadata: Dictionary containing file information including 'filename'
@@ -167,11 +170,27 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
         job_listing = JobListing.objects.get(id=job_listing_id)
         batch = UploadBatch.objects.get(id=batch_id)
 
-        # Move file to permanent storage
-        permanent_path = f'applications/resumes/{job_listing.id}/{uuid.uuid4()}_{file_metadata["filename"]}'
-        file_content = default_storage.open(file_metadata['temp_path']).read()
-        default_storage.save(permanent_path, ContentFile(file_content))
-        default_storage.delete(file_metadata['temp_path'])
+        # Move file to permanent storage (outside transaction - file operations)
+        # Use file_hash in path for idempotency - same hash = same path
+        permanent_path = f'applications/resumes/{job_listing.id}/{file_metadata["file_hash"]}_{file_metadata["filename"]}'
+
+        # Check if file already exists (idempotent - handles retries)
+        if not default_storage.exists(permanent_path):
+            # Use context manager to ensure file handle is closed
+            with default_storage.open(file_metadata['temp_path']) as f:
+                file_content = f.read()
+            
+            # Save to permanent storage - only delete temp file if save succeeds
+            default_storage.save(permanent_path, ContentFile(file_content))
+            
+            # Delete temp file only after successful save
+            # This ensures retries can still access the temp file if save fails
+            default_storage.delete(file_metadata['temp_path'])
+        else:
+            logger.debug(f"File already exists at {permanent_path} (retry scenario)")
+            # Use context manager to ensure file handle is closed
+            with default_storage.open(permanent_path) as f:
+                file_content = f.read()
 
         # Determine file type from extension and extract text
         filename = file_metadata.get('filename', '').lower()
@@ -213,43 +232,32 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
         else:
             redacted_text = "No text could be extracted from this resume file."
 
-        # Create Applicant with extracted data
-        applicant = Applicant.objects.create(
+        # Idempotent Applicant creation - use get_or_create with unique file_hash
+        # This prevents duplicates on retry
+        applicant, created = Applicant.objects.get_or_create(
             job_listing=job_listing,
-            upload_batch=batch,
-            first_name=first_name[:200] if first_name else 'Unknown',  # Respect max_length
-            last_name=last_name[:200] if last_name else 'Applicant',  # Respect max_length
-            email=email[:255] if email else f"unknown_{uuid.uuid4().hex[:8]}@placeholder.local",  # Respect max_length
-            phone=phone[:50] if phone else '',  # Respect max_length
-            resume_file=permanent_path,
             resume_file_hash=file_metadata['file_hash'],
-            resume_parsed_text=redacted_text,
-            status=Applicant.STATUS_SUBMITTED
-        )
-
-        # Send WebSocket progress update
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f'bulk_upload_{batch_id}',
-            {
-                'type': 'upload_progress',
-                'file_id': file_metadata['file_id'],
-                'filename': file_metadata['filename'],
-                'status': 'success',
-                'applicant_id': str(applicant.id),
-                'extracted_data': {
-                    'first_name': first_name,
-                    'last_name': last_name,
-                    'email': email,
-                    'phone': phone
-                }
+            defaults={
+                'upload_batch': batch,
+                'first_name': first_name[:200] if first_name else 'Unknown',
+                'last_name': last_name[:200] if last_name else 'Applicant',
+                'email': email[:255] if email else f"unknown_{uuid.uuid4().hex[:8]}@placeholder.local",
+                'phone': phone[:50] if phone else '',
+                'resume_file': permanent_path,
+                'resume_parsed_text': redacted_text,
+                'status': Applicant.STATUS_SUBMITTED
             }
         )
 
-        logger.info(f"Processed resume {file_metadata['filename']} for applicant {applicant.id} "
-                   f"(Name: {first_name} {last_name}, Email: {email})")
-        return {
-            'success': True,
+        if not created:
+            logger.info(f"Applicant already exists for {file_metadata['filename']} (id={applicant.id})")
+
+        # Prepare WebSocket data for sending after transaction commits
+        websocket_data = {
+            'type': 'upload_progress',
+            'file_id': file_metadata['file_id'],
+            'filename': file_metadata['filename'],
+            'status': 'success',
             'applicant_id': str(applicant.id),
             'extracted_data': {
                 'first_name': first_name,
@@ -259,8 +267,36 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
             }
         }
 
+        # Send WebSocket notification after DB transaction commits
+        # This ensures retries don't create duplicate Applicants
+        def send_websocket_notification():
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'bulk_upload_{batch_id}',
+                websocket_data
+            )
+
+        transaction.on_commit(send_websocket_notification)
+
+        logger.info(f"Processed resume {file_metadata['filename']} for applicant {applicant.id}")
+        return {
+            'success': True,
+            'applicant_id': str(applicant.id),
+            'created': created,
+            'extracted_data': {
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+                'phone': phone
+            }
+        }
+
     except Exception as exc:
-        logger.error(f"Failed to process resume {file_metadata['filename']}: {exc}")
+        # Log full exception details internally for diagnostics
+        logger.error(f"Failed to process resume {file_metadata['filename']}: {exc}", exc_info=True)
+
+        # Generic client-facing error message (no internal details exposed)
+        client_message = "An internal error occurred while processing the file"
 
         # Update file status in batch
         try:
@@ -268,13 +304,13 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
             for file_meta in batch.temp_files:
                 if file_meta['file_id'] == file_metadata['file_id']:
                     file_meta['status'] = 'failed'
-                    file_meta['error'] = str(exc)
+                    file_meta['error'] = client_message
                     break
             batch.save()
         except Exception:
             pass
 
-        # Send WebSocket error update
+        # Send WebSocket error update with generic message
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             f'bulk_upload_{batch_id}',
@@ -282,7 +318,7 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
                 'type': 'upload_error',
                 'file_id': file_metadata['file_id'],
                 'error': 'processing_failed',
-                'message': str(exc)
+                'message': client_message
             }
         )
 

@@ -74,6 +74,12 @@ class UploadBatch(models.Model):
     
     class Meta:
         ordering = ['batch_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['job_listing', 'batch_number'],
+                name='unique_batch_per_job_listing'
+            ),
+        ]
         indexes = [
             models.Index(fields=['job_listing', 'batch_number'], name='applications_job_batch_idx'),
             models.Index(fields=['status'], name='applications_ub_status_idx'),
@@ -254,22 +260,31 @@ class Applicant(models.Model):
     def create_from_bulk_upload(cls, file_data: dict, job_listing, upload_batch) -> 'Applicant':
         """
         Create Applicant from bulk upload file data.
-        
+
         Args:
             file_data: Dictionary containing file metadata and parsed data
             job_listing: JobListing instance
             upload_batch: UploadBatch instance
-            
+
         Returns:
             Applicant instance
         """
+        # Generate unique placeholders for missing email/phone to avoid constraint violations
+        email = file_data.get('email')
+        if not email:
+            email = f'missing-email-{uuid.uuid4()}@placeholder.invalid'
+
+        phone = file_data.get('phone')
+        if not phone:
+            phone = f'missing-phone-{uuid.uuid4()}'
+
         return cls.objects.create(
             job_listing=job_listing,
             upload_batch=upload_batch,
             first_name=file_data.get('first_name', ''),
             last_name=file_data.get('last_name', ''),
-            email=file_data.get('email', ''),
-            phone=file_data.get('phone', ''),
+            email=email,
+            phone=phone,
             resume_file=file_data['resume_path'],
             resume_file_hash=file_data['file_hash'],
             resume_parsed_text=file_data['redacted_text'],

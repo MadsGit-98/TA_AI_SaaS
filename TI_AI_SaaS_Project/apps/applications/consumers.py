@@ -8,6 +8,9 @@ Uses Django Channels with Redis channel layer.
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
+from asgiref.sync import sync_to_async
+
+from applications.models import UploadBatch
 
 logger = logging.getLogger(__name__)
 
@@ -15,33 +18,66 @@ logger = logging.getLogger(__name__)
 class BulkUploadConsumer(AsyncWebsocketConsumer):
     """
     WebSocket consumer for bulk upload progress updates.
-    
+
     Clients connect to /ws/bulk-upload/<batch_id>/ to receive real-time
     progress updates for a specific upload batch.
     """
-    
+
     async def connect(self):
         """Accept WebSocket connection and join the batch group."""
+        # Authentication check
+        user = self.scope.get('user')
+        if not user or not user.is_authenticated:
+            logger.warning(f'WebSocket connection denied: unauthenticated user')
+            await self.close()
+            return
+
         self.batch_id = self.scope['url_route']['kwargs']['batch_id']
+
+        # Authorization check: verify user owns or has permission to this batch
+        batch = await self._get_batch_or_none(self.batch_id)
+        if batch is None:
+            logger.warning(f'WebSocket connection denied: batch {self.batch_id} not found')
+            await self.close()
+            return
+
+        if batch.uploaded_by != user:
+            logger.warning(f'WebSocket connection denied: user {user.id} not authorized for batch {self.batch_id}')
+            await self.close()
+            return
+
         self.room_group_name = f'bulk_upload_{self.batch_id}'
-        
+
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
-        
+
         await self.accept()
         logger.debug(f'WebSocket connected for batch {self.batch_id}')
+
+    async def _get_batch_or_none(self, batch_id):
+        """Fetch UploadBatch by ID, return None if not found."""
+        try:
+            return await sync_to_async(UploadBatch.objects.get)(id=batch_id)
+        except UploadBatch.DoesNotExist:
+            return None
     
     async def disconnect(self, close_code):
         """Leave the batch group on disconnect."""
-        # Leave room group
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
-        logger.debug(f'WebSocket disconnected for batch {self.batch_id} (code: {close_code})')
+        # Leave room group (only if attributes were set)
+        if hasattr(self, 'room_group_name') and hasattr(self, 'channel_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+
+        # Log disconnect with batch_id if available
+        if hasattr(self, 'batch_id'):
+            logger.debug(f'WebSocket disconnected for batch {self.batch_id} (code: {close_code})')
+        else:
+            logger.debug(f'WebSocket disconnected (code: {close_code})')
     
     async def receive(self, text_data):
         """

@@ -214,7 +214,7 @@ class BatchLimitsIntegrationTest(TestCase):
         )
 
         self.assertEqual(init_response.status_code, 400)
-        self.assertIn('Only 0 more', init_response.json().get('error', ''))
+        self.assertIn('Maximum resume limit reached', init_response.json().get('error', ''))
 
     def test_file_count_limit_100_per_batch(self):
         """Test that maximum 100 files per batch is enforced."""

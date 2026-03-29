@@ -228,20 +228,27 @@ class BulkUploadDecisionSerializerTest(TestCase, BulkUploadTestMixin):
     def test_valid_decisions(self):
         """Test serializer accepts valid decisions."""
         from apps.applications.models import UploadBatch
-        
+
+        file_id_1 = str(uuid.uuid4())
+        file_id_2 = str(uuid.uuid4())
+
         batch = UploadBatch.objects.create(
             job_listing=self.job_listing,
             batch_number=1,
             uploaded_by=self.user,
             status='awaiting_review',
-            file_count=5
+            file_count=5,
+            temp_files=[
+                {'file_id': file_id_1, 'filename': 'resume1.pdf', 'status': 'uploaded'},
+                {'file_id': file_id_2, 'filename': 'resume2.pdf', 'status': 'uploaded'},
+            ]
         )
-        
+
         data = {
             'batch_id': str(batch.id),
             'decisions': [
-                {'file_id': str(uuid.uuid4()), 'action': 'skip'},
-                {'file_id': str(uuid.uuid4()), 'action': 'include'},
+                {'file_id': file_id_1, 'action': 'skip'},
+                {'file_id': file_id_2, 'action': 'include'},
             ]
         }
         serializer = BulkUploadDecisionSerializer(data=data)

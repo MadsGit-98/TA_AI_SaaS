@@ -266,10 +266,10 @@ class ResumeParserServicePlaceholderEmailTests(SimpleTestCase):
         email = ResumeParserService.generate_placeholder_email(
             'test.user@domain.com.pdf'
         )
-        
-        # Should not include .pdf in email
+
+        # Should not include .pdf extension but preserves other dots
         self.assertNotIn('.pdf', email)
-        self.assertNotIn('com', email.split('@')[0])
+        self.assertIn('test_user_domain_com', email.split('@')[0])
 
 
 class ResumeParserServiceIntegrationTests(SimpleTestCase):

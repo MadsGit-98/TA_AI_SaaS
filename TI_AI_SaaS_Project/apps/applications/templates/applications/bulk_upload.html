@@ -167,9 +167,9 @@
         jobListingId: '{{ job_listing.id }}',
         batchId: null,
         csrfToken: '{{ csrf_token }}',
-        wsUrl: window.location.hostname === 'localhost' 
-            ? `ws://${window.location.host}/ws/bulk-upload/` 
-            : `wss://${window.location.host}/ws/bulk-upload/`,
+        wsUrl: window.location.protocol === 'https:'
+            ? `wss://${window.location.host}/ws/bulk-upload/`
+            : `ws://${window.location.host}/ws/bulk-upload/`,
         maxFilesPerBatch: 100,
         maxBatchCount: 3,
         maxTotalResumes: 300,

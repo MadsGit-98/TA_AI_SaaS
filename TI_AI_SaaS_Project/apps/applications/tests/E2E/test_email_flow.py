@@ -69,6 +69,7 @@ class EmailFlowE2ETest(LiveServerTestCase):
             start_date=timezone.now(),
             expiration_date=timezone.now() + timedelta(days=30),
             status='Active',
+            upload_type='form',  # Required field for form-based applications
             created_by=self.user
         )
 

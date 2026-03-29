@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from pathlib import Path
+import uuid
+
 from apps.applications.models import Applicant, ApplicationAnswer
 from apps.jobs.models import ScreeningQuestion, JobListing
 from apps.applications.utils.file_validation import validate_resume_file
@@ -326,6 +328,11 @@ class BulkUploadFileSerializer(serializers.Serializer):
     batch_id = serializers.UUIDField()
     file = serializers.FileField()
 
+    def validate_file(self, value):
+        """Validate resume file format and size."""
+        validated_file = validate_resume_file(value)
+        return validated_file
+
     def validate_batch_id(self, value):
         """Validate that the batch exists and is in valid state."""
         from apps.applications.models import UploadBatch
@@ -414,7 +421,7 @@ class BulkUploadDecisionSerializer(serializers.Serializer):
             raise serializers.ValidationError("Upload batch not found.")
 
     def validate_decisions(self, value):
-        """Validate decision format."""
+        """Validate decision format and file_id UUIDs."""
         valid_actions = ['skip', 'include', 'skip_all', 'include_all']
         for decision in value:
             if 'action' not in decision:
@@ -426,8 +433,48 @@ class BulkUploadDecisionSerializer(serializers.Serializer):
                     f"Invalid action '{decision['action']}'. Must be one of: {valid_actions}"
                 )
             # file_id is optional for skip_all/include_all, required for skip/include
-            if decision['action'] in ['skip', 'include'] and 'file_id' not in decision:
-                raise serializers.ValidationError(
-                    f"Decision with action '{decision['action']}' must have a 'file_id' field."
-                )
+            if decision['action'] in ['skip', 'include']:
+                if 'file_id' not in decision:
+                    raise serializers.ValidationError(
+                        f"Decision with action '{decision['action']}' must have a 'file_id' field."
+                    )
+                # Validate file_id is a valid UUID
+                try:
+                    uuid.UUID(str(decision['file_id']))
+                except (ValueError, AttributeError):
+                    raise serializers.ValidationError(
+                        f"Invalid file_id '{decision['file_id']}'. Must be a valid UUID."
+                    )
         return value
+
+    def validate(self, attrs):
+        """Validate that all file_ids belong to the batch."""
+        batch = attrs.get('batch_id')
+        decisions = attrs.get('decisions')
+
+        if not batch or not decisions:
+            return attrs
+
+        # Extract file_ids from decisions that have them
+        file_ids = []
+        for decision in decisions:
+            if 'file_id' in decision:
+                file_ids.append(str(decision['file_id']))
+
+        if not file_ids:
+            return attrs
+
+        # Get all file_ids from the batch's temp_files
+        batch_file_ids = set()
+        for file_entry in batch.temp_files:
+            if isinstance(file_entry, dict) and 'file_id' in file_entry:
+                batch_file_ids.add(str(file_entry['file_id']))
+
+        # Check that all provided file_ids belong to the batch
+        invalid_file_ids = set(file_ids) - batch_file_ids
+        if invalid_file_ids:
+            raise serializers.ValidationError({
+                'decisions': f"The following file_ids do not belong to batch {batch.id}: {list(invalid_file_ids)}"
+            })
+
+        return attrs

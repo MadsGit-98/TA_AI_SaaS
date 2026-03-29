@@ -9,9 +9,11 @@ Handles:
 """
 
 import logging
+import os
 import uuid
 import re
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -21,6 +23,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from apps.applications.models import Applicant, UploadBatch
+from apps.jobs.models import JobListing
 from apps.applications.throttles import (
     ApplicationSubmissionIPThrottle,
     ApplicationValidationIPThrottle,
@@ -44,6 +47,30 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
+
+
+def extract_contact_info(text: str) -> dict:
+    """
+    Extract contact information from parsed resume text.
+    
+    Args:
+        text: Parsed resume text
+        
+    Returns:
+        Dictionary with 'email' and 'phone' keys
+    """
+    # Simple email extraction
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    emails = re.findall(email_pattern, text)
+    email = emails[0] if emails else None
+
+    # Simple phone extraction (very basic)
+    # Note: - is escaped to avoid being interpreted as a character range
+    phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
+    phones = re.findall(phone_pattern, text)
+    phone = phones[0] if phones else None
+
+    return {'email': email, 'phone': phone}
 
 
 @api_view(['POST'])
@@ -316,22 +343,41 @@ class BulkUploadInitView(APIView):
     def post(self, request):
         serializer = BulkUploadInitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         job_listing = serializer.validated_data['job_listing_id']
-        
+
         # Check if bulk upload is allowed
         can_upload, message = job_listing.can_upload_more(0)
         if not can_upload:
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create UploadBatch
-        batch = UploadBatch.objects.create(
-            job_listing=job_listing,
-            batch_number=job_listing.batch_count + 1,
-            uploaded_by=request.user,
-            status='pending'
-        )
-        
+
+        # Atomically increment batch_count to prevent race conditions
+        # This ensures unique batch_number even with concurrent init requests
+        try:
+            with transaction.atomic():
+                # Lock the row and increment atomically using F()
+                JobListing.objects.filter(pk=job_listing.pk).update(
+                    batch_count=F('batch_count') + 1
+                )
+                # Refresh to get the new value
+                job_listing.refresh_from_db()
+                
+                # Create UploadBatch with the new batch_number
+                batch = UploadBatch.objects.create(
+                    job_listing=job_listing,
+                    batch_number=job_listing.batch_count,
+                    uploaded_by=request.user,
+                    status='pending'
+                )
+
+        except IntegrityError as e:
+            # Handle rare race condition where unique constraint is violated
+            logger.warning(f"IntegrityError during batch creation (possible race condition): {str(e)}")
+            return Response(
+                {'error': 'Failed to create batch. Please try again.'},
+                status=status.HTTP_409_CONFLICT
+            )
+
         return Response({
             'batch_id': str(batch.id),
             'batch_number': batch.batch_number,
@@ -344,18 +390,26 @@ class BulkUploadInitView(APIView):
 class BulkUploadView(APIView):
     """
     Upload a single file to a batch.
-    
+
     POST /api/applications/bulk-upload/upload/
     """
     permission_classes = [IsAuthenticated, IsTAS]
-    
+
     def post(self, request):
         serializer = BulkUploadFileSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         batch = serializer.validated_data['batch_id']
-        file = request.FILES.get('file')
         
+        # Check batch state - reject uploads to inactive batches
+        if batch.status in ['cancelled', 'committed']:
+            return Response(
+                {'error': f'Cannot upload to batch with status "{batch.status}". Batch is no longer accepting files.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES.get('file')
+
         if not file:
             return Response(
                 {'error': 'No file provided'},
@@ -376,15 +430,34 @@ class BulkUploadView(APIView):
                 'error': validation_result['errors'][0]['code'],
                 'message': validation_result['errors'][0]['message']
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Store in temp location
-        temp_path = f'{settings.AWS_TEMP_LOCATION}/{batch.id}/{uuid.uuid4()}_{file.name}'
+
+        # Sanitize filename to prevent path traversal attacks
+        # Extract only the basename, remove path separators and null bytes
+        original_filename = file.name
+        # Get basename to strip any directory components
+        safe_name = os.path.basename(original_filename)
+        # Remove null bytes and any remaining path separators
+        safe_name = safe_name.replace('\x00', '').replace('\\', '/').split('/')[-1]
+        # Enforce max filename length (leave room for UUID prefix)
+        max_name_length = 100
+        if len(safe_name) > max_name_length:
+            name_parts = safe_name.rsplit('.', 1)
+            if len(name_parts) == 2:
+                safe_name = name_parts[0][:max_name_length-5] + '.' + name_parts[1]
+            else:
+                safe_name = safe_name[:max_name_length]
+        # Fallback if filename is empty after sanitization
+        if not safe_name:
+            safe_name = 'unnamed_file'
+
+        # Store in temp location with sanitized filename
+        temp_path = f'{settings.AWS_TEMP_LOCATION}/{batch.id}/{uuid.uuid4()}_{safe_name}'
         default_storage.save(temp_path, ContentFile(file_content))
-        
-        # Add to batch
+
+        # Add to batch (store original filename for display, safe path for storage)
         file_metadata = {
             'file_id': str(uuid.uuid4()),
-            'filename': file.name,
+            'filename': original_filename,
             'file_hash': validation_result['file_hash'],
             'size': len(file_content),
             'temp_path': temp_path,
@@ -444,7 +517,10 @@ class BulkUploadValidateView(APIView):
             
             # Extract contact info for further checks
             try:
-                file_content = default_storage.open(file_meta['temp_path']).read()
+                # Read file content using context manager to ensure proper cleanup
+                with default_storage.open(file_meta['temp_path']) as f:
+                    file_content = f.read()
+                
                 # Determine file type from extension and extract text
                 filename = file_meta.get('filename', '').lower()
                 if filename.endswith('.pdf'):
@@ -457,7 +533,7 @@ class BulkUploadValidateView(APIView):
                         text = ResumeParserService.extract_text_from_docx(file_content)
                     except Exception:
                         text = ResumeParserService.extract_text_from_pdf(file_content)
-                contact_info = self._extract_contact_info(text)
+                contact_info = extract_contact_info(text)
                 
                 # Check email duplicate
                 if contact_info.get('email') and DuplicationService.check_email_duplicate(
@@ -519,23 +595,6 @@ class BulkUploadValidateView(APIView):
             'duplicates': duplicates,
             'status': batch.status
         })
-    
-    def _extract_contact_info(self, text: str) -> dict:
-        """Extract contact information from parsed resume text."""
-        import re
-        
-        # Simple email extraction
-        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        emails = re.findall(email_pattern, text)
-        email = emails[0] if emails else None
-
-        # Simple phone extraction (very basic)
-        # Note: - is escaped to avoid being interpreted as a character range
-        phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
-        phones = re.findall(phone_pattern, text)
-        phone = phones[0] if phones else None
-
-        return {'email': email, 'phone': phone}
 
 
 class BulkUploadCommitView(APIView):
@@ -546,43 +605,38 @@ class BulkUploadCommitView(APIView):
     """
     permission_classes = [IsAuthenticated, IsTAS]
 
-    def _extract_contact_info(self, text: str) -> dict:
-        """Extract contact information from parsed resume text."""
-        # Simple email extraction
-        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        emails = re.findall(email_pattern, text)
-        email = emails[0] if emails else None
-
-        # Simple phone extraction (very basic)
-        # Note: - is escaped to avoid being interpreted as a character range
-        phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
-        phones = re.findall(phone_pattern, text)
-        phone = phones[0] if phones else None
-
-        return {'email': email, 'phone': phone}
-
     def post(self, request):
         serializer = BulkUploadCommitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         batch = serializer.validated_data['batch_id']
-        
+
         applicants_created = []
-        
+        errors = []
+
         with transaction.atomic():
             for file_meta in batch.temp_files:
                 # Skip files marked for skipping
                 if file_meta.get('action') == 'skip':
                     continue
-                
+
                 # Skip failed files
                 if file_meta.get('status') == 'failed':
                     continue
-                
+
                 try:
                     # Move file to permanent storage
-                    permanent_path = f'applications/resumes/{batch.job_listing.id}/{uuid.uuid4()}_{file_meta["filename"]}'
-                    file_content = default_storage.open(file_meta['temp_path']).read()
+                    # Sanitize filename again for defense-in-depth
+                    safe_filename = os.path.basename(file_meta.get('filename', 'unnamed_file'))
+                    safe_filename = safe_filename.replace('\x00', '').replace('\\', '/').split('/')[-1]
+                    if not safe_filename:
+                        safe_filename = 'unnamed_file'
+                    permanent_path = f'applications/resumes/{batch.job_listing.id}/{uuid.uuid4()}_{safe_filename}'
+
+                    # Read file content using context manager to ensure proper cleanup
+                    with default_storage.open(file_meta['temp_path']) as f:
+                        file_content = f.read()
+
                     default_storage.save(permanent_path, ContentFile(file_content))
                     default_storage.delete(file_meta['temp_path'])
 
@@ -598,12 +652,12 @@ class BulkUploadCommitView(APIView):
                             text = ResumeParserService.extract_text_from_docx(file_content)
                         except Exception:
                             text = ResumeParserService.extract_text_from_pdf(file_content)
-                    
+
                     # Extract and redact text
                     redacted_text = ConfidentialInfoFilter.redact(text)
 
                     # Extract contact info BEFORE redaction
-                    contact_info = self._extract_contact_info(text)
+                    contact_info = extract_contact_info(text)
 
                     # Create Applicant with extracted contact info
                     applicant = Applicant.objects.create(
@@ -618,48 +672,78 @@ class BulkUploadCommitView(APIView):
                         resume_parsed_text=redacted_text,
                         status=Applicant.STATUS_SUBMITTED
                     )
-                    
+
                     applicants_created.append({
                         'id': str(applicant.id),
                         'reference_number': applicant.reference_number,
                         'filename': file_meta['filename']
                     })
-                    
+
                 except Exception as e:
+                    # Collect error for reporting - don't silently continue
+                    error_info = {
+                        'filename': file_meta['filename'],
+                        'file_id': file_meta.get('file_id', 'unknown'),
+                        'error': str(e)
+                    }
+                    errors.append(error_info)
                     logger.error(f"Error creating applicant for {file_meta['filename']}: {str(e)}")
-                    continue
-            
+                    # Mark file as failed in batch
+                    file_meta['status'] = 'failed'
+                    file_meta['error'] = str(e)
+
             # Update JobListing counters
-            batch.job_listing.batch_count += 1
+            # Note: batch_count was already atomically incremented when batch was created
             batch.job_listing.total_resumes += len(applicants_created)
             batch.job_listing.save()
-            
+
             batch.status = 'committed'
             batch.save()
-        
-        return Response({
+
+        # Build response with error information if any failures occurred
+        response_data = {
             'batch_id': str(batch.id),
             'status': 'committed',
             'applicants_created': len(applicants_created),
             'applicants': applicants_created
-        })
+        }
+
+        if errors:
+            response_data['errors'] = errors
+            response_data['files_failed'] = len(errors)
+            logger.warning(f"Batch {batch.id} committed with {len(errors)} file failures")
+
+        return Response(response_data)
 
 
 class BulkUploadCancelView(APIView):
     """
     Cancel a batch and clean up temporary files.
-    
+
     DELETE /api/applications/bulk-upload/cancel/<batch_id>/
     """
     permission_classes = [IsAuthenticated, IsTAS]
-    
+
     def delete(self, request, batch_id):
         try:
             batch = UploadBatch.objects.get(
                 id=batch_id,
                 uploaded_by=request.user
             )
+
+            # Check batch state - reject cancellation of terminal state batches
+            if batch.status == 'committed':
+                return Response(
+                    {'error': 'Cannot cancel a batch that has already been committed. Applicants have been created.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
+            if batch.status == 'cancelled':
+                return Response(
+                    {'error': 'Batch is already cancelled.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             # Delete temp files
             files_deleted = 0
             for file_meta in batch.temp_files:
@@ -668,17 +752,17 @@ class BulkUploadCancelView(APIView):
                     files_deleted += 1
                 except Exception as e:
                     logger.error(f"Error deleting temp file {file_meta['temp_path']}: {str(e)}")
-            
+
             batch.status = 'cancelled'
             batch.save()
-            
+
             return Response({
                 'batch_id': str(batch.id),
                 'status': 'cancelled',
                 'files_deleted': files_deleted,
                 'message': 'Batch cancelled successfully'
             })
-            
+
         except UploadBatch.DoesNotExist:
             return Response(
                 {'error': 'Batch not found'},

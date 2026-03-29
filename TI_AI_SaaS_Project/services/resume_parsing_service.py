@@ -10,6 +10,7 @@ This service handles:
 """
 
 import re
+import os
 import hashlib
 from pypdf import PdfReader
 from docx import Document
@@ -238,7 +239,9 @@ class ResumeParserService:
         name_parts = name_from_file.strip().split()
 
         if len(name_parts) >= 2:
-            return name_parts[0].capitalize(), ' '.join(name_parts[1:]).capitalize()
+            first_name = name_parts[0].capitalize()
+            last_name = ' '.join(part.capitalize() for part in name_parts[1:])
+            return first_name, last_name
         elif len(name_parts) == 1:
             return name_parts[0].capitalize(), 'Unknown'
         else:
@@ -259,7 +262,7 @@ class ResumeParserService:
             return f"unknown_{uuid.uuid4().hex[:8]}@placeholder.local"
 
         # Extract base name without extension
-        base_name = filename.split('.')[0]
+        base_name = os.path.splitext(filename)[0]
 
         # Sanitize: replace non-alphanumeric with underscores
         safe_filename = re.sub(r'[^a-zA-Z0-9]', '_', base_name).lower()
