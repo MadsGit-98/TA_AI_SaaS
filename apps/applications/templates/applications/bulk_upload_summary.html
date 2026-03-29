@@ -87,10 +87,10 @@
                         </td>
                         <td>{{ applicant.filename }}</td>
                         <td>
-                            {% if applicant.parsing_status == 'complete' %}
+                            {% if applicant.parsing_status == 'Complete' %}
                             <span class="status-badge success">Complete</span>
                             {% else %}
-                            <span class="status-badge warning">{{ applicant.parsing_status|replace:"partial_missing_":"Missing: "|make_list|join:", " }}</span>
+                            <span class="status-badge warning">{{ applicant.parsing_status }}</span>
                             {% endif %}
                         </td>
                         <td>

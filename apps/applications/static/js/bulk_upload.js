@@ -36,12 +36,18 @@ class BulkUploadManager {
         const includeAllBtn = document.getElementById('include-all-btn');
         const confirmDecisionsBtn = document.getElementById('confirm-decisions-btn');
 
-        // Drop zone events
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => this.handleDragOver(e));
-        dropZone.addEventListener('dragleave', (e) => this.handleDragLeave(e));
-        dropZone.addEventListener('drop', (e) => this.handleDrop(e));
-        fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        // Check for required elements (drop zone and file input)
+        if (!dropZone || !fileInput) {
+            console.error('Bulk Upload: Required elements (drop-zone or file-input) not found. Drag-and-drop functionality disabled.');
+            // Continue to bind other buttons that may exist
+        } else {
+            // Drop zone events
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => this.handleDragOver(e));
+            dropZone.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+            dropZone.addEventListener('drop', (e) => this.handleDrop(e));
+            fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        }
 
         // Control buttons
         if (startUploadBtn) {
@@ -192,31 +198,71 @@ class BulkUploadManager {
         const fileList = document.getElementById('file-list');
         const totalFiles = document.getElementById('total-files');
         const fileCount = document.getElementById('file-count');
-        
+
         fileList.innerHTML = '';
-        
+
         this.files.forEach((fileObj, index) => {
             const item = document.createElement('div');
             item.className = 'file-item';
-            item.innerHTML = `
-                <div class="file-info">
-                    <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                    </svg>
-                    <span class="file-name">${fileObj.file.name}</span>
-                    <span class="file-size">${this.formatFileSize(fileObj.file.size)}</span>
-                    ${fileObj.status !== 'pending' ? `<span class="file-status ${fileObj.status}">${fileObj.status}</span>` : ''}
-                </div>
-                ${fileObj.status === 'pending' ? `
-                    <div class="file-actions">
-                        <button class="btn-remove" onclick="bulkUpload.removeFile(${index})">&times;</button>
-                    </div>
-                ` : ''}
+
+            // Create file info container
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'file-info';
+
+            // Create and append file icon (SVG)
+            const iconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            iconSvg.setAttribute('class', 'file-icon');
+            iconSvg.setAttribute('viewBox', '0 0 24 24');
+            iconSvg.setAttribute('fill', 'none');
+            iconSvg.setAttribute('stroke', 'currentColor');
+            iconSvg.setAttribute('stroke-width', '2');
+            iconSvg.innerHTML = `
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
             `;
+            infoDiv.appendChild(iconSvg);
+
+            // Create filename element (safe text insertion)
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.textContent = fileObj.file.name;
+            infoDiv.appendChild(nameSpan);
+
+            // Create file size element (safe text insertion)
+            const sizeSpan = document.createElement('span');
+            sizeSpan.className = 'file-size';
+            sizeSpan.textContent = this.formatFileSize(fileObj.file.size);
+            infoDiv.appendChild(sizeSpan);
+
+            // Conditionally add status badge
+            if (fileObj.status !== 'pending') {
+                const statusSpan = document.createElement('span');
+                statusSpan.className = 'file-status ' + fileObj.status;
+                statusSpan.textContent = fileObj.status;
+                infoDiv.appendChild(statusSpan);
+            }
+
+            item.appendChild(infoDiv);
+
+            // Conditionally add remove button for pending files
+            if (fileObj.status === 'pending') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'file-actions';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn-remove';
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', () => {
+                    bulkUpload.removeFile(index);
+                });
+
+                actionsDiv.appendChild(removeBtn);
+                item.appendChild(actionsDiv);
+            }
+
             fileList.appendChild(item);
         });
-        
+
         if (totalFiles) totalFiles.textContent = this.files.length;
         if (fileCount) fileCount.textContent = this.files.length;
     }
@@ -290,30 +336,46 @@ class BulkUploadManager {
                 job_listing_id: this.config.jobListingId
             })
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Failed to initialize batch');
         }
-        
+
         const data = await response.json();
         this.batchId = data.batch_id;
-        
-        // Update WebSocket URL with batch ID
-        this.config.wsUrl = this.config.wsUrl + this.batchId + '/';
+
+        // Store the base WebSocket URL (preserve original config)
+        if (!this.baseWsUrl) {
+            this.baseWsUrl = this.config.wsUrl;
+        }
+    }
+
+    /**
+     * Get the WebSocket URL for the current batch
+     * @returns {string} The full WebSocket URL including batch ID
+     */
+    getWebSocketUrl() {
+        const baseUrl = this.baseWsUrl || this.config.wsUrl;
+        return this.batchId ? `${baseUrl}${this.batchId}/` : baseUrl;
     }
 
     connectWebSocket() {
         try {
-            this.ws = new WebSocket(this.config.wsUrl);
+            this.ws = new WebSocket(this.getWebSocketUrl());
             
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
             };
             
             this.ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                this.handleWebSocketMessage(data);
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error, 'Raw data:', event.data);
+                    return;
+                }
             };
             
             this.ws.onerror = (error) => {
@@ -361,10 +423,16 @@ class BulkUploadManager {
                         'X-CSRFToken': this.config.csrfToken
                     }
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     this.updateBatchProgress(data.progress);
+                    
+                    // Stop polling when batch reaches terminal state
+                    if (data.status === 'committed' || data.status === 'cancelled') {
+                        console.log('Batch reached terminal state:', data.status, '- stopping polling');
+                        this.stopPolling();
+                    }
                 }
             } catch (error) {
                 console.error('Polling error:', error);
@@ -418,8 +486,10 @@ class BulkUploadManager {
     updateProgress() {
         const uploaded = this.files.filter(f => f.status === 'success').length;
         const total = this.files.length;
-        const percent = Math.round((uploaded / total) * 100);
         
+        // Guard against division by zero
+        const percent = total === 0 ? 0 : Math.round((uploaded / total) * 100);
+
         document.getElementById('progress-fill').style.width = percent + '%';
         document.getElementById('progress-text').textContent = percent + '%';
         document.getElementById('uploaded-count').textContent = uploaded;
@@ -485,27 +555,59 @@ class BulkUploadManager {
         const modal = document.getElementById('duplicate-modal');
         const duplicateList = document.getElementById('duplicate-list');
         const duplicateCount = document.getElementById('duplicate-count');
-        
+
         this.duplicates = data.duplicates;
         duplicateCount.textContent = data.duplicates.length;
-        
+
         duplicateList.innerHTML = '';
         data.duplicates.forEach((dup, index) => {
             const item = document.createElement('div');
             item.className = 'duplicate-item';
-            item.innerHTML = `
-                <div class="duplicate-info">
-                    <div class="duplicate-filename">${dup.filename}</div>
-                    <div class="duplicate-type">Duplicate type: ${dup.duplicate_type}</div>
-                </div>
-                <div class="duplicate-item-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="bulkUpload.setDecision('${dup.file_id}', 'skip')">Skip</button>
-                    <button class="btn btn-sm btn-primary" onclick="bulkUpload.setDecision('${dup.file_id}', 'include')">Include</button>
-                </div>
-            `;
+
+            // Create duplicate info container
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'duplicate-info';
+
+            // Create filename element (safe text insertion)
+            const filenameDiv = document.createElement('div');
+            filenameDiv.className = 'duplicate-filename';
+            filenameDiv.textContent = dup.filename;
+            infoDiv.appendChild(filenameDiv);
+
+            // Create duplicate type element (safe text insertion)
+            const typeDiv = document.createElement('div');
+            typeDiv.className = 'duplicate-type';
+            typeDiv.textContent = 'Duplicate type: ' + dup.duplicate_type;
+            infoDiv.appendChild(typeDiv);
+
+            // Create actions container
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'duplicate-item-actions';
+
+            // Create Skip button (safe event binding)
+            const skipBtn = document.createElement('button');
+            skipBtn.className = 'btn btn-sm btn-secondary';
+            skipBtn.textContent = 'Skip';
+            skipBtn.addEventListener('click', () => {
+                this.setDecision(dup.file_id, 'skip');
+            });
+            actionsDiv.appendChild(skipBtn);
+
+            // Create Include button (safe event binding)
+            const includeBtn = document.createElement('button');
+            includeBtn.className = 'btn btn-sm btn-primary';
+            includeBtn.textContent = 'Include';
+            includeBtn.addEventListener('click', () => {
+                this.setDecision(dup.file_id, 'include');
+            });
+            actionsDiv.appendChild(includeBtn);
+
+            // Append all parts to item
+            item.appendChild(infoDiv);
+            item.appendChild(actionsDiv);
             duplicateList.appendChild(item);
         });
-        
+
         modal.style.display = 'flex';
     }
 
@@ -538,11 +640,24 @@ class BulkUploadManager {
     }
 
     async confirmDecisions() {
+        // Validate that decisions array exists and has entries
         if (!this.decisions || this.decisions.length === 0) {
             alert('Please make decisions for all duplicates');
             return;
         }
-        
+
+        // Validate that we have decisions for all duplicates
+        if (this.decisions.length !== this.duplicates.length) {
+            alert(`Please make decisions for all ${this.duplicates.length} duplicates (currently ${this.decisions.length} decisions made)`);
+            return;
+        }
+
+        // Validate that no decision entries are null/empty
+        if (this.decisions.some(d => !d || !d.file_id || !d.action)) {
+            alert('Some decisions are incomplete. Please ensure all duplicates have a valid decision.');
+            return;
+        }
+
         try {
             const response = await fetch('/api/applications/bulk-upload/decisions/', {
                 method: 'POST',
@@ -555,7 +670,7 @@ class BulkUploadManager {
                     decisions: this.decisions
                 })
             });
-            
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || 'Failed to save decisions');

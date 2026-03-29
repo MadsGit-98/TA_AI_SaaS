@@ -121,24 +121,35 @@ def bulk_upload_summary_view(request, batch_id):
     applicants = batch.applicants.all().order_by('submitted_at')
     
     # Build summary
+    temp_files = batch.temp_files or []
     summary = {
         'total_files': batch.file_count,
         'successful': applicants.count(),
-        'duplicates_skipped': len([f for f in batch.temp_files if f.get('action') == 'skip']),
-        'failed': len([f for f in batch.temp_files if f.get('status') == 'failed'])
+        'duplicates_skipped': len([f for f in temp_files if f.get('action') == 'skip']),
+        'failed': len([f for f in temp_files if f.get('status') == 'failed'])
     }
     
     # Format applicants for display
-    applicants_data = [
-        {
+    applicants_data = []
+    for a in applicants:
+        parsing_status = a.get_parsing_status()
+        # Compute display value for parsing status
+        if parsing_status == 'complete':
+            parsing_status_display = 'Complete'
+        elif parsing_status.startswith('partial_missing_'):
+            # Extract missing fields and format as "Missing: field1, field2"
+            missing_fields = parsing_status.replace('partial_missing_', '').split('_')
+            parsing_status_display = 'Missing: ' + ', '.join(missing_fields)
+        else:
+            parsing_status_display = parsing_status
+        
+        applicants_data.append({
             'id': a.id,
             'reference_number': a.reference_number,
-            'filename': a.resume_file.name.split('/')[-1],
-            'parsing_status': a.get_parsing_status(),
+            'filename': a.resume_file.name.split('/')[-1] if a.resume_file else '',
+            'parsing_status': parsing_status_display,
             'access_token': a.access_token
-        }
-        for a in applicants
-    ]
+        })
     
     context = {
         'batch': batch,

@@ -24,6 +24,10 @@ class JobListing(models.Model):
         ('bulk', 'Bulk Resume Upload'),
     ]
 
+    # Bulk upload limits
+    MAX_BATCHES = 3
+    MAX_RESUMES = 300
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200, validators=[MaxLengthValidator(200)])
     description = models.TextField(validators=[MaxLengthValidator(3000)])
@@ -44,6 +48,7 @@ class JobListing(models.Model):
     upload_type = models.CharField(
         max_length=10,
         choices=UPLOAD_TYPE_CHOICES,
+        default='form',
         help_text='Type of resume upload method for this job listing'
     )
     batch_count = models.PositiveIntegerField(default=0)
@@ -81,13 +86,12 @@ class JobListing(models.Model):
         Returns:
             Tuple of (can_upload: bool, message: str)
         """
-        if self.batch_count >= 3:
+        if self.batch_count >= self.MAX_BATCHES:
             return False, "Maximum 3 batches already uploaded"
-        if self.total_resumes >= 300:
-            remaining = 300 - self.total_resumes
-            return False, f"Only {remaining} more resumes can be added"
-        if self.total_resumes + requested_count > 300:
-            remaining = 300 - self.total_resumes
+        if self.total_resumes >= self.MAX_RESUMES:
+            return False, "Maximum resume limit reached (300)"
+        if self.total_resumes + requested_count > self.MAX_RESUMES:
+            remaining = max(0, self.MAX_RESUMES - self.total_resumes)
             return False, f"Only {remaining} more resumes can be added"
         return True, ""
 
