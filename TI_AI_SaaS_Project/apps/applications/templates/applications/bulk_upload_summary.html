@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Upload Summary - {{ batch.job_listing.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/bulk_upload.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="bulk-upload-summary-container">
+    <!-- Header -->
+    <div class="summary-header">
+        <div class="success-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+        </div>
+        <h1>Bulk Upload Complete</h1>
+        <p class="job-title">{{ batch.job_listing.title }}</p>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="summary-stats">
+        <div class="stat-card">
+            <div class="stat-value">{{ summary.total_files }}</div>
+            <div class="stat-label">Total Files</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-value">{{ summary.successful }}</div>
+            <div class="stat-label">Successfully Processed</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-value">{{ summary.duplicates_skipped }}</div>
+            <div class="stat-label">Duplicates Skipped</div>
+        </div>
+        <div class="stat-card error">
+            <div class="stat-value">{{ summary.failed }}</div>
+            <div class="stat-label">Failed</div>
+        </div>
+    </div>
+
+    <!-- Batch Info -->
+    <div class="batch-info">
+        <h3>Batch Information</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">Batch Number:</span>
+                <span class="info-value">{{ batch.batch_number }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Uploaded At:</span>
+                <span class="info-value">{{ batch.uploaded_at|date:"M d, Y H:i" }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Uploaded By:</span>
+                <span class="info-value">{{ batch.uploaded_by.get_full_name|default:batch.uploaded_by.username }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Job Listing:</span>
+                <span class="info-value">{{ batch.job_listing.title }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Applicants List -->
+    <div class="applicants-section">
+        <h3>Created Applicants ({{ applicants|length }})</h3>
+        
+        {% if applicants %}
+        <div class="applicants-table-container">
+            <table class="applicants-table">
+                <thead>
+                    <tr>
+                        <th>Reference Number</th>
+                        <th>Filename</th>
+                        <th>Parsing Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for applicant in applicants %}
+                    <tr>
+                        <td>
+                            <span class="reference-badge">{{ applicant.reference_number }}</span>
+                        </td>
+                        <td>{{ applicant.filename }}</td>
+                        <td>
+                            {% if applicant.parsing_status == 'complete' %}
+                            <span class="status-badge success">Complete</span>
+                            {% else %}
+                            <span class="status-badge warning">{{ applicant.parsing_status|replace:"partial_missing_":"Missing: "|make_list|join:", " }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'applications:application_success' applicant.id applicant.access_token %}" 
+                               class="btn btn-sm btn-outline" 
+                               target="_blank">
+                                View Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No applicants were created in this batch.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Next Actions -->
+    <div class="next-actions">
+        <h3>Next Steps</h3>
+        <div class="action-cards">
+            {% if job_listing.total_resumes > 0 %}
+            <div class="action-card">
+                <div class="action-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </div>
+                <h4>Start AI Analysis</h4>
+                <p>Get AI-powered insights and scoring for all applicants</p>
+                <form action="{% url 'analysis:initiate_analysis' job_listing.id %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary">
+                        Start Analysis
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+            <div class="action-card">
+                <div class="action-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+                <h4>View All Applicants</h4>
+                <p>See complete list of all applicants for this job</p>
+                <a href="{% url 'dashboard_jobs:job_detail' job_listing.id %}" class="btn btn-outline">
+                    View Applicants
+                </a>
+            </div>
+
+            {% if job_listing.batch_count < 3 and job_listing.total_resumes < 300 %}
+            <div class="action-card">
+                <div class="action-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                </div>
+                <h4>Upload More</h4>
+                <p>Upload another batch of resumes ({{ job_listing.batch_count }}/3 batches used)</p>
+                <a href="{% url 'applications:bulk_upload' job_listing.id %}" class="btn btn-outline">
+                    Upload Another Batch
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- AI Disclaimer -->
+    <div class="ai-disclaimer">
+        <div class="disclaimer-content">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <p>
+                <strong>AI Analysis Notice:</strong> AI-powered analysis results are provided as supplementary 
+                information to assist in the hiring process. These results should not be used as the sole criteria 
+                for making hiring decisions. Always consider multiple factors and human judgment in your 
+                evaluation process.
+            </p>
+        </div>
+    </div>
+
+    <!-- Back to Dashboard -->
+    <div class="back-to-dashboard">
+        <a href="{% url 'dashboard_jobs:job_list' %}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -50,8 +50,7 @@ This feature allows Talent Acquisition Specialists to upload multiple resumes in
 - [ ] `BulkUploadSummaryView` - GET /summary/<batch_id>/
 
 **Celery Tasks** (`apps/applications/tasks.py`):
-- [ ] `process_resume_async` - Parse and create Applicant
-- [ ] `send_bulk_upload_notification` - Email notification
+- [x] `process_resume_async` - Parse and create Applicant
 
 **URLs** (`apps/applications/urls.py`):
 ```python

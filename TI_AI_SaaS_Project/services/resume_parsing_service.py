@@ -15,21 +15,22 @@ from pypdf import PdfReader
 from docx import Document
 from io import BytesIO
 import phonenumbers
+import uuid
 
 
 class ResumeParserService:
     """
     Service for extracting text from PDF and Docx resume files.
     """
-    
+
     @staticmethod
     def extract_text_from_pdf(file_content: bytes) -> str:
         """
         Extract text from a PDF file.
-        
+
         Args:
             file_content: Raw bytes of the PDF file
-            
+
         Returns:
             Extracted text content
         """
@@ -40,7 +41,7 @@ class ResumeParserService:
             if page_text:
                 text += page_text + "\n"
         return text.strip()
-    
+
     @staticmethod
     def extract_text_from_docx(file_content: bytes) -> str:
         """
@@ -68,19 +69,202 @@ class ResumeParserService:
                         text += cell_text + "\n"
                         seen_cells.add(cell_text)
         return text.strip()
-    
+
     @staticmethod
     def calculate_file_hash(file_content: bytes) -> str:
         """
         Calculate SHA-256 hash of file content for duplication detection.
-        
+
         Args:
             file_content: Raw bytes of the file
-            
+
         Returns:
             Hexadecimal hash string (64 characters)
         """
         return hashlib.sha256(file_content).hexdigest()
+
+    @staticmethod
+    def extract_contact_info(text: str) -> dict:
+        """
+        Extract contact information from resume text.
+
+        Extracts:
+        - Email addresses
+        - Phone numbers (validated with phonenumbers library)
+        - Name (from structured format or first capitalized words)
+
+        Args:
+            text: Parsed resume text
+
+        Returns:
+            Dictionary with keys: 'email', 'phone', 'first_name', 'last_name'
+        """
+        result = {
+            'email': '',
+            'phone': '',
+            'first_name': '',
+            'last_name': ''
+        }
+
+        if not text:
+            return result
+
+        # Extract email addresses
+        emails = re.findall(ConfidentialInfoFilter.EMAIL_PATTERN, text)
+        if emails:
+            result['email'] = emails[0]
+
+        # Extract and validate phone numbers
+        phone_candidates = re.findall(ConfidentialInfoFilter.PHONE_PATTERN, text)
+        for candidate in phone_candidates:
+            try:
+                # For alphanumeric numbers (1-800-FLOWERS), skip validation
+                if re.search(r'[A-Za-z]', candidate):
+                    continue
+
+                parsed = phonenumbers.parse(candidate, None)
+                if phonenumbers.is_valid_number(parsed):
+                    result['phone'] = phonenumbers.format_number(
+                        parsed,
+                        phonenumbers.PhoneNumberFormat.E164
+                    )
+                    break
+            except phonenumbers.NumberParseException:
+                # Try parsing as international format
+                if not candidate.startswith('+'):
+                    try:
+                        parsed = phonenumbers.parse('+' + candidate.replace('+', ''), "US")
+                        if phonenumbers.is_possible_number(parsed):
+                            result['phone'] = phonenumbers.format_number(
+                                parsed,
+                                phonenumbers.PhoneNumberFormat.E164
+                            )
+                            break
+                    except phonenumbers.NumberParseException:
+                        continue
+
+        # Extract name from text
+        result['first_name'], result['last_name'] = ResumeParserService._extract_name(text)
+
+        return result
+
+    @staticmethod
+    def _extract_name(text: str) -> tuple[str, str]:
+        """
+        Extract first and last name from resume text.
+
+        Strategy:
+        1. Look for name in first 5 lines (common resume format)
+        2. Try first two capitalized words
+        3. Return empty strings if not found
+
+        Args:
+            text: Parsed resume text
+
+        Returns:
+            Tuple of (first_name, last_name)
+        """
+        if not text:
+            return '', ''
+
+        lines = text.split('\n')
+
+        # Strategy 1: Look for name in first 5 lines
+        for line in lines[:5]:
+            line = line.strip()
+            if not line or len(line) >= 100:
+                continue
+
+            # Skip lines that look like emails, addresses, or phone numbers
+            if re.search(ConfidentialInfoFilter.EMAIL_PATTERN, line):
+                continue
+            if re.search(r'\d{3,}', line):
+                continue
+
+            # Check if it looks like a name (2-4 capitalized words)
+            name_pattern = r'^([A-Z][a-z]+)\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?(?:\s+([A-Z][a-z]+))?$'
+            name_match = re.match(name_pattern, line)
+            if name_match:
+                return name_match.group(1), name_match.group(2)
+
+        # Strategy 2: Try first two capitalized words
+        words = text.split()
+        first_name = ''
+        last_name = ''
+
+        for word in words[:10]:
+            word = word.strip('.,;:!?()[]{}"\'')
+            if word and word[0].isupper() and len(word) > 1:
+                if not first_name:
+                    first_name = word
+                elif not last_name:
+                    last_name = word
+                    break
+
+        return first_name, last_name
+
+    @staticmethod
+    def extract_name_from_filename(filename: str) -> tuple[str, str]:
+        """
+        Extract name from filename as a fallback mechanism.
+
+        Examples:
+            "John_Doe_Resume.pdf" -> ("John", "Doe")
+            "Jane-Smith-CV.docx" -> ("Jane", "Smith")
+            "resume.pdf" -> ("Unknown", "Applicant")
+
+        Args:
+            filename: Resume filename
+
+        Returns:
+            Tuple of (first_name, last_name)
+        """
+        if not filename:
+            return 'Unknown', 'Applicant'
+
+        # Remove extension
+        name_from_file = filename.lower()
+        for ext in ['.pdf', '.docx', '.doc']:
+            name_from_file = name_from_file.replace(ext, '')
+
+        # Replace separators with spaces
+        name_from_file = name_from_file.replace('_', ' ').replace('-', ' ')
+
+        # Remove common suffixes
+        for suffix in [' resume', ' cv', ' curriculum', ' vitae']:
+            name_from_file = re.sub(suffix, '', name_from_file, flags=re.IGNORECASE)
+
+        # Split and capitalize
+        name_parts = name_from_file.strip().split()
+
+        if len(name_parts) >= 2:
+            return name_parts[0].capitalize(), ' '.join(name_parts[1:]).capitalize()
+        elif len(name_parts) == 1:
+            return name_parts[0].capitalize(), 'Unknown'
+        else:
+            return 'Unknown', 'Applicant'
+
+    @staticmethod
+    def generate_placeholder_email(filename: str) -> str:
+        """
+        Generate a placeholder email from filename when extraction fails.
+
+        Args:
+            filename: Resume filename
+
+        Returns:
+            Placeholder email address
+        """
+        if not filename:
+            return f"unknown_{uuid.uuid4().hex[:8]}@placeholder.local"
+
+        # Extract base name without extension
+        base_name = filename.split('.')[0]
+
+        # Sanitize: replace non-alphanumeric with underscores
+        safe_filename = re.sub(r'[^a-zA-Z0-9]', '_', base_name).lower()
+
+        return f"{safe_filename}@placeholder.local"
 
 
 class ConfidentialInfoFilter:

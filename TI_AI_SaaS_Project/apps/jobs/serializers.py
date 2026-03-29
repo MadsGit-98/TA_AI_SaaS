@@ -59,6 +59,9 @@ class JobListingSerializer(serializers.ModelSerializer):
     analysis_in_progress = serializers.SerializerMethodField()
     progress_percentage = serializers.SerializerMethodField()
     applicant_count = serializers.SerializerMethodField()
+    dashboard_actions = serializers.SerializerMethodField()
+    can_upload_more = serializers.SerializerMethodField()
+    remaining_capacity = serializers.SerializerMethodField()
 
     class Meta:
         model = JobListing
@@ -134,31 +137,54 @@ class JobListingSerializer(serializers.ModelSerializer):
 
     def get_applicant_count(self, obj):
         """Get the number of applicants for this job listing.
-        
+
         Reads from 'applicant_count' annotation if available (set by view using Count),
         otherwise falls back to database query.
         """
         # Check if the view annotated the queryset with applicant_count
         if hasattr(obj, 'applicant_count'):
             return obj.applicant_count
-        
+
         # Fallback: query the database (for backwards compatibility)
         return obj.applicants.count()
 
+    def get_dashboard_actions(self, obj):
+        """Get available dashboard actions based on upload type."""
+        return obj.get_dashboard_actions()
+
+    def get_can_upload_more(self, obj):
+        """Check if more resumes can be uploaded."""
+        can_upload, _ = obj.can_upload_more(0)
+        return can_upload
+
+    def get_remaining_capacity(self, obj):
+        """Get remaining upload capacity."""
+        if obj.upload_type != 'bulk':
+            return {'batches': 0, 'resumes': 0}
+        batches_remaining = max(0, 3 - obj.batch_count)
+        resumes_remaining = max(0, 300 - obj.total_resumes)
+        return {'batches': batches_remaining, 'resumes': resumes_remaining}
+
 
 class JobListingCreateSerializer(DateValidationMixin, serializers.ModelSerializer):
+    """Serializer for creating job listings with upload type selection."""
+    
     class Meta:
         model = JobListing
         fields = [
             'id', 'title', 'description', 'required_skills', 'required_experience',
-            'job_level', 'start_date', 'expiration_date', 'status'
+            'job_level', 'start_date', 'expiration_date', 'status', 'upload_type'
         ]
         read_only_fields = ('id', 'application_link', 'created_at', 'updated_at', 'modification_date')
 
-    def validate(self, data):
-        # Call the parent validate method
-        data = super().validate(data)
-        return data
+    def validate_upload_type(self, value):
+        """Validate upload_type is one of the allowed choices."""
+        valid_choices = [choice[0] for choice in JobListing.UPLOAD_TYPE_CHOICES]
+        if value not in valid_choices:
+            raise serializers.ValidationError(
+                f"Invalid upload_type. Must be one of: {valid_choices}"
+            )
+        return value
 
 
 class JobListingUpdateSerializer(DateValidationMixin, serializers.ModelSerializer):

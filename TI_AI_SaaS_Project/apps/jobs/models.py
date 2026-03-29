@@ -19,6 +19,11 @@ class JobListing(models.Model):
         ('Senior', 'Senior'),
     ]
 
+    UPLOAD_TYPE_CHOICES = [
+        ('form', 'Form Resume Upload'),
+        ('bulk', 'Bulk Resume Upload'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200, validators=[MaxLengthValidator(200)])
     description = models.TextField(validators=[MaxLengthValidator(3000)])
@@ -34,6 +39,15 @@ class JobListing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     analysis_in_progress = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    
+    # Bulk upload fields
+    upload_type = models.CharField(
+        max_length=10,
+        choices=UPLOAD_TYPE_CHOICES,
+        help_text='Type of resume upload method for this job listing'
+    )
+    batch_count = models.PositiveIntegerField(default=0)
+    total_resumes = models.PositiveIntegerField(default=0)
 
     def save(self, *args, **kwargs):
         # Ensure modification date equals start date when first created
@@ -52,6 +66,46 @@ class JobListing(models.Model):
 
     def __str__(self):
         return self.title
+
+    def can_start_bulk_upload(self) -> bool:
+        """Check if bulk upload can be initiated."""
+        return self.upload_type == 'bulk'
+
+    def can_upload_more(self, requested_count: int = 0) -> tuple[bool, str]:
+        """
+        Validate if additional resumes can be uploaded.
+
+        Args:
+            requested_count: Number of resumes requested to upload
+
+        Returns:
+            Tuple of (can_upload: bool, message: str)
+        """
+        if self.batch_count >= 3:
+            return False, "Maximum 3 batches already uploaded"
+        if self.total_resumes >= 300:
+            remaining = 300 - self.total_resumes
+            return False, f"Only {remaining} more resumes can be added"
+        if self.total_resumes + requested_count > 300:
+            remaining = 300 - self.total_resumes
+            return False, f"Only {remaining} more resumes can be added"
+        return True, ""
+
+    def get_dashboard_actions(self) -> list:
+        """
+        Get available dashboard actions based on upload type.
+        
+        Returns:
+            List of action names available for this job listing
+        """
+        actions = ['edit', 'delete']
+        if self.upload_type == 'form':
+            actions.extend(['activate_deactivate', 'public_link'])
+        elif self.upload_type == 'bulk':
+            actions.append('start_upload')
+            if self.total_resumes > 0:
+                actions.append('start_ai_analysis')
+        return actions
 
     class Meta:
         # Add indexes for performance optimization

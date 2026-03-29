@@ -98,6 +98,23 @@
                 </div>
 
                 <div>
+                    <label for="upload_type" class="block text-sm font-medium text-gray-700 mb-1">Application Method *</label>
+                    <select
+                        id="upload_type"
+                        name="upload_type"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#080707] focus:border-[#080707]">
+                        <option value="">Select method</option>
+                        <option value="form">Public Application Form</option>
+                        <option value="bulk">TAS Bulk Upload</option>
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">
+                        <span id="upload_type_help_form" class="hidden">Candidates apply via public link</span>
+                        <span id="upload_type_help_bulk" class="hidden">TAS manually uploads resumes</span>
+                    </p>
+                </div>
+
+                <div>
                     <label for="required_experience" class="block text-sm font-medium text-gray-700 mb-1">Required Experience (Years) *</label>
                     <input
                         type="number"

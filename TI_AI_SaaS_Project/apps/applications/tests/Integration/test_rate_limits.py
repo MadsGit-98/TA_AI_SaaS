@@ -41,7 +41,8 @@ class ApplicationSubmissionRateLimitTest(TestCase):
         self.job = JobListing.objects.create(
             title='Test Job', description='Desc', required_skills=['Python'],
             required_experience=3, job_level='Entry', start_date=timezone.now(),
-            expiration_date=timezone.now() + timedelta(days=30), status='Active', created_by=self.user
+            expiration_date=timezone.now() + timedelta(days=30), status='Active',
+            upload_type='form', created_by=self.user
         )
         self.question = ScreeningQuestion.objects.create(
             job_listing=self.job, question_text='Experience?', question_type='TEXT', required=True
@@ -85,7 +86,8 @@ class ApplicationValidationRateLimitTest(TestCase):
         self.job = JobListing.objects.create(
             title='Test Job', description='Desc', required_skills=['Python'],
             required_experience=3, job_level='Entry', start_date=timezone.now(),
-            expiration_date=timezone.now() + timedelta(days=30), status='Active', created_by=self.user
+            expiration_date=timezone.now() + timedelta(days=30), status='Active',
+            upload_type='form', created_by=self.user
         )
 
     def tearDown(self):
@@ -170,7 +172,8 @@ class RateLimitEdgeCasesTest(TestCase):
         self.job = JobListing.objects.create(
             title='Test Job', description='Desc', required_skills=['Python'],
             required_experience=3, job_level='Entry', start_date=timezone.now(),
-            expiration_date=timezone.now() + timedelta(days=30), status='Active', created_by=self.user
+            expiration_date=timezone.now() + timedelta(days=30), status='Active',
+            upload_type='form', created_by=self.user
         )
         self.question = ScreeningQuestion.objects.create(
             job_listing=self.job, question_text='Experience?', question_type='TEXT', required=True
