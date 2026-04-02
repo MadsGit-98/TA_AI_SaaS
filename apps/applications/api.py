@@ -11,20 +11,18 @@ Handles:
 import logging
 import os
 import uuid
-import re
 from django.db import IntegrityError, transaction
-from django.db.models import F
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.utils import timezone
+from celery import current_app
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
-from apps.applications.models import Applicant, UploadBatch
-from apps.jobs.models import JobListing
+from apps.applications.models import UploadBatch
 from apps.applications.throttles import (
     ApplicationSubmissionIPThrottle,
     ApplicationValidationIPThrottle,
@@ -43,7 +41,7 @@ from apps.applications.serializers import (
 from apps.accounts.permissions import IsTAS
 from services.duplication_service import DuplicationService
 from apps.applications.tasks import send_application_confirmation_email, process_bulk_upload_batch
-from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+from services.resume_parsing_service import ResumeParserService
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
@@ -584,7 +582,7 @@ class BulkUploadCommitView(APIView):
     Commit a batch and trigger async processing.
 
     POST /api/applications/bulk-upload/commit/
-    
+
     This endpoint triggers async processing of the batch. The actual file processing
     happens in the background via Celery tasks. Clients receive immediate confirmation
     and should listen to WebSocket events for progress updates.
@@ -597,21 +595,25 @@ class BulkUploadCommitView(APIView):
 
         batch = serializer.validated_data['batch_id']
 
-        # Validate batch status - must be in awaiting_review or processing state
-        if batch.status not in ['awaiting_review', 'processing']:
-            return Response(
-                {'error': f'Batch status is {batch.status}, not ready for commit'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Count files to process
+        # Count files to process (outside transaction - read-only)
         files_to_process = [
             f for f in batch.temp_files
             if f.get('action') != 'skip' and f.get('status') != 'failed'
         ]
         total_files = len(files_to_process)
 
+        # Use select_for_update to lock the row and prevent race conditions
         with transaction.atomic():
+            # Re-fetch batch with row lock to prevent concurrent commits
+            batch = UploadBatch.objects.select_for_update().get(id=batch.id)
+            
+            # Recheck batch status inside transaction (after acquiring lock)
+            if batch.status not in ['awaiting_review', 'processing']:
+                return Response(
+                    {'error': f'Batch status is {batch.status}, not ready for commit'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             # Set batch status to processing
             batch.status = 'processing'
             batch.processing_progress = {
@@ -623,11 +625,17 @@ class BulkUploadCommitView(APIView):
             }
             batch.processing_started_at = timezone.now()
             batch.save()
+            
+            # Transaction commits here, releasing the row lock
 
-        # Trigger async processing
+        # Trigger async processing (after transaction commits)
         logger.info(f"BulkUploadCommitView: Triggering process_bulk_upload_batch for batch {batch.id}")
-        process_bulk_upload_batch.delay(str(batch.id))
-        logger.info(f"BulkUploadCommitView: process_bulk_upload_batch triggered for batch {batch.id}")
+        task = process_bulk_upload_batch.delay(str(batch.id))
+        logger.info(f"BulkUploadCommitView: process_bulk_upload_batch triggered for batch {batch.id} (task_id={task.id})")
+        
+        # Store task ID on batch for cancellation support
+        batch.processing_task_id = task.id
+        batch.save(update_fields=['processing_task_id'])
 
         # Send WebSocket notification that processing started
         channel_layer = get_channel_layer()
@@ -676,6 +684,14 @@ class BulkUploadCancelView(APIView):
                     {'error': 'Batch is already cancelled.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            # Revoke the processing task if it exists
+            if batch.processing_task_id and batch.status == 'processing':
+                try:
+                    current_app.control.revoke(batch.processing_task_id, terminate=True)
+                    logger.info(f"BulkUploadCancelView: Revoked task {batch.processing_task_id} for batch {batch.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to revoke task {batch.processing_task_id}: {e}")
 
             # Delete temp files
             files_deleted = 0

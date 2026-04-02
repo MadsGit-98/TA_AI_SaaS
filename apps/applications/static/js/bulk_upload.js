@@ -18,7 +18,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileListSection = document.getElementById('file-list-section');
     const fileList = document.getElementById('file-list');
     const fileCount = document.getElementById('file-count');
-    const totalFiles = document.getElementById('total-files');
+    const totalFiles = document.getElementById('total-files');  // Progress section
+    const totalFilesList = document.getElementById('total-files-list');  // File list header
     const filesPerBatch = document.getElementById('files-per-batch');
     const progressSection = document.getElementById('progress-section');
     const progressFill = document.getElementById('progress-fill');
@@ -226,17 +227,23 @@ document.addEventListener('DOMContentLoaded', function() {
      * Add files to the list
      */
     function addFiles(newFiles) {
-        // Calculate remaining capacity
-        const currentTotal = files.length;
-        const remainingCapacity = config.maxTotalResumes - currentTotal;
+        // Calculate effective remaining capacity - use server-provided value, capped by maxTotalResumes
+        // This ensures we respect both the global limit (300) and the current job's remaining capacity
+        const effectiveRemaining = Math.min(config.maxTotalResumes, config.remainingCapacity);
         
+        // Check server-provided remaining capacity first
+        if (effectiveRemaining <= 0) {
+            alert('Maximum resume limit reached. Cannot add more files.');
+            return;
+        }
+
         for (const file of newFiles) {
-            // Check if we've reached capacity
-            if (files.length >= config.maxTotalResumes) {
-                alert(`Maximum resume limit (${config.maxTotalResumes}) reached. Cannot add more files.`);
+            // Check if we've reached the effective capacity
+            if (files.length >= effectiveRemaining) {
+                alert(`Maximum resume limit (${effectiveRemaining}) reached. Cannot add more files.`);
                 break;
             }
-            
+
             // Validate file
             const validation = validateFile(file);
             if (!validation.valid) {
@@ -330,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fileList.appendChild(item);
         });
 
-        if (totalFiles) totalFiles.textContent = files.length;
+        if (totalFilesList) totalFilesList.textContent = files.length;
         if (fileCount) fileCount.textContent = files.length;
     }
 
@@ -481,8 +488,17 @@ document.addEventListener('DOMContentLoaded', function() {
     function connectWebSocket() {
         if (!batchId) return;
 
+        // Close existing WebSocket if open to prevent duplicate connections
+        if (ws) {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                console.log('Closing existing WebSocket connection before creating new one');
+                ws.close();
+            }
+            ws = null;
+        }
+
         const wsUrl = `${config.wsProtocol || 'ws'}://${config.wsHost || window.location.host}/ws/bulk-upload/${batchId}/`;
-        
+
         try {
             ws = new WebSocket(wsUrl);
 
@@ -1027,23 +1043,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const modal = document.getElementById('message-modal');
         const titleEl = document.getElementById('message-modal-title');
         const messageEl = document.getElementById('message-modal-message');
-        const okBtn = modal?.querySelector('button');
+        const okBtn = document.getElementById('message-modal-ok');
 
         if (modal && titleEl && messageEl) {
             titleEl.textContent = title;
             messageEl.textContent = message;
             modal.style.display = 'flex';
 
-            // Auto-close after 5 seconds
-            setTimeout(function() {
+            // Auto-close after 5 seconds - capture timeout ID so we can clear it on manual close
+            const autoCloseId = setTimeout(function() {
                 closeMessageModal(onClose);
             }, 5000);
 
-            // Set up OK button
+            // Set up OK button to close modal and call callback
             if (okBtn) {
+                // Remove any existing listeners by cloning
                 const newOkBtn = okBtn.cloneNode(true);
                 okBtn.parentNode.replaceChild(newOkBtn, okBtn);
                 newOkBtn.addEventListener('click', function() {
+                    // Clear the auto-close timeout to prevent double-calling closeMessageModal
+                    clearTimeout(autoCloseId);
                     closeMessageModal(onClose);
                 });
             }

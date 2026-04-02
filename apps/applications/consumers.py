@@ -9,6 +9,7 @@ import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import sync_to_async
+from django.core.exceptions import ValidationError
 
 from apps.applications.models import UploadBatch
 
@@ -62,7 +63,7 @@ class BulkUploadConsumer(AsyncWebsocketConsumer):
         """Fetch UploadBatch by ID, return None if not found."""
         try:
             return await sync_to_async(UploadBatch.objects.get)(id=batch_id)
-        except UploadBatch.DoesNotExist:
+        except (UploadBatch.DoesNotExist, ValidationError, ValueError):
             return None
     
     async def disconnect(self, close_code):

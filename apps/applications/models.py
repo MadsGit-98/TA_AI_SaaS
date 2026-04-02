@@ -85,6 +85,12 @@ class UploadBatch(models.Model):
         blank=True,
         help_text='Final commit results: {applicants_created, files_failed, errors}'
     )
+    processing_task_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text='Celery task ID for the processing task'
+    )
     
     class Meta:
         ordering = ['batch_number']

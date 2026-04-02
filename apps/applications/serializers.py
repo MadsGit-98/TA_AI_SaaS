@@ -465,8 +465,10 @@ class BulkUploadDecisionSerializer(serializers.Serializer):
             return attrs
 
         # Get all file_ids from the batch's temp_files
+        # Guard against None temp_files by treating as empty iterable
         batch_file_ids = set()
-        for file_entry in batch.temp_files:
+        temp_files = batch.temp_files or []
+        for file_entry in temp_files:
             if isinstance(file_entry, dict) and 'file_id' in file_entry:
                 batch_file_ids.add(str(file_entry['file_id']))
 
