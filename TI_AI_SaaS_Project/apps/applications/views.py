@@ -90,8 +90,8 @@ def bulk_upload_view(request, job_listing_id):
     if job_listing.upload_type != 'bulk':
         return redirect('dashboard_jobs:job_detail', job_listing_id=job_listing.id)
 
-    # Calculate remaining capacity
-    remaining_capacity = job_listing.MAX_RESUMES - job_listing.total_resumes
+    # Calculate remaining capacity (clamped to minimum of 0)
+    remaining_capacity = max(0, job_listing.MAX_RESUMES - job_listing.total_resumes)
 
     context = {
         'job_listing': job_listing,

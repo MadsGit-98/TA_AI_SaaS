@@ -24,13 +24,22 @@
             logoutLink.addEventListener('click', async function(e) {
                 e.preventDefault();
 
+                // Get CSRF token first
+                const csrfToken = getCsrfToken();
+                
+                // Build headers object - only add X-CSRFToken if token exists
+                const headers = {};
+                
+                if (csrfToken) {
+                    headers['X-CSRFToken'] = csrfToken;
+                } else {
+                    console.warn('CSRF token not found - logout request may fail');
+                }
+
                 try {
                     const response = await fetch('/api/accounts/auth/logout/', {
                         method: 'POST',
-                        headers: {
-                            'X-CSRFToken': getCsrfToken(),
-                            'Content-Type': 'application/json',
-                        },
+                        headers: headers,
                         credentials: 'same-origin'  // Include cookies in request
                     });
 

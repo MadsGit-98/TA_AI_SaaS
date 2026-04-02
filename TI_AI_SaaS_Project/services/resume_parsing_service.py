@@ -142,13 +142,16 @@ class ResumeParserService:
                     parsed = phonenumbers.parse(cleaned, "US")
                     # Use is_possible_number for lenient matching (matching _redact_phones)
                     if phonenumbers.is_possible_number(parsed):
-                        # Format as E164 for storage
-                        result['phone'] = phonenumbers.format_number(
-                            parsed,
-                            phonenumbers.PhoneNumberFormat.E164
-                        )
-                        valid_phone_found = True
-                        break
+                        # Additional check: number should have reasonable length
+                        national_number = phonenumbers.national_significant_number(parsed)
+                        if 7 <= len(national_number) <= 15:
+                            # Format as E164 for storage
+                            result['phone'] = phonenumbers.format_number(
+                                parsed,
+                                phonenumbers.PhoneNumberFormat.E164
+                            )
+                            valid_phone_found = True
+                            break
                 except phonenumbers.NumberParseException:
                     pass
 
@@ -158,12 +161,15 @@ class ResumeParserService:
                     try:
                         parsed = phonenumbers.parse('+' + cleaned.replace('+', ''), "US")
                         if phonenumbers.is_possible_number(parsed):
-                            result['phone'] = phonenumbers.format_number(
-                                parsed,
-                                phonenumbers.PhoneNumberFormat.E164
-                            )
-                            valid_phone_found = True
-                            break
+                            # Additional check: number should have reasonable length
+                            national_number = phonenumbers.national_significant_number(parsed)
+                            if 7 <= len(national_number) <= 15:
+                                result['phone'] = phonenumbers.format_number(
+                                    parsed,
+                                    phonenumbers.PhoneNumberFormat.E164
+                                )
+                                valid_phone_found = True
+                                break
                     except phonenumbers.NumberParseException:
                         pass
 

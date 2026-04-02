@@ -8,24 +8,29 @@ Handles:
 - Bulk upload resume processing
 """
 
+import os
+import re
+import uuid
 from celery import shared_task, group, chord
 from celery.utils.log import get_task_logger
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count, F
+from django.db.models import Count, F, Case, When, Value, IntegerField
 from django.db import transaction
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from apps.applications.models import Applicant, UploadBatch
 from apps.jobs.models import JobListing
 from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
-import uuid
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 logger = get_task_logger(__name__)
+
+# Bulk upload constants
+BATCH_SIZE = 100  # Number of resumes in a full batch
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -169,15 +174,56 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
     try:
         job_listing = JobListing.objects.get(id=job_listing_id)
         batch = UploadBatch.objects.get(id=batch_id)
+        
+        # Check if batch has been cancelled - skip processing if so
+        if batch.status == 'cancelled':
+            logger.info(f"Batch {batch_id} is cancelled, skipping processing of {file_metadata.get('filename', 'unknown')}")
+            return {'success': False, 'error': 'Batch cancelled', 'skipped': True}
     except (JobListing.DoesNotExist, UploadBatch.DoesNotExist) as e:
         logger.error(f"Job listing or batch not found: job_listing_id={job_listing_id}, batch_id={batch_id}, error={e}")
         return {'success': False, 'error': 'Job listing or batch not found'}
-    
+
     try:
+        # Sanitize filename to prevent path traversal attacks
+        original_filename = file_metadata.get('filename', 'unnamed_file')
+        
+        # Extract only the basename to strip any directory components
+        safe_filename = os.path.basename(original_filename)
+        
+        # Remove null bytes and normalize path separators
+        safe_filename = safe_filename.replace('\x00', '').replace('\\', '/')
+        
+        # Split and take only the last component (defense in depth)
+        safe_filename = safe_filename.split('/')[-1]
+        
+        # Remove any remaining path traversal sequences
+        while '..' in safe_filename:
+            safe_filename = safe_filename.replace('..', '')
+        
+        # Allow only alphanumeric, dots, hyphens, and underscores
+        safe_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', safe_filename)
+        
+        # Enforce max filename length (leave room for hash prefix)
+        max_name_length = 100
+        if len(safe_filename) > max_name_length:
+            name_parts = safe_filename.rsplit('.', 1)
+            if len(name_parts) == 2:
+                safe_filename = name_parts[0][:max_name_length-5] + '.' + name_parts[1]
+            else:
+                safe_filename = safe_filename[:max_name_length]
+        
+        # Fallback if filename is empty after sanitization
+        if not safe_filename:
+            safe_filename = 'unnamed_file'
+            logger.warning(f"Sanitized filename was empty for batch {batch_id}, using fallback name")
+        
+        # Log if filename was changed during sanitization
+        if safe_filename != original_filename:
+            logger.debug(f"Filename sanitized: '{original_filename}' -> '{safe_filename}'")
 
         # Move file to permanent storage (outside transaction - file operations)
         # Use file_hash in path for idempotency - same hash = same path
-        permanent_path = f'applications/resumes/{job_listing.id}/{file_metadata["file_hash"]}_{file_metadata["filename"]}'
+        permanent_path = f'applications/resumes/{job_listing.id}/{file_metadata["file_hash"]}_{safe_filename}'
 
         # Check if file already exists (idempotent - handles retries)
         if not default_storage.exists(permanent_path):
@@ -198,11 +244,12 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
                 file_content = f.read()
 
         # Determine file type from extension and extract text
-        filename = file_metadata.get('filename', '').lower()
+        # Use sanitized filename for extension check
+        filename_lower = safe_filename.lower()
         try:
-            if filename.endswith('.pdf'):
+            if filename_lower.endswith('.pdf'):
                 text = ResumeParserService.extract_text_from_pdf(file_content)
-            elif filename.endswith('.docx'):
+            elif filename_lower.endswith('.docx'):
                 text = ResumeParserService.extract_text_from_docx(file_content)
             else:
                 # Fallback: try DOCX first, then PDF
@@ -211,7 +258,7 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
                 except Exception:
                     text = ResumeParserService.extract_text_from_pdf(file_content)
         except Exception as extraction_error:
-            logger.warning(f"Text extraction failed for {file_metadata['filename']}: {extraction_error}")
+            logger.warning(f"Text extraction failed for {safe_filename}: {extraction_error}")
             text = ""
 
         # Extract contact information using service method (BEFORE redaction)
@@ -223,10 +270,10 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
 
         # Fallback: Use filename if extraction failed
         if not first_name and not last_name:
-            first_name, last_name = ResumeParserService.extract_name_from_filename(filename)
+            first_name, last_name = ResumeParserService.extract_name_from_filename(safe_filename)
 
         if not email:
-            email = ResumeParserService.generate_placeholder_email(filename)
+            email = ResumeParserService.generate_placeholder_email(safe_filename)
 
         if not phone:
             phone = ''  # Leave empty if not found
@@ -337,21 +384,32 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
 def process_bulk_upload_batch(self, batch_id: str):
     """
     Orchestrate async bulk upload processing.
-    
+
     This task:
     1. Sets batch status to 'processing' (already set by API)
     2. Dispatches process_resume_async for each file
     3. Tracks overall progress
     4. Updates JobListing counters when complete
     5. Sends completion WebSocket notification
-    
+
     Args:
         batch_id: UUID of the upload batch
     """
     logger.info(f"process_bulk_upload_batch started for batch {batch_id}")
-    
+
     try:
         batch = UploadBatch.objects.select_related('job_listing').get(id=batch_id)
+        
+        # Idempotency check: skip if batch is already committed or cancelled
+        if batch.status in ['committed', 'cancelled']:
+            logger.info(f"Batch {batch_id} already in terminal status {batch.status}, skipping processing")
+            return
+        
+        # Recheck status: only process if batch is in 'processing' status
+        if batch.status != 'processing':
+            logger.warning(f"Batch {batch_id} is not in 'processing' status (current: {batch.status}), skipping")
+            return
+        
         job_listing = batch.job_listing
         
         logger.info(f"Batch {batch_id}: Retrieved batch with {len(batch.temp_files)} temp files")
@@ -467,60 +525,62 @@ def process_bulk_upload_batch(self, batch_id: str):
 def finalize_bulk_upload_batch(results, batch_id: str):
     """
     Finalize a bulk upload batch after all files have been processed.
-    
+
     This task is called by a Celery chord after all process_resume_async tasks complete.
     The chord passes task results as the first argument, which we ignore since we
     query the database directly for accurate counts.
-    
+
     This task:
     1. Checks if all files have been processed
     2. Updates JobListing counters using atomic F() expressions
     3. Sets batch status to 'committed'
     4. Sends completion WebSocket notification
-    
+
     Args:
         results: List of results from process_resume_async tasks (ignored)
         batch_id: UUID of the upload batch (passed by chord callback)
     """
     try:
         batch = UploadBatch.objects.select_related('job_listing').get(id=batch_id)
-        
+
         # Check if batch is still processing
         if batch.status != 'processing':
             logger.info(f"Batch {batch_id} is not in processing status ({batch.status})")
             return
-        
+
         # Count actual applicants created for this batch
         # This is more reliable than tracking progress in JSON field
         files_committed = Applicant.objects.filter(upload_batch=batch).count()
+
+        # Count failed files directly from batch.temp_files
+        # This is the authoritative source since process_resume_async marks files as 'failed' on error
+        failed_count = sum(1 for f in batch.temp_files if f.get('status') == 'failed')
         
-        # Get total files to process (excluding skipped)
-        files_to_process = [
-            f for f in batch.temp_files
-            if f.get('action') != 'skip' and f.get('status') != 'failed'
-        ]
-        total = len(files_to_process)
+        # Count skipped files (user decided to skip during duplicate review)
+        skipped_count = sum(1 for f in batch.temp_files if f.get('action') == 'skip')
         
-        # Calculate failed count
-        failed = total - files_committed
-        
+        # Total files that were supposed to be processed (excluding skipped)
+        total = len(batch.temp_files) - skipped_count
+
         # All files processed - finalize
         job_listing = batch.job_listing
-        
-        # Update JobListing counters using F() expressions for atomic updates
+
+        # Update JobListing counters using a single atomic update with conditional batch_count increment
         # This ensures updates are not lost in concurrent scenarios
         if files_committed > 0:
-            # Always use F() expressions for reliable updates
+            # Single atomic update with conditional batch_count increment using Case/When
+            # Only increment batch_count if files_committed equals BATCH_SIZE (100)
+            batch_count_increment = Case(
+                When(pk=job_listing.pk, then=F('batch_count') + 1),
+                default=F('batch_count'),
+                output_field=IntegerField()
+            ) if files_committed == BATCH_SIZE else F('batch_count')
+
             JobListing.objects.filter(pk=job_listing.pk).update(
-                total_resumes=F('total_resumes') + files_committed
+                total_resumes=F('total_resumes') + files_committed,
+                batch_count=batch_count_increment
             )
-            
-            # Only increment batch_count for full batches (exactly 100 files)
-            if files_committed == 100:
-                JobListing.objects.filter(pk=job_listing.pk).update(
-                    batch_count=F('batch_count') + 1
-                )
-            
+
             # Refresh job_listing to get updated values
             job_listing.refresh_from_db()
             logger.info(f"Updated JobListing {job_listing.id}: total_resumes={job_listing.total_resumes}, batch_count={job_listing.batch_count}")
@@ -530,11 +590,11 @@ def finalize_bulk_upload_batch(results, batch_id: str):
         batch.processing_completed_at = timezone.now()
         batch.commit_summary = {
             'applicants_created': files_committed,
-            'files_failed': failed,
+            'files_failed': failed_count,
             'total': total
         }
         batch.save()
-        
+
         # Send completion notification
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
@@ -544,14 +604,14 @@ def finalize_bulk_upload_batch(results, batch_id: str):
                 'batch_id': batch_id,
                 'summary': {
                     'applicants_created': files_committed,
-                    'files_failed': failed,
+                    'files_failed': failed_count,
                     'total': total
                 }
             }
         )
-        
-        logger.info(f"Finalized batch {batch_id}: {files_committed} created, {failed} failed")
-        
+
+        logger.info(f"Finalized batch {batch_id}: {files_committed} created, {failed_count} failed")
+
     except UploadBatch.DoesNotExist:
         logger.error(f"Batch {batch_id} not found")
     except Exception as exc:
