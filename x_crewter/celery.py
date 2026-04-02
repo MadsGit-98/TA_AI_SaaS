@@ -12,6 +12,8 @@ app = Celery('x_crewter')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
 # Load task modules from all registered Django app configs.
+# autodiscover_tasks() will look for tasks.py in each installed app
+# This is the correct way to auto-discover tasks - it handles Django app loading properly
 app.autodiscover_tasks()
 
 # Add periodic task to check job statuses every minute

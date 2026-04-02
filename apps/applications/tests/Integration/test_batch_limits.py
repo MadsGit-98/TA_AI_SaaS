@@ -2,9 +2,11 @@
 Integration Tests for Batch Upload Limits Enforcement
 
 Tests that batch upload limits are properly enforced.
+
+Note: Celery tasks are run synchronously during testing via CELERY_TASK_ALWAYS_EAGER.
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.urls import reverse
@@ -17,10 +19,12 @@ from django.utils import timezone
 import json
 from io import BytesIO
 from docx import Document
+from apps.applications.tasks import finalize_bulk_upload_batch
 
 User = get_user_model()
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class BatchLimitsIntegrationTest(TestCase):
     """Integration tests for batch upload limits enforcement."""
 
@@ -76,37 +80,33 @@ class BatchLimitsIntegrationTest(TestCase):
 
     def _create_valid_docx(self, unique_id='default'):
         """Create a valid DOCX file (50KB minimum as per requirements).
-        
+
         Args:
             unique_id: A unique identifier to include in the document to ensure
                       each generated file has unique content (for avoiding duplicate detection).
                       Should be an integer for best results.
         """
         import zipfile
-        
+
         # Generate unique phone number based on unique_id
-        # Use a simple formula that guarantees uniqueness for values 0-9999
+        # Use valid US phone number format that passes phonenumbers validation
+        # Area code 202 (Washington DC) with unique last 4 digits
         try:
             uid = int(unique_id)
         except (ValueError, TypeError):
             uid = 0
-        
-        # Create phone number in format +1-XXX-XXX-XXXX where last 4 digits are unique
-        # Area code: 555 + (uid // 1000) % 10
-        # Exchange: 100 + (uid // 10) % 900  
-        # Last 4: uid % 10000
-        area_code = 555 + (uid // 1000) % 10
-        exchange = 100 + (uid // 10) % 900
+
+        # Generate unique last 4 digits (0000-9999)
         last_four = uid % 10000
-        
-        phone_suffix = f"{area_code}-{exchange}-{last_four:04d}"
-        
+        # Format: (202) 555-XXXX where XXXX is unique
+        phone_suffix = f"(202) 555-{last_four:04d}"
+
         # Create a real DOCX document using python-docx with basic content
         doc = Document()
         doc.add_paragraph(f'Test User {unique_id}')
         doc.add_paragraph('Test Position')
         doc.add_paragraph(f'Email: test.{unique_id}@example.com')
-        doc.add_paragraph(f'Phone: +1-{phone_suffix}')
+        doc.add_paragraph(f'Phone: {phone_suffix}')
         doc.add_paragraph('Experience: 5 years in Python development')
 
         # Add substantial content to make it a realistic resume
@@ -159,32 +159,168 @@ class BatchLimitsIntegrationTest(TestCase):
         return docx_bytes
 
     def test_batch_count_limit_3(self):
-        """Test that maximum 3 batches per job listing is enforced."""
-        # Create 3 batches
-        for i in range(3):
-            self.job_listing.batch_count = i
-            self.job_listing.save()
-
-            init_response = self.client.post(
-                '/api/applications/bulk-upload/init/',
-                content_type='application/json',
-                data=json.dumps({'job_listing_id': str(self.job_listing.id)})
-            )
-            self.assertEqual(init_response.status_code, 201)
-
-        # Set batch count to 3
-        self.job_listing.batch_count = 3
-        self.job_listing.save()
-
-        # Try to create 4th batch - should fail
+        """Test that batch_count increments only when 100 files are committed."""
+        # The new logic: batch_count only increments when a full batch (100 files) is committed
+        # Users can upload multiple times until total_resumes reaches 300
+        
+        # Create first batch and commit 100 files
         init_response = self.client.post(
             '/api/applications/bulk-upload/init/',
             content_type='application/json',
             data=json.dumps({'job_listing_id': str(self.job_listing.id)})
         )
+        self.assertEqual(init_response.status_code, 201)
+        batch_id = init_response.json()['batch_id']
+        
+        # Upload 100 files with unique content
+        for i in range(100):
+            unique_docx = self._create_valid_docx(unique_id=i)
+            upload_file = SimpleUploadedFile(
+                f"test_resume_{i}.docx",
+                unique_docx,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            upload_response = self.client.post(
+                '/api/applications/bulk-upload/upload/',
+                {
+                    'batch_id': batch_id,
+                    'file': upload_file
+                }
+            )
+            self.assertEqual(upload_response.status_code, 200)
+        
+        # Validate and commit
+        validate_response = self.client.post(
+            '/api/applications/bulk-upload/validate/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id})
+        )
+        self.assertEqual(validate_response.status_code, 200)
+        
+        commit_response = self.client.post(
+            '/api/applications/bulk-upload/commit/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id})
+        )
+        self.assertEqual(commit_response.status_code, 202)  # Accepted for async processing
+        
+        # Finalize the batch to complete processing
+        finalize_bulk_upload_batch([], batch_id)
 
-        self.assertEqual(init_response.status_code, 400)
-        self.assertIn('Maximum 3 batches', init_response.json().get('error', ''))
+        # Refresh from database - batch_count should now be 1
+        self.job_listing.refresh_from_db()
+        self.assertEqual(self.job_listing.batch_count, 1)
+        self.assertEqual(self.job_listing.total_resumes, 100)
+        
+        # Create second batch and commit 100 files
+        init_response2 = self.client.post(
+            '/api/applications/bulk-upload/init/',
+            content_type='application/json',
+            data=json.dumps({'job_listing_id': str(self.job_listing.id)})
+        )
+        self.assertEqual(init_response2.status_code, 201)
+        batch_id2 = init_response2.json()['batch_id']
+        
+        # Upload 100 files with unique content
+        for i in range(100, 200):
+            unique_docx = self._create_valid_docx(unique_id=i)
+            upload_file = SimpleUploadedFile(
+                f"test_resume_{i}.docx",
+                unique_docx,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            upload_response = self.client.post(
+                '/api/applications/bulk-upload/upload/',
+                {
+                    'batch_id': batch_id2,
+                    'file': upload_file
+                }
+            )
+            self.assertEqual(upload_response.status_code, 200)
+        
+        # Validate and commit
+        validate_response2 = self.client.post(
+            '/api/applications/bulk-upload/validate/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id2})
+        )
+        self.assertEqual(validate_response2.status_code, 200)
+        
+        commit_response2 = self.client.post(
+            '/api/applications/bulk-upload/commit/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id2})
+        )
+        self.assertEqual(commit_response2.status_code, 202)  # Accepted for async processing
+        
+        # Finalize the batch
+        finalize_bulk_upload_batch([], batch_id2)
+
+        # Refresh from database - batch_count should now be 2
+        self.job_listing.refresh_from_db()
+        self.assertEqual(self.job_listing.batch_count, 2)
+        self.assertEqual(self.job_listing.total_resumes, 200)
+        
+        # Create third batch and commit 100 files
+        init_response3 = self.client.post(
+            '/api/applications/bulk-upload/init/',
+            content_type='application/json',
+            data=json.dumps({'job_listing_id': str(self.job_listing.id)})
+        )
+        self.assertEqual(init_response3.status_code, 201)
+        batch_id3 = init_response3.json()['batch_id']
+        
+        # Upload 100 files with unique content
+        for i in range(200, 300):
+            unique_docx = self._create_valid_docx(unique_id=i)
+            upload_file = SimpleUploadedFile(
+                f"test_resume_{i}.docx",
+                unique_docx,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            upload_response = self.client.post(
+                '/api/applications/bulk-upload/upload/',
+                {
+                    'batch_id': batch_id3,
+                    'file': upload_file
+                }
+            )
+            self.assertEqual(upload_response.status_code, 200)
+        
+        # Validate and commit
+        validate_response3 = self.client.post(
+            '/api/applications/bulk-upload/validate/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id3})
+        )
+        self.assertEqual(validate_response3.status_code, 200)
+        
+        commit_response3 = self.client.post(
+            '/api/applications/bulk-upload/commit/',
+            content_type='application/json',
+            data=json.dumps({'batch_id': batch_id3})
+        )
+        self.assertEqual(commit_response3.status_code, 202)  # Accepted for async processing
+        
+        # Finalize the batch
+
+        finalize_bulk_upload_batch([], batch_id3)
+
+        # Refresh from database - batch_count should now be 3
+        self.job_listing.refresh_from_db()
+        self.assertEqual(self.job_listing.batch_count, 3)
+        self.assertEqual(self.job_listing.total_resumes, 300)
+        
+        # Try to create another batch - should fail due to max resumes reached
+        init_response4 = self.client.post(
+            '/api/applications/bulk-upload/init/',
+            content_type='application/json',
+            data=json.dumps({'job_listing_id': str(self.job_listing.id)})
+        )
+        
+        # Should fail because total_resumes is 300 (max limit)
+        self.assertEqual(init_response4.status_code, 400)
+        self.assertIn('Maximum resume limit reached', init_response4.json().get('error', ''))
 
     def test_total_resumes_limit_300(self):
         """Test that maximum 300 resumes per job listing is enforced."""
@@ -310,46 +446,60 @@ class BatchLimitsIntegrationTest(TestCase):
 
         self.assertEqual(status_response.json()['progress']['files_uploaded'], 25)
 
-    def test_batch_number_constraint_database_level(self):
-        """Test that batch_number constraint is enforced at database level."""
-        from django.db import IntegrityError
-
-        # Try to create batch with number > 3
-        try:
-            UploadBatch.objects.create(
+    def test_batch_number_no_longer_has_constraint(self):
+        """Test that batch_number no longer has a max 3 constraint."""
+        # The batch_number_max_3 constraint has been removed to allow
+        # users to upload multiple times until 300 resumes is reached.
+        # For example: 50 files x 6 batches = 300 files (6 batches total)
+        
+        # Create 5 batches with batch_number 1-5
+        for i in range(1, 6):
+            batch = UploadBatch.objects.create(
                 job_listing=self.job_listing,
-                batch_number=4,  # Should fail
+                batch_number=i,
                 uploaded_by=self.user
             )
-            # If we get here, constraint didn't work
-            self.fail("Database constraint for batch_number was not enforced")
-        except IntegrityError:
-            # Expected - constraint worked
-            pass
+            self.assertEqual(batch.batch_number, i)
+        
+        # Creating a 6th batch should work (no constraint)
+        batch_6 = UploadBatch.objects.create(
+            job_listing=self.job_listing,
+            batch_number=6,
+            uploaded_by=self.user
+        )
+        self.assertEqual(batch_6.batch_number, 6)
 
     def test_file_count_constraint_database_level(self):
-        """Test that file_count constraint is enforced at database level."""
-        from django.db import IntegrityError
-
+        """Test that file_count is properly tracked.
+        
+        Note: The file_count_max_100 database constraint was removed.
+        File count limits are now enforced at the application level
+        (API validation prevents uploading more than 100 files per batch).
+        """
         batch = UploadBatch.objects.create(
             job_listing=self.job_listing,
             batch_number=1,
             uploaded_by=self.user
         )
 
-        # Try to set file_count > 100
-        batch.file_count = 101
-        try:
-            batch.save()
-            # If we get here, constraint didn't work
-            self.fail("Database constraint for file_count was not enforced")
-        except IntegrityError:
-            # Expected - constraint worked
-            pass
+        # file_count is automatically updated when files are added via add_file()
+        # The 100 file limit is enforced at the API level, not database level
+        self.assertEqual(batch.file_count, 0)
+        
+        # Verify file_count updates when files are added
+        batch.add_file({
+            'file_id': 'test-file-1',
+            'filename': 'test.pdf',
+            'file_hash': 'abc123',
+            'size': 1000,
+            'status': 'uploaded'
+        })
+        
+        self.assertEqual(batch.file_count, 1)
 
     def test_upload_limits_reflected_in_job_listing(self):
         """Test that upload limits are properly reflected in JobListing."""
-        # Initialize and commit a batch
+        # Initialize and commit a batch with 10 files (not a full batch)
         init_response = self.client.post(
             '/api/applications/bulk-upload/init/',
             content_type='application/json',
@@ -359,7 +509,6 @@ class BatchLimitsIntegrationTest(TestCase):
 
         # Upload 10 files with unique content
         for i in range(10):
-            # Use numeric ID with offset to ensure unique phone numbers
             unique_docx = self._create_valid_docx(unique_id=400 + i)
             upload_file = SimpleUploadedFile(
                 f"test_resume_{i}.docx",
@@ -389,11 +538,17 @@ class BatchLimitsIntegrationTest(TestCase):
             data=json.dumps({'batch_id': batch_id})
         )
 
-        self.assertEqual(commit_response.status_code, 200)
+        self.assertEqual(commit_response.status_code, 202)  # Accepted for async processing
+        
+        # Finalize the batch
+
+        finalize_bulk_upload_batch([], batch_id)
 
         # Refresh from database
         self.job_listing.refresh_from_db()
 
         # Verify counters updated
-        self.assertEqual(self.job_listing.batch_count, 1)
+        # batch_count should NOT increment because only 10 files were committed (not 100)
+        self.assertEqual(self.job_listing.batch_count, 0)
+        # total_resumes should reflect the 10 committed files
         self.assertEqual(self.job_listing.total_resumes, 10)

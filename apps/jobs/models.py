@@ -86,8 +86,8 @@ class JobListing(models.Model):
         Returns:
             Tuple of (can_upload: bool, message: str)
         """
-        if self.batch_count >= self.MAX_BATCHES:
-            return False, "Maximum 3 batches already uploaded"
+        # Only check total resumes limit (max 300)
+        # Batch count is not a limiting factor - batches are counted when 100 files are committed
         if self.total_resumes >= self.MAX_RESUMES:
             return False, "Maximum resume limit reached (300)"
         if self.total_resumes + requested_count > self.MAX_RESUMES:

@@ -29,15 +29,17 @@ class UploadBatch(models.Model):
     STATUS_UPLOADING = 'uploading'
     STATUS_VALIDATING = 'validating'
     STATUS_REVIEW = 'awaiting_review'
+    STATUS_PROCESSING = 'processing'
     STATUS_COMMITTED = 'committed'
     STATUS_CANCELLED = 'cancelled'
     STATUS_FAILED = 'failed'
-    
+
     STATUS_CHOICES = [
         (STATUS_PENDING, 'Pending'),
         (STATUS_UPLOADING, 'Uploading'),
         (STATUS_VALIDATING, 'Validating'),
         (STATUS_REVIEW, 'Awaiting Review'),
+        (STATUS_PROCESSING, 'Processing'),
         (STATUS_COMMITTED, 'Committed'),
         (STATUS_CANCELLED, 'Cancelled'),
         (STATUS_FAILED, 'Failed'),
@@ -70,6 +72,18 @@ class UploadBatch(models.Model):
         null=True,
         blank=True,
         help_text='Duplicate detection results: {duplicates: [...], actions: {...}}'
+    )
+    # Async processing tracking fields
+    processing_progress = models.JSONField(
+        default=dict,
+        help_text='Processing progress: {total, processed, failed, current_file, status}'
+    )
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_completed_at = models.DateTimeField(null=True, blank=True)
+    commit_summary = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Final commit results: {applicants_created, files_failed, errors}'
     )
     
     class Meta:
@@ -105,11 +119,11 @@ class UploadBatch(models.Model):
     def can_commit(self) -> tuple[bool, str]:
         """
         Check if batch can be committed.
-        
+
         Returns:
             Tuple of (can_commit: bool, message: str)
         """
-        if self.status not in [self.STATUS_VALIDATING, self.STATUS_REVIEW]:
+        if self.status not in [self.STATUS_VALIDATING, self.STATUS_REVIEW, self.STATUS_PROCESSING]:
             return False, f"Batch status is {self.status}, not ready for commit"
         if self.file_count == 0:
             return False, "Batch has no files"
@@ -158,6 +172,10 @@ class Applicant(models.Model):
     last_name = models.CharField(max_length=200)
     email = models.EmailField(max_length=255, db_index=True)
     phone = models.CharField(max_length=50, db_index=True)
+    phone_extraction_failed = models.BooleanField(
+        default=False,
+        help_text='True if phone number extraction from resume failed'
+    )
     resume_file = models.FileField(
         upload_to='applications/resumes/',
         max_length=500
@@ -182,10 +200,9 @@ class Applicant(models.Model):
                 fields=['job_listing', 'email'],
                 name='unique_email_per_job'
             ),
-            models.UniqueConstraint(
-                fields=['job_listing', 'phone'],
-                name='unique_phone_per_job'
-            ),
+            # Note: Removed unique_phone_per_job constraint
+            # Multiple applicants can share the same phone number (e.g., couples, roommates)
+            # Duplicate detection is handled at validation stage, not database level
         ]
         indexes = [
             models.Index(fields=['job_listing', 'submitted_at']),

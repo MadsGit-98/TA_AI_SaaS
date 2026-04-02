@@ -17,6 +17,7 @@ from django.db.models import F
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -41,36 +42,12 @@ from apps.applications.serializers import (
 )
 from apps.accounts.permissions import IsTAS
 from services.duplication_service import DuplicationService
-from apps.applications.tasks import send_application_confirmation_email
+from apps.applications.tasks import send_application_confirmation_email, process_bulk_upload_batch
 from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
-
-
-def extract_contact_info(text: str) -> dict:
-    """
-    Extract contact information from parsed resume text.
-    
-    Args:
-        text: Parsed resume text
-        
-    Returns:
-        Dictionary with 'email' and 'phone' keys
-    """
-    # Simple email extraction
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-    emails = re.findall(email_pattern, text)
-    email = emails[0] if emails else None
-
-    # Simple phone extraction (very basic)
-    # Note: - is escaped to avoid being interpreted as a character range
-    phone_pattern = r'\+?[\d\s\-\(\)]{10,}'
-    phones = re.findall(phone_pattern, text)
-    phone = phones[0] if phones else None
-
-    return {'email': email, 'phone': phone}
 
 
 @api_view(['POST'])
@@ -335,37 +312,42 @@ def validate_contact(request):
 class BulkUploadInitView(APIView):
     """
     Initialize a bulk upload session.
-    
+
     POST /api/applications/bulk-upload/init/
     """
     permission_classes = [IsAuthenticated, IsTAS]
-    
+
     def post(self, request):
         serializer = BulkUploadInitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         job_listing = serializer.validated_data['job_listing_id']
 
-        # Check if bulk upload is allowed
+        # Check if bulk upload is allowed - only check total_resumes limit (300)
         can_upload, message = job_listing.can_upload_more(0)
         if not can_upload:
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Atomically increment batch_count to prevent race conditions
-        # This ensures unique batch_number even with concurrent init requests
+        # Calculate next batch_number based on existing batches
+        # Get the maximum batch_number from existing batches for this job listing
+        max_batch = UploadBatch.objects.filter(
+            job_listing=job_listing
+        ).order_by('-batch_number').first()
+        
+        next_batch_number = (max_batch.batch_number if max_batch else 0) + 1
+        
+        # Note: We allow more than 3 batches to be created because:
+        # - batch_count only increments when 100 files are committed (a full batch)
+        # - Users can upload multiple times (e.g., 50 files x 6 times = 300 files)
+        # - The real limit is total_resumes (300), not batch count
+        # - Database constraint batch_number_max_3 only applies to batch_number field,
+        #   but we need to allow partial batches to reach 300 total resumes
+        
         try:
             with transaction.atomic():
-                # Lock the row and increment atomically using F()
-                JobListing.objects.filter(pk=job_listing.pk).update(
-                    batch_count=F('batch_count') + 1
-                )
-                # Refresh to get the new value
-                job_listing.refresh_from_db()
-                
-                # Create UploadBatch with the new batch_number
                 batch = UploadBatch.objects.create(
                     job_listing=job_listing,
-                    batch_number=job_listing.batch_count,
+                    batch_number=next_batch_number,
                     uploaded_by=request.user,
                     status='pending'
                 )
@@ -520,7 +502,7 @@ class BulkUploadValidateView(APIView):
                 # Read file content using context manager to ensure proper cleanup
                 with default_storage.open(file_meta['temp_path']) as f:
                     file_content = f.read()
-                
+
                 # Determine file type from extension and extract text
                 filename = file_meta.get('filename', '').lower()
                 if filename.endswith('.pdf'):
@@ -533,8 +515,8 @@ class BulkUploadValidateView(APIView):
                         text = ResumeParserService.extract_text_from_docx(file_content)
                     except Exception:
                         text = ResumeParserService.extract_text_from_pdf(file_content)
-                contact_info = extract_contact_info(text)
-                
+                contact_info = ResumeParserService.extract_contact_info(text)
+
                 # Check email duplicate
                 if contact_info.get('email') and DuplicationService.check_email_duplicate(
                     batch.job_listing,
@@ -599,9 +581,13 @@ class BulkUploadValidateView(APIView):
 
 class BulkUploadCommitView(APIView):
     """
-    Commit a batch and create Applicant instances.
+    Commit a batch and trigger async processing.
 
     POST /api/applications/bulk-upload/commit/
+    
+    This endpoint triggers async processing of the batch. The actual file processing
+    happens in the background via Celery tasks. Clients receive immediate confirmation
+    and should listen to WebSocket events for progress updates.
     """
     permission_classes = [IsAuthenticated, IsTAS]
 
@@ -611,109 +597,56 @@ class BulkUploadCommitView(APIView):
 
         batch = serializer.validated_data['batch_id']
 
-        applicants_created = []
-        errors = []
+        # Validate batch status - must be in awaiting_review or processing state
+        if batch.status not in ['awaiting_review', 'processing']:
+            return Response(
+                {'error': f'Batch status is {batch.status}, not ready for commit'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Count files to process
+        files_to_process = [
+            f for f in batch.temp_files
+            if f.get('action') != 'skip' and f.get('status') != 'failed'
+        ]
+        total_files = len(files_to_process)
 
         with transaction.atomic():
-            for file_meta in batch.temp_files:
-                # Skip files marked for skipping
-                if file_meta.get('action') == 'skip':
-                    continue
-
-                # Skip failed files
-                if file_meta.get('status') == 'failed':
-                    continue
-
-                try:
-                    # Move file to permanent storage
-                    # Sanitize filename again for defense-in-depth
-                    safe_filename = os.path.basename(file_meta.get('filename', 'unnamed_file'))
-                    safe_filename = safe_filename.replace('\x00', '').replace('\\', '/').split('/')[-1]
-                    if not safe_filename:
-                        safe_filename = 'unnamed_file'
-                    permanent_path = f'applications/resumes/{batch.job_listing.id}/{uuid.uuid4()}_{safe_filename}'
-
-                    # Read file content using context manager to ensure proper cleanup
-                    with default_storage.open(file_meta['temp_path']) as f:
-                        file_content = f.read()
-
-                    default_storage.save(permanent_path, ContentFile(file_content))
-                    default_storage.delete(file_meta['temp_path'])
-
-                    # Determine file type from extension and extract text
-                    filename = file_meta.get('filename', '').lower()
-                    if filename.endswith('.pdf'):
-                        text = ResumeParserService.extract_text_from_pdf(file_content)
-                    elif filename.endswith('.docx'):
-                        text = ResumeParserService.extract_text_from_docx(file_content)
-                    else:
-                        # Fallback: try DOCX first, then PDF
-                        try:
-                            text = ResumeParserService.extract_text_from_docx(file_content)
-                        except Exception:
-                            text = ResumeParserService.extract_text_from_pdf(file_content)
-
-                    # Extract and redact text
-                    redacted_text = ConfidentialInfoFilter.redact(text)
-
-                    # Extract contact info BEFORE redaction
-                    contact_info = extract_contact_info(text)
-
-                    # Create Applicant with extracted contact info
-                    applicant = Applicant.objects.create(
-                        job_listing=batch.job_listing,
-                        upload_batch=batch,
-                        first_name='',  # Would be extracted from resume
-                        last_name='',
-                        email=contact_info.get('email') or '',
-                        phone=contact_info.get('phone') or '',
-                        resume_file=permanent_path,
-                        resume_file_hash=file_meta['file_hash'],
-                        resume_parsed_text=redacted_text,
-                        status=Applicant.STATUS_SUBMITTED
-                    )
-
-                    applicants_created.append({
-                        'id': str(applicant.id),
-                        'reference_number': applicant.reference_number,
-                        'filename': file_meta['filename']
-                    })
-
-                except Exception as e:
-                    # Collect error for reporting - don't silently continue
-                    error_info = {
-                        'filename': file_meta['filename'],
-                        'file_id': file_meta.get('file_id', 'unknown'),
-                        'error': str(e)
-                    }
-                    errors.append(error_info)
-                    logger.error(f"Error creating applicant for {file_meta['filename']}: {str(e)}")
-                    # Mark file as failed in batch
-                    file_meta['status'] = 'failed'
-                    file_meta['error'] = str(e)
-
-            # Update JobListing counters
-            # Note: batch_count was already atomically incremented when batch was created
-            batch.job_listing.total_resumes += len(applicants_created)
-            batch.job_listing.save()
-
-            batch.status = 'committed'
+            # Set batch status to processing
+            batch.status = 'processing'
+            batch.processing_progress = {
+                'total': total_files,
+                'processed': 0,
+                'failed': 0,
+                'current_file': None,
+                'status': 'queued'
+            }
+            batch.processing_started_at = timezone.now()
             batch.save()
 
-        # Build response with error information if any failures occurred
-        response_data = {
+        # Trigger async processing
+        logger.info(f"BulkUploadCommitView: Triggering process_bulk_upload_batch for batch {batch.id}")
+        process_bulk_upload_batch.delay(str(batch.id))
+        logger.info(f"BulkUploadCommitView: process_bulk_upload_batch triggered for batch {batch.id}")
+
+        # Send WebSocket notification that processing started
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'bulk_upload_{batch.id}',
+            {
+                'type': 'processing_started',
+                'batch_id': str(batch.id),
+                'total_files': total_files
+            }
+        )
+
+        # Return immediately - do NOT block
+        return Response({
             'batch_id': str(batch.id),
-            'status': 'committed',
-            'applicants_created': len(applicants_created),
-            'applicants': applicants_created
-        }
-
-        if errors:
-            response_data['errors'] = errors
-            response_data['files_failed'] = len(errors)
-            logger.warning(f"Batch {batch.id} committed with {len(errors)} file failures")
-
-        return Response(response_data)
+            'status': 'processing',
+            'message': 'Processing started. You will receive real-time updates via WebSocket.',
+            'total_files': total_files
+        }, status=status.HTTP_202_ACCEPTED)
 
 
 class BulkUploadCancelView(APIView):
@@ -800,70 +733,7 @@ class BulkUploadStatusView(APIView):
                 },
                 'files': batch.temp_files[:20]  # Limit to first 20 for performance
             })
-            
-        except UploadBatch.DoesNotExist:
-            return Response(
-                {'error': 'Batch not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
 
-
-class BulkUploadSummaryView(APIView):
-    """
-    Get batch upload summary.
-    
-    GET /api/applications/bulk-upload/summary/<batch_id>/
-    """
-    permission_classes = [IsAuthenticated, IsTAS]
-    
-    def get(self, request, batch_id):
-        try:
-            batch = UploadBatch.objects.get(id=batch_id)
-            
-            # Check permission
-            if batch.uploaded_by != request.user and not request.user.is_staff:
-                return Response(
-                    {'error': 'Permission denied'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            if batch.status != 'committed':
-                return Response(
-                    {'error': 'Batch not yet committed'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            applicants = batch.applicants.all()[:100]  # Limit to first 100
-            
-            return Response({
-                'batch_id': str(batch.id),
-                'job_listing': {
-                    'id': str(batch.job_listing.id),
-                    'title': batch.job_listing.title
-                },
-                'batch_number': batch.batch_number,
-                'uploaded_at': batch.uploaded_at,
-                'uploaded_by': {
-                    'id': str(batch.uploaded_by.id),
-                    'name': batch.uploaded_by.get_full_name() or batch.uploaded_by.username
-                },
-                'summary': {
-                    'total_files': batch.file_count,
-                    'successful': applicants.count(),
-                    'duplicates_skipped': len([f for f in batch.temp_files if f.get('action') == 'skip']),
-                    'failed': len([f for f in batch.temp_files if f.get('status') == 'failed'])
-                },
-                'applicants': [
-                    {
-                        'id': str(a.id),
-                        'reference_number': a.reference_number,
-                        'filename': a.resume_file.name.split('/')[-1],
-                        'parsing_status': a.get_parsing_status()
-                    }
-                    for a in applicants
-                ]
-            })
-            
         except UploadBatch.DoesNotExist:
             return Response(
                 {'error': 'Batch not found'},
