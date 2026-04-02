@@ -2,11 +2,13 @@
 WebSocket routing configuration
 
 Defines URL routing for WebSocket consumers.
+This file is deprecated. Routing is now defined in each app's routing.py file.
 """
 
-from django.urls import re_path
-from apps.applications.consumers import BulkUploadConsumer
+# This file is kept for backward compatibility but should not be used.
+# All WebSocket routing is now defined in individual apps:
+# - apps/accounts/routing.py
+# - apps/analysis/routing.py
+# - apps/applications/routing.py
 
-websocket_urlpatterns = [
-    re_path(r'^ws/bulk-upload/(?P<batch_id>[A-Za-z0-9_-]+)/$', BulkUploadConsumer.as_asgi()),
-]
+websocket_urlpatterns = []

@@ -98,16 +98,18 @@ class ResumeParserService:
             text: Parsed resume text
 
         Returns:
-            Dictionary with keys: 'email', 'phone', 'first_name', 'last_name'
+            Dictionary with keys: 'email', 'phone', 'phone_extraction_failed', 'first_name', 'last_name'
         """
         result = {
             'email': '',
             'phone': '',
+            'phone_extraction_failed': False,
             'first_name': '',
             'last_name': ''
         }
 
         if not text:
+            result['phone_extraction_failed'] = True
             return result
 
         # Extract email addresses
@@ -116,33 +118,82 @@ class ResumeParserService:
             result['email'] = emails[0]
 
         # Extract and validate phone numbers
+        # Uses same approach as ConfidentialInfoFilter._redact_phones for consistency
         phone_candidates = re.findall(ConfidentialInfoFilter.PHONE_PATTERN, text)
+        valid_phone_found = False
+
         for candidate in phone_candidates:
             try:
-                # For alphanumeric numbers (1-800-FLOWERS), skip validation
+                # For alphanumeric numbers (1-800-FLOWERS), store directly
                 if re.search(r'[A-Za-z]', candidate):
+                    result['phone'] = candidate
+                    valid_phone_found = True
+                    break
+
+                # Clean the candidate - remove extra spaces and common separators
+                cleaned = re.sub(r'[\s\-\.\(\)]+', '', candidate)
+
+                # Skip obvious fake/test numbers (555 is fictional US prefix)
+                if cleaned.startswith('+555') or '555555' in cleaned:
                     continue
 
-                parsed = phonenumbers.parse(candidate, None)
-                if phonenumbers.is_valid_number(parsed):
-                    result['phone'] = phonenumbers.format_number(
-                        parsed,
-                        phonenumbers.PhoneNumberFormat.E164
-                    )
-                    break
-            except phonenumbers.NumberParseException:
-                # Try parsing as international format
-                if not candidate.startswith('+'):
+                # Try to parse with default region US (matching _redact_phones approach)
+                try:
+                    parsed = phonenumbers.parse(cleaned, "US")
+                    # Use is_possible_number for lenient matching (matching _redact_phones)
+                    if phonenumbers.is_possible_number(parsed):
+                        # Format as E164 for storage
+                        result['phone'] = phonenumbers.format_number(
+                            parsed,
+                            phonenumbers.PhoneNumberFormat.E164
+                        )
+                        valid_phone_found = True
+                        break
+                except phonenumbers.NumberParseException:
+                    pass
+
+                # Try parsing as international format (add + if missing)
+                # This matches the fallback approach in _redact_phones
+                if not cleaned.startswith('+'):
                     try:
-                        parsed = phonenumbers.parse('+' + candidate.replace('+', ''), "US")
+                        parsed = phonenumbers.parse('+' + cleaned.replace('+', ''), "US")
                         if phonenumbers.is_possible_number(parsed):
                             result['phone'] = phonenumbers.format_number(
                                 parsed,
                                 phonenumbers.PhoneNumberFormat.E164
                             )
+                            valid_phone_found = True
                             break
                     except phonenumbers.NumberParseException:
+                        pass
+
+                # Fallback: Try different regions if US/international parsing failed
+                # This helps catch region-specific formats
+                for region in ["US", "GB", "CA", "NO", "DE", "FR", "IN"]:
+                    try:
+                        parsed = phonenumbers.parse(cleaned, region)
+                        if phonenumbers.is_possible_number(parsed):
+                            # Additional check: number should have reasonable length
+                            national_number = str(parsed.national_number)
+                            if 7 <= len(national_number) <= 15:
+                                result['phone'] = phonenumbers.format_number(
+                                    parsed,
+                                    phonenumbers.PhoneNumberFormat.E164
+                                )
+                                valid_phone_found = True
+                                break
+                    except phonenumbers.NumberParseException:
                         continue
+
+                if valid_phone_found:
+                    break
+
+            except Exception:
+                # Skip any problematic candidates
+                continue
+
+        # Mark extraction as failed if no valid phone found
+        result['phone_extraction_failed'] = not valid_phone_found
 
         # Extract name from text
         result['first_name'], result['last_name'] = ResumeParserService._extract_name(text)
@@ -282,24 +333,27 @@ class ConfidentialInfoFilter:
     # Email pattern
     EMAIL_PATTERN = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     
-    # Phone pattern - comprehensive regex to capture various formats with extensions
-    # This is used as a first pass, then validated with phonenumbers library
+    # Phone pattern - more conservative to avoid matching partial numbers from addresses
+    # Only match complete phone number patterns, not number sequences
     PHONE_PATTERN = (
         r'(?:'
-        # International format: +1 123 456 7890, +1-123-456-7890, +44 20 7946 0958
-        r'\+\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}'
+        # International format with +: +1 123 456 7890, +44-20-7946-0958, +61 2 9374 4000
+        r'\+\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{0,4}'
         r'|'
-        # US format with country code: 1-123-456-7890, 1 (123) 456-7890
-        r'1[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+        # US format with country code: 1-123-456-7890
+        r'1[-.\s]\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
         r'|'
-        # US local format: (123) 456-7890, 123-456-7890, 123.456.7890, 123 456 7890
-        r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+        # US local format: (123) 456-7890, 123-456-7890, 123.456.7890
+        r'\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}'
         r'|'
-        # Alphanumeric toll-free: 1-800-FLOWERS, 1-888-CALL-NOW
+        # European format: XX XX XX XX XX (5 pairs of 2 digits)
+        r'\d{2}[-.\s]\d{2}[-.\s]\d{2}[-.\s]\d{2}[-.\s]\d{2}'
+        r'|'
+        # Alphanumeric toll-free: 1-800-FLOWERS
         r'1-\d{3}-[A-Z]{4,10}'
         r')'
-        # Optional extension: x123, ext. 456, extension 789
-        r'(?:\s*(?:x|ext\.?|extension)\s*\d+)?'
+        # Optional extension: x123, ext. 456
+        r'(?:\s*(?:x|ext\.?)\s*\d{1,4})?'
     )
     
     # SSN pattern (matches XXX-XX-XXXX, XXX XX XXXX, or XXXXXXXXXX)

@@ -8,13 +8,13 @@ Handles:
 - Bulk upload resume processing
 """
 
-from celery import shared_task
+from celery import shared_task, group, chord
 from celery.utils.log import get_task_logger
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count
+from django.db.models import Count, F
 from django.db import transaction
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -169,6 +169,11 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
     try:
         job_listing = JobListing.objects.get(id=job_listing_id)
         batch = UploadBatch.objects.get(id=batch_id)
+    except (JobListing.DoesNotExist, UploadBatch.DoesNotExist) as e:
+        logger.error(f"Job listing or batch not found: job_listing_id={job_listing_id}, batch_id={batch_id}, error={e}")
+        return {'success': False, 'error': 'Job listing or batch not found'}
+    
+    try:
 
         # Move file to permanent storage (outside transaction - file operations)
         # Use file_hash in path for idempotency - same hash = same path
@@ -252,12 +257,12 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
         if not created:
             logger.info(f"Applicant already exists for {file_metadata['filename']} (id={applicant.id})")
 
-        # Prepare WebSocket data for sending after transaction commits
+        # Send WebSocket notification after DB transaction commits
+        # Use 'file_success' event type for the new async processing flow
         websocket_data = {
-            'type': 'upload_progress',
+            'type': 'file_success',
             'file_id': file_metadata['file_id'],
             'filename': file_metadata['filename'],
-            'status': 'success',
             'applicant_id': str(applicant.id),
             'extracted_data': {
                 'first_name': first_name,
@@ -311,16 +316,243 @@ def process_resume_async(self, file_metadata: dict, job_listing_id: str, batch_i
             pass
 
         # Send WebSocket error update with generic message
+        # Use 'file_error' event type for the new async processing flow
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             f'bulk_upload_{batch_id}',
             {
-                'type': 'upload_error',
+                'type': 'file_error',
                 'file_id': file_metadata['file_id'],
-                'error': 'processing_failed',
+                'filename': file_metadata.get('filename', 'unknown'),
+                'error_code': 'processing_failed',
                 'message': client_message
             }
         )
 
         # Retry with exponential backoff
         raise self.retry(exc=exc, countdown=30 * (2 ** self.request.retries))
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def process_bulk_upload_batch(self, batch_id: str):
+    """
+    Orchestrate async bulk upload processing.
+    
+    This task:
+    1. Sets batch status to 'processing' (already set by API)
+    2. Dispatches process_resume_async for each file
+    3. Tracks overall progress
+    4. Updates JobListing counters when complete
+    5. Sends completion WebSocket notification
+    
+    Args:
+        batch_id: UUID of the upload batch
+    """
+    logger.info(f"process_bulk_upload_batch started for batch {batch_id}")
+    
+    try:
+        batch = UploadBatch.objects.select_related('job_listing').get(id=batch_id)
+        job_listing = batch.job_listing
+        
+        logger.info(f"Batch {batch_id}: Retrieved batch with {len(batch.temp_files)} temp files")
+        
+        # Get files to process (skip files marked with action='skip')
+        files_to_process = [
+            f for f in batch.temp_files 
+            if f.get('action') != 'skip' and f.get('status') != 'failed'
+        ]
+        
+        total_files = len(files_to_process)
+        
+        logger.info(f"Batch {batch_id}: Found {total_files} files to process out of {len(batch.temp_files)} total files")
+        logger.info(f"Batch {batch_id}: File statuses: {[f.get('status') for f in batch.temp_files[:5]]}...")  # Log first 5
+        
+        if total_files == 0:
+            # No files to process - mark as complete immediately
+            batch.status = 'committed'
+            batch.processing_completed_at = timezone.now()
+            batch.commit_summary = {
+                'applicants_created': 0,
+                'files_failed': 0,
+                'total': 0
+            }
+            batch.save()
+            
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'bulk_upload_{batch_id}',
+                {
+                    'type': 'processing_complete',
+                    'batch_id': batch_id,
+                    'summary': {
+                        'applicants_created': 0,
+                        'files_failed': 0,
+                        'total': 0
+                    }
+                }
+            )
+            return
+        
+        # Initialize processing progress
+        batch.processing_progress = {
+            'total': total_files,
+            'processed': 0,
+            'failed': 0,
+            'current_file': None,
+            'status': 'processing'
+        }
+        batch.processing_started_at = timezone.now()
+        batch.save()
+        
+        # Send processing started notification
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'bulk_upload_{batch_id}',
+            {
+                'type': 'processing_started',
+                'batch_id': batch_id,
+                'total_files': total_files
+            }
+        )
+        
+        # Process each file asynchronously
+        # We use a chord to wait for all tasks to complete before finalizing
+        # The process_resume_async task is idempotent and handles its own retries
+        if files_to_process:
+            # Create a group of tasks to process all files in parallel
+            file_tasks = group(
+                process_resume_async.s(file_meta, str(job_listing.id), batch_id)
+                for file_meta in files_to_process
+            )
+            
+            # Use chord to call finalize_bulk_upload_batch after all tasks complete
+            # The chord waits for all group tasks to finish before calling the callback
+            chord(file_tasks)(finalize_bulk_upload_batch.s(batch_id))
+            
+            logger.info(f"Started processing {total_files} files for batch {batch_id} with chord callback")
+        else:
+            # No files to process - finalize immediately
+            logger.info(f"No files to process for batch {batch_id}, finalizing immediately")
+            finalize_bulk_upload_batch.delay([], batch_id)
+        
+    except UploadBatch.DoesNotExist:
+        logger.error(f"Batch {batch_id} not found")
+        return
+    except Exception as exc:
+        logger.error(f"Failed to start batch processing for {batch_id}: {exc}", exc_info=True)
+        
+        # Update batch status to failed
+        try:
+            batch = UploadBatch.objects.get(id=batch_id)
+            batch.status = 'failed'
+            batch.processing_completed_at = timezone.now()
+            batch.save()
+            
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'bulk_upload_{batch_id}',
+                {
+                    'type': 'processing_failed',
+                    'batch_id': batch_id,
+                    'error': 'Failed to start batch processing'
+                }
+            )
+        except Exception:
+            pass
+        
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+
+
+@shared_task
+def finalize_bulk_upload_batch(results, batch_id: str):
+    """
+    Finalize a bulk upload batch after all files have been processed.
+    
+    This task is called by a Celery chord after all process_resume_async tasks complete.
+    The chord passes task results as the first argument, which we ignore since we
+    query the database directly for accurate counts.
+    
+    This task:
+    1. Checks if all files have been processed
+    2. Updates JobListing counters using atomic F() expressions
+    3. Sets batch status to 'committed'
+    4. Sends completion WebSocket notification
+    
+    Args:
+        results: List of results from process_resume_async tasks (ignored)
+        batch_id: UUID of the upload batch (passed by chord callback)
+    """
+    try:
+        batch = UploadBatch.objects.select_related('job_listing').get(id=batch_id)
+        
+        # Check if batch is still processing
+        if batch.status != 'processing':
+            logger.info(f"Batch {batch_id} is not in processing status ({batch.status})")
+            return
+        
+        # Count actual applicants created for this batch
+        # This is more reliable than tracking progress in JSON field
+        files_committed = Applicant.objects.filter(upload_batch=batch).count()
+        
+        # Get total files to process (excluding skipped)
+        files_to_process = [
+            f for f in batch.temp_files
+            if f.get('action') != 'skip' and f.get('status') != 'failed'
+        ]
+        total = len(files_to_process)
+        
+        # Calculate failed count
+        failed = total - files_committed
+        
+        # All files processed - finalize
+        job_listing = batch.job_listing
+        
+        # Update JobListing counters using F() expressions for atomic updates
+        # This ensures updates are not lost in concurrent scenarios
+        if files_committed > 0:
+            # Always use F() expressions for reliable updates
+            JobListing.objects.filter(pk=job_listing.pk).update(
+                total_resumes=F('total_resumes') + files_committed
+            )
+            
+            # Only increment batch_count for full batches (exactly 100 files)
+            if files_committed == 100:
+                JobListing.objects.filter(pk=job_listing.pk).update(
+                    batch_count=F('batch_count') + 1
+                )
+            
+            # Refresh job_listing to get updated values
+            job_listing.refresh_from_db()
+            logger.info(f"Updated JobListing {job_listing.id}: total_resumes={job_listing.total_resumes}, batch_count={job_listing.batch_count}")
+
+        # Update batch status
+        batch.status = 'committed'
+        batch.processing_completed_at = timezone.now()
+        batch.commit_summary = {
+            'applicants_created': files_committed,
+            'files_failed': failed,
+            'total': total
+        }
+        batch.save()
+        
+        # Send completion notification
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'bulk_upload_{batch_id}',
+            {
+                'type': 'processing_complete',
+                'batch_id': batch_id,
+                'summary': {
+                    'applicants_created': files_committed,
+                    'files_failed': failed,
+                    'total': total
+                }
+            }
+        )
+        
+        logger.info(f"Finalized batch {batch_id}: {files_committed} created, {failed} failed")
+        
+    except UploadBatch.DoesNotExist:
+        logger.error(f"Batch {batch_id} not found")
+    except Exception as exc:
+        logger.error(f"Failed to finalize batch {batch_id}: {exc}", exc_info=True)

@@ -10,7 +10,7 @@ import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import sync_to_async
 
-from applications.models import UploadBatch
+from apps.applications.models import UploadBatch
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,8 @@ class BulkUploadConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        if batch.uploaded_by != user:
+        # Compare user IDs (not objects) to avoid sync database access
+        if batch.uploaded_by_id != user.id:
             logger.warning(f'WebSocket connection denied: user {user.id} not authorized for batch {self.batch_id}')
             await self.close()
             return
@@ -161,7 +162,7 @@ class BulkUploadConsumer(AsyncWebsocketConsumer):
     async def upload_error(self, event):
         """
         Handle error messages.
-        
+
         Event format:
         {
             'type': 'upload_error',
@@ -175,4 +176,108 @@ class BulkUploadConsumer(AsyncWebsocketConsumer):
             'file_id': event.get('file_id'),
             'error': event.get('error', 'unknown_error'),
             'message': event.get('message', 'An error occurred')
+        }))
+
+    async def processing_started(self, event):
+        """
+        Handle processing started messages.
+
+        Event format:
+        {
+            'type': 'processing_started',
+            'batch_id': str,
+            'total_files': int
+        }
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'processing_started',
+            'batch_id': event.get('batch_id'),
+            'total_files': event.get('total_files', 0)
+        }))
+
+    async def file_success(self, event):
+        """
+        Handle successful file processing messages.
+
+        Event format:
+        {
+            'type': 'file_success',
+            'file_id': str,
+            'filename': str,
+            'applicant_id': str,
+            'extracted_data': {
+                'first_name': str,
+                'last_name': str,
+                'email': str,
+                'phone': str
+            }
+        }
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'file_success',
+            'file_id': event.get('file_id'),
+            'filename': event.get('filename'),
+            'applicant_id': event.get('applicant_id'),
+            'extracted_data': event.get('extracted_data', {})
+        }))
+
+    async def file_error(self, event):
+        """
+        Handle file processing error messages.
+
+        Event format:
+        {
+            'type': 'file_error',
+            'file_id': str,
+            'filename': str,
+            'error_code': str,
+            'message': str
+        }
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'file_error',
+            'file_id': event.get('file_id'),
+            'filename': event.get('filename'),
+            'error_code': event.get('error_code', 'processing_failed'),
+            'message': event.get('message', 'An error occurred while processing the file')
+        }))
+
+    async def processing_complete(self, event):
+        """
+        Handle processing complete messages.
+
+        Event format:
+        {
+            'type': 'processing_complete',
+            'batch_id': str,
+            'summary': {
+                'applicants_created': int,
+                'files_failed': int,
+                'total': int
+            }
+        }
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'processing_complete',
+            'batch_id': event.get('batch_id'),
+            'summary': event.get('summary', {})
+        }))
+
+    async def processing_failed(self, event):
+        """
+        Handle processing failure messages.
+
+        Event format:
+        {
+            'type': 'processing_failed',
+            'batch_id': str,
+            'error': str,
+            'failed_count': int
+        }
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'processing_failed',
+            'batch_id': event.get('batch_id'),
+            'error': event.get('error', 'Processing failed'),
+            'failed_count': event.get('failed_count', 0)
         }))

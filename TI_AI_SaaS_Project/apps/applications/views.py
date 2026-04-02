@@ -77,85 +77,25 @@ def applications_submit_view(request):
 def bulk_upload_view(request, job_listing_id):
     """
     Render the bulk upload interface for a job listing.
-    
+
     Only accessible by Talent Acquisition Specialists (TAS).
     """
     # Check if user is TAS
     if not hasattr(request.user, 'is_tas') or not request.user.is_tas:
         return render(request, '403.html', status=403)
-    
+
     job_listing = get_object_or_404(JobListing, id=job_listing_id)
-    
+
     # Check if bulk upload is allowed
     if job_listing.upload_type != 'bulk':
         return redirect('dashboard_jobs:job_detail', job_listing_id=job_listing.id)
-    
+
+    # Calculate remaining capacity
+    remaining_capacity = job_listing.MAX_RESUMES - job_listing.total_resumes
+
     context = {
         'job_listing': job_listing,
+        'remaining_capacity': remaining_capacity,
     }
-    
+
     return render(request, 'applications/bulk_upload.html', context)
-
-
-@login_required
-def bulk_upload_summary_view(request, batch_id):
-    """
-    Render the bulk upload summary page after commit.
-    
-    Only accessible by the TAS who uploaded the batch or staff.
-    """
-    # Check if user is TAS
-    if not hasattr(request.user, 'is_tas') or not request.user.is_tas:
-        return render(request, '403.html', status=403)
-    
-    batch = get_object_or_404(
-        UploadBatch.objects.select_related('job_listing', 'uploaded_by'),
-        id=batch_id
-    )
-    
-    # Check permission
-    if batch.uploaded_by != request.user and not request.user.is_staff:
-        return render(request, '403.html', status=403)
-    
-    # Get applicants from this batch
-    applicants = batch.applicants.all().order_by('submitted_at')
-    
-    # Build summary
-    temp_files = batch.temp_files or []
-    summary = {
-        'total_files': batch.file_count,
-        'successful': applicants.count(),
-        'duplicates_skipped': len([f for f in temp_files if f.get('action') == 'skip']),
-        'failed': len([f for f in temp_files if f.get('status') == 'failed'])
-    }
-    
-    # Format applicants for display
-    applicants_data = []
-    for a in applicants:
-        parsing_status = a.get_parsing_status()
-        # Compute display value for parsing status
-        if parsing_status == 'complete':
-            parsing_status_display = 'Complete'
-        elif parsing_status.startswith('partial_missing_'):
-            # Extract missing fields and format as "Missing: field1, field2"
-            missing_fields = parsing_status.replace('partial_missing_', '').split('_')
-            parsing_status_display = 'Missing: ' + ', '.join(missing_fields)
-        else:
-            parsing_status_display = parsing_status
-        
-        applicants_data.append({
-            'id': a.id,
-            'reference_number': a.reference_number,
-            'filename': a.resume_file.name.split('/')[-1] if a.resume_file else '',
-            'parsing_status': parsing_status_display,
-            'access_token': a.access_token
-        })
-    
-    context = {
-        'batch': batch,
-        'job_listing': batch.job_listing,
-        'summary': summary,
-        'applicants': applicants_data,
-    }
-    
-    return render(request, 'applications/bulk_upload_summary.html', context)

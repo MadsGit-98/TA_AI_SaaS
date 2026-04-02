@@ -130,6 +130,13 @@ def activate_job(request, pk):
             status=status.HTTP_403_FORBIDDEN
         )
 
+    # Bulk upload jobs cannot be activated/deactivated
+    if job.upload_type == 'bulk':
+        return Response(
+            {'error': 'Bulk upload jobs cannot be activated or deactivated.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     job.status = 'Active'
     job.save()
     serializer = JobListingSerializer(job)
@@ -156,6 +163,13 @@ def deactivate_job(request, pk):
         return Response(
             {'error': 'You do not have permission to deactivate this job.'},
             status=status.HTTP_403_FORBIDDEN
+        )
+
+    # Bulk upload jobs cannot be activated/deactivated
+    if job.upload_type == 'bulk':
+        return Response(
+            {'error': 'Bulk upload jobs cannot be activated or deactivated.'},
+            status=status.HTTP_400_BAD_REQUEST
         )
 
     job.status = 'Inactive'

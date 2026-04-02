@@ -1,9 +1,10 @@
 /**
  * Bulk Upload Styles
  * High contrast light mode design per constitution
+ * Matches application_form.css styling patterns
  */
 
-/* Container */
+/* Container - Centered layout */
 .bulk-upload-container {
     max-width: 1200px;
     margin: 0 auto;
@@ -19,6 +20,7 @@
 /* Header */
 .bulk-upload-header {
     margin-bottom: 2rem;
+    text-align: center;
 }
 
 .bulk-upload-header h1 {
@@ -38,6 +40,7 @@
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .limit-badge {
@@ -78,6 +81,7 @@
 .drop-zone.drag-over {
     border-color: #000000;
     background-color: #F0F0F0;
+    border-style: solid;
 }
 
 .drop-zone-content {

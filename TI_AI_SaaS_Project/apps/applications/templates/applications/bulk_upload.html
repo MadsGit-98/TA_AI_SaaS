@@ -1,180 +1,203 @@
-{% extends 'base.html' %}
+{% extends 'accounts/base.html' %}
 {% load static %}
 
 {% block title %}Bulk Upload Resumes - {{ job_listing.title }}{% endblock %}
 
-{% block extra_css %}
+{% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/bulk_upload.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="bulk-upload-container">
-    <!-- Header -->
-    <div class="bulk-upload-header">
-        <h1>Bulk Upload Resumes</h1>
-        <p class="job-title">{{ job_listing.title }}</p>
-        
-        <!-- Upload Limits Info -->
-        <div class="upload-limits-info">
-            <div class="limit-badge">
-                <span class="limit-label">Batch:</span>
-                <span class="limit-value">{{ job_listing.batch_count }}/3</span>
+<div class="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <!-- Logo and Title Section -->
+    <div class="flex flex-col items-center mb-8">
+        <div class="h-40 w-auto">
+            <img src="{% static 'images/logo.png' %}" alt="X-Crewter Logo" class="h-32 max-w-[300px] w-auto mx-auto">
+        </div>
+        <h1 class="mt-6 text-center text-3xl font-extrabold text-primary-text">
+            Bulk Upload Resumes
+        </h1>
+        <p class="mt-2 text-center text-lg text-secondary-text">
+            {{ job_listing.title }}
+        </p>
+    </div>
+
+    <!-- Upload Limits Info -->
+    <div class="mb-8">
+        <div class="flex flex-wrap justify-center gap-4">
+            <div class="bg-code-block-bg px-4 py-2 rounded text-sm font-semibold">
+                <span class="text-secondary-text">Full Batches:</span> {{ job_listing.batch_count }}/3
             </div>
-            <div class="limit-badge">
-                <span class="limit-label">Total Resumes:</span>
-                <span class="limit-value">{{ job_listing.total_resumes }}/300</span>
+            <div class="bg-code-block-bg px-4 py-2 rounded text-sm font-semibold">
+                <span class="text-secondary-text">Total Resumes:</span> {{ job_listing.total_resumes }}/300
             </div>
-            <div class="limit-badge">
-                <span class="limit-label">Files per Batch:</span>
-                <span class="limit-value">0/100</span>
+            <div class="bg-code-block-bg px-4 py-2 rounded text-sm font-semibold">
+                <span class="text-secondary-text">Files in Upload:</span> <span id="files-per-batch">0</span>/100
             </div>
         </div>
     </div>
 
     <!-- Upload Area -->
-    <div class="upload-section">
-        <div id="drop-zone" class="drop-zone">
-            <div class="drop-zone-content">
-                <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <section class="bg-primary-bg border-2 border-code-block-bg rounded-lg p-6 mb-8">
+        <h2 class="text-2xl font-bold mb-6 text-primary-text">Upload Resumes</h2>
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="drop-zone border-2 border-dashed border-code-block-bg rounded-lg p-8 text-center cursor-pointer hover:border-accent-cta hover:bg-gray-50 transition-all">
+            <div class="drop-zone-content flex flex-col items-center gap-4">
+                <svg class="upload-icon w-16 h-16 mx-auto text-accent-cta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                <h3>Drag & Drop Resume Files</h3>
-                <p>or click to browse</p>
-                <p class="file-requirements">
+                <h3 class="text-xl font-semibold text-primary-text">Drag & Drop Resume Files</h3>
+                <p class="text-secondary-text">or click to browse</p>
+                <p class="text-sm text-secondary-text">
                     Accepted formats: PDF, DOCX | Size: 50KB - 10MB | Max: 100 files per batch
                 </p>
             </div>
-            <input type="file" id="file-input" multiple accept=".pdf,.docx" style="display: none;">
+            <input type="file" id="file-input" multiple accept=".pdf,.docx" class="hidden">
         </div>
 
         <!-- Upload Controls -->
-        <div class="upload-controls" id="upload-controls" style="display: none;">
-            <button id="start-upload-btn" class="btn btn-primary">
+        <div id="upload-controls" class="upload-controls flex gap-4 mt-6 justify-center" style="display: none;">
+            <button id="start-upload-btn" class="btn btn-primary bg-accent-cta text-cta-text px-6 py-3 rounded text-sm font-semibold hover:brightness-110 transition">
                 Start Upload (<span id="file-count">0</span> files)
             </button>
-            <button id="cancel-upload-btn" class="btn btn-secondary">
+            <button id="cancel-upload-btn" class="btn btn-secondary bg-code-block-bg text-primary-text px-6 py-3 rounded text-sm font-semibold hover:bg-gray-300 transition">
                 Cancel
             </button>
         </div>
 
         <!-- Progress Section -->
-        <div id="progress-section" class="progress-section" style="display: none;">
-            <div class="progress-header">
-                <h4>Upload Progress</h4>
-                <span id="progress-text">0%</span>
+        <div id="progress-section" class="progress-section mt-6 p-4 bg-code-block-bg rounded-lg" style="display: none;">
+            <div class="progress-header flex justify-between items-center mb-4">
+                <h4 class="text-lg font-semibold text-primary-text">Processing Progress</h4>
+                <span id="progress-text" class="font-semibold text-primary-text">0%</span>
             </div>
-            <div class="progress-bar">
-                <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+            <div class="progress-bar h-2 bg-gray-300 rounded-full overflow-hidden mb-4">
+                <div id="progress-fill" class="progress-fill h-full bg-accent-cta transition-all" style="width: 0%"></div>
             </div>
-            <div class="progress-stats">
-                <span>Uploaded: <span id="uploaded-count">0</span></span>
-                <span>Validated: <span id="validated-count">0</span></span>
-                <span>Errors: <span id="error-count">0</span></span>
+            <div id="processing-status" class="processing-status text-center text-sm text-secondary-text mb-4" style="display: none;"></div>
+            <div class="progress-stats flex gap-6 text-sm text-secondary-text">
+                <span>Processed: <span id="uploaded-count" class="text-primary-text font-semibold">0</span></span>
+                <span>Total: <span id="total-files" class="text-primary-text font-semibold">0</span></span>
+                <span>Failed: <span id="error-count" class="text-primary-text font-semibold">0</span></span>
             </div>
         </div>
-    </div>
+    </section>
 
     <!-- File List -->
-    <div id="file-list-section" class="file-list-section" style="display: none;">
-        <h4>Files (<span id="total-files">0</span>)</h4>
-        <div id="file-list" class="file-list">
+    <section id="file-list-section" class="file-list-section bg-primary-bg border-2 border-code-block-bg rounded-lg p-6 mb-8" style="display: none;">
+        <h3 class="text-xl font-bold mb-4 text-primary-text">Files (<span id="total-files">0</span>)</h3>
+        <div id="file-list" class="file-list space-y-2 max-h-96 overflow-y-auto">
             <!-- File items will be added here dynamically -->
         </div>
-    </div>
+    </section>
 
     <!-- Actions -->
-    <div class="upload-actions" id="upload-actions" style="display: none;">
-        <button id="validate-btn" class="btn btn-primary">
+    <div id="upload-actions" class="upload-actions flex gap-4 justify-center mb-8" style="display: none;">
+        <button id="validate-btn" class="btn btn-primary bg-accent-cta text-cta-text px-6 py-3 rounded text-sm font-semibold hover:brightness-110 transition">
             Check for Duplicates
         </button>
-        <button id="clear-all-btn" class="btn btn-secondary">
+        <button id="clear-all-btn" class="btn btn-secondary bg-code-block-bg text-primary-text px-6 py-3 rounded text-sm font-semibold hover:bg-gray-300 transition">
             Clear All
         </button>
     </div>
 
-    <!-- Duplicate Review Modal -->
-    <div id="duplicate-modal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Duplicate Detection Results</h3>
-                <button class="modal-close" id="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="duplicate-summary">
-                    Found <span id="duplicate-count">0</span> potential duplicates.
-                    Review each file and decide whether to include or skip.
-                </p>
-                <div class="duplicate-actions">
-                    <button id="skip-all-btn" class="btn btn-secondary">Skip All</button>
-                    <button id="include-all-btn" class="btn btn-primary">Include All</button>
-                </div>
-                <div id="duplicate-list" class="duplicate-list">
-                    <!-- Duplicate items will be added here dynamically -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="confirm-decisions-btn" class="btn btn-primary btn-lg">
-                    Continue with Selected Files
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Commit Section -->
-    <div id="commit-section" class="commit-section" style="display: none;">
+    <div id="commit-section" class="commit-section bg-code-block-bg rounded-lg p-8 text-center mb-8" style="display: none;">
         <div class="commit-summary">
-            <h4>Ready to Commit</h4>
-            <p>
-                <span id="files-to-commit">0</span> files will be processed.
+            <h4 class="text-2xl font-bold text-primary-text mb-2">Ready to Commit</h4>
+            <p class="text-secondary-text">
+                <span id="files-to-commit" class="text-primary-text font-bold">0</span> files will be processed.
                 This action cannot be undone.
             </p>
         </div>
-        <div class="commit-actions">
-            <button id="commit-btn" class="btn btn-success btn-lg">
+        <div class="commit-actions flex gap-4 justify-center mt-6">
+            <button id="commit-btn" class="btn btn-success bg-green-600 text-cta-text px-8 py-3 rounded text-sm font-semibold hover:bg-green-700 transition">
                 Commit and Create Applicants
             </button>
-            <button id="go-back-btn" class="btn btn-secondary">
+            <button id="go-back-btn" class="btn btn-secondary bg-code-block-bg text-primary-text px-8 py-3 rounded text-sm font-semibold hover:bg-gray-300 transition">
                 Go Back
             </button>
         </div>
     </div>
 </div>
 
+<!-- Duplicate Review Modal -->
+<div id="duplicate-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" style="display: none;">
+    <div class="modal-content bg-primary-bg rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div class="modal-header flex justify-between items-center p-6 border-b border-code-block-bg">
+            <h3 class="text-xl font-bold text-primary-text">Duplicate Detection Results</h3>
+            <button class="modal-close text-2xl text-secondary-text hover:text-primary-text" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body p-6">
+            <p class="duplicate-summary text-secondary-text mb-4">
+                Found <span id="duplicate-count" class="text-primary-text font-bold">0</span> potential duplicates.
+                Review each file and decide whether to include or skip.
+            </p>
+            <div class="duplicate-actions flex gap-4 mb-6">
+                <button id="skip-all-btn" class="btn btn-secondary bg-code-block-bg text-primary-text px-6 py-2 rounded text-sm font-semibold hover:bg-gray-300 transition">Skip All</button>
+                <button id="include-all-btn" class="btn btn-primary bg-accent-cta text-cta-text px-6 py-2 rounded text-sm font-semibold hover:brightness-110 transition">Include All</button>
+            </div>
+            <div id="duplicate-list" class="duplicate-list space-y-2">
+                <!-- Duplicate items will be added here dynamically -->
+            </div>
+        </div>
+        <div class="modal-footer p-6 border-t border-code-block-bg flex justify-end">
+            <button id="confirm-decisions-btn" class="btn btn-primary bg-accent-cta text-cta-text px-8 py-3 rounded text-sm font-semibold hover:brightness-110 transition">
+                Continue with Selected Files
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Generic Message Modal -->
+<div id="message-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center" style="display: none;">
+    <div class="bg-white rounded-lg max-w-md w-full mx-4">
+        <div class="p-6">
+            <h3 id="message-modal-title" class="text-xl font-semibold text-primary-text mb-4">Message</h3>
+            <p id="message-modal-message" class="text-secondary-text mb-6"></p>
+            <div class="flex gap-4">
+                <button type="button" class="flex-1 bg-accent-cta text-cta-text px-5 py-2.5 rounded text-sm font-medium hover:brightness-110 transition">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- AI Disclaimer -->
-<div id="ai-disclaimer" class="ai-disclaimer" style="display: none;">
-    <div class="disclaimer-content">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<div id="ai-disclaimer" class="ai-disclaimer bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8" style="display: none;">
+    <div class="disclaimer-content flex items-start gap-3 text-yellow-800">
+        <svg class="w-6 h-6 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="16" x2="12" y2="12"></line>
             <line x1="12" y1="8" x2="12.01" y2="8"></line>
         </svg>
-        <p>
-            <strong>AI Analysis Notice:</strong> After upload completion, you can start AI analysis 
-            to get supplementary insights about candidates. AI results are provided as additional 
+        <p class="text-sm">
+            <strong>AI Analysis Notice:</strong> After upload completion, you can start AI analysis
+            to get supplementary insights about candidates. AI results are provided as additional
             information and should not be used as the sole criteria for hiring decisions.
         </p>
     </div>
 </div>
+
+<!-- Bulk Upload Config Data Attributes -->
+<div id="bulk-upload-config"
+     data-job-listing-id="{{ job_listing.id }}"
+     data-csrf-token="{{ csrf_token }}"
+     data-ws-protocol="{% if request.scheme == 'https' %}wss{% else %}ws{% endif %}"
+     data-ws-host="{{ request.get_host }}"
+     data-max-files-per-batch="100"
+     data-max-batch-count="3"
+     data-max-total-resumes="300"
+     data-remaining-capacity="{{ remaining_capacity }}"
+     data-min-file-size="51200"
+     data-max-file-size="10485760"
+     style="display: none;">
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/logout.js' %}"></script>
 <script src="{% static 'js/bulk_upload.js' %}"></script>
-<script>
-    // Initialize bulk upload with job listing data
-    window.bulkUploadConfig = {
-        jobListingId: '{{ job_listing.id }}',
-        batchId: null,
-        csrfToken: '{{ csrf_token }}',
-        wsUrl: window.location.protocol === 'https:'
-            ? `wss://${window.location.host}/ws/bulk-upload/`
-            : `ws://${window.location.host}/ws/bulk-upload/`,
-        maxFilesPerBatch: 100,
-        maxBatchCount: 3,
-        maxTotalResumes: 300,
-        minFileSize: 50 * 1024,  // 50KB
-        maxFileSize: 10 * 1024 * 1024  // 10MB
-    };
-</script>
 {% endblock %}

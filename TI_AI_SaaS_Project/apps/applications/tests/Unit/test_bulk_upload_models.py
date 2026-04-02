@@ -73,14 +73,14 @@ class JobListingBulkUploadMethodsTest(TestCase, BulkUploadTestMixin):
         self.assertFalse(can_upload)
         self.assertIn('Only 20 more', message)
 
-    def test_can_upload_more_max_batches(self):
-        """Test can_upload_more returns False at max batches."""
-        self.job_listing.batch_count = 3
+    def test_can_upload_more_max_resumes(self):
+        """Test can_upload_more returns False when max resumes (300) reached."""
+        self.job_listing.total_resumes = 300
         self.job_listing.save()
-        
+
         can_upload, message = self.job_listing.can_upload_more(10)
         self.assertFalse(can_upload)
-        self.assertIn('Maximum 3 batches', message)
+        self.assertIn('Maximum resume limit reached', message)
 
     def test_get_dashboard_actions_bulk(self):
         """Test get_dashboard_actions for bulk upload type."""
