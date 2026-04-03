@@ -22,6 +22,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
+from rest_framework.exceptions import PermissionDenied
 from apps.applications.models import UploadBatch
 from apps.applications.throttles import (
     ApplicationSubmissionIPThrottle,
@@ -316,10 +317,14 @@ class BulkUploadInitView(APIView):
     permission_classes = [IsAuthenticated, IsTAS]
 
     def post(self, request):
-        serializer = BulkUploadInitSerializer(data=request.data)
+        serializer = BulkUploadInitSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 
         job_listing = serializer.validated_data['job_listing_id']
+
+        # Verify ownership: user must own the job listing
+        if job_listing.created_by != request.user:
+            raise PermissionDenied("You do not have permission to upload to this job listing.")
 
         # Check if bulk upload is allowed - only check total_resumes limit (300)
         can_upload, message = job_listing.can_upload_more(0)
@@ -376,11 +381,15 @@ class BulkUploadView(APIView):
     permission_classes = [IsAuthenticated, IsTAS]
 
     def post(self, request):
-        serializer = BulkUploadFileSerializer(data=request.data)
+        serializer = BulkUploadFileSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 
         batch = serializer.validated_data['batch_id']
-        
+
+        # Verify ownership: user must own the batch
+        if batch.uploaded_by != request.user:
+            raise PermissionDenied("You do not have permission to upload to this batch.")
+
         # Check batch state - reject uploads to inactive batches
         if batch.status in ['cancelled', 'committed']:
             return Response(
@@ -474,11 +483,15 @@ class BulkUploadValidateView(APIView):
     permission_classes = [IsAuthenticated, IsTAS]
     
     def post(self, request):
-        serializer = BulkUploadValidateSerializer(data=request.data)
+        serializer = BulkUploadValidateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        
+
         batch = serializer.validated_data['batch_id']
-        
+
+        # Verify ownership: user must own the batch
+        if batch.uploaded_by != request.user:
+            raise PermissionDenied("You do not have permission to validate this batch.")
+
         duplicates = []
         valid_files = []
         
@@ -590,10 +603,14 @@ class BulkUploadCommitView(APIView):
     permission_classes = [IsAuthenticated, IsTAS]
 
     def post(self, request):
-        serializer = BulkUploadCommitSerializer(data=request.data)
+        serializer = BulkUploadCommitSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 
         batch = serializer.validated_data['batch_id']
+
+        # Verify ownership: user must own the batch
+        if batch.uploaded_by != request.user:
+            raise PermissionDenied("You do not have permission to commit this batch.")
 
         # Count files to process (outside transaction - read-only)
         files_to_process = [
@@ -606,14 +623,22 @@ class BulkUploadCommitView(APIView):
         with transaction.atomic():
             # Re-fetch batch with row lock to prevent concurrent commits
             batch = UploadBatch.objects.select_for_update().get(id=batch.id)
-            
+
             # Recheck batch status inside transaction (after acquiring lock)
-            if batch.status not in ['awaiting_review', 'processing']:
+            # Only accept 'awaiting_review' - reject 'processing' or any other state
+            if batch.status != 'awaiting_review':
                 return Response(
                     {'error': f'Batch status is {batch.status}, not ready for commit'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
+            # Verify batch hasn't been queued for processing yet
+            if batch.processing_task_id:
+                return Response(
+                    {'error': 'Batch is already queued for processing'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             # Set batch status to processing
             batch.status = 'processing'
             batch.processing_progress = {
@@ -625,14 +650,14 @@ class BulkUploadCommitView(APIView):
             }
             batch.processing_started_at = timezone.now()
             batch.save()
-            
+
             # Transaction commits here, releasing the row lock
 
         # Trigger async processing (after transaction commits)
         logger.info(f"BulkUploadCommitView: Triggering process_bulk_upload_batch for batch {batch.id}")
         task = process_bulk_upload_batch.delay(str(batch.id))
         logger.info(f"BulkUploadCommitView: process_bulk_upload_batch triggered for batch {batch.id} (task_id={task.id})")
-        
+
         # Store task ID on batch for cancellation support
         batch.processing_task_id = task.id
         batch.save(update_fields=['processing_task_id'])
@@ -689,9 +714,25 @@ class BulkUploadCancelView(APIView):
             if batch.processing_task_id and batch.status == 'processing':
                 try:
                     current_app.control.revoke(batch.processing_task_id, terminate=True)
-                    logger.info(f"BulkUploadCancelView: Revoked task {batch.processing_task_id} for batch {batch.id}")
+                    logger.info(f"BulkUploadCancelView: Revoked orchestration task {batch.processing_task_id} for batch {batch.id}")
                 except Exception as e:
-                    logger.warning(f"Failed to revoke task {batch.processing_task_id}: {e}")
+                    logger.warning(f"Failed to revoke orchestration task {batch.processing_task_id}: {e}")
+
+            # Revoke all child tasks if they exist
+            if batch.child_task_ids:
+                revoked_count = 0
+                for child_task_id in batch.child_task_ids:
+                    if child_task_id:
+                        try:
+                            current_app.control.revoke(child_task_id, terminate=True)
+                            revoked_count += 1
+                        except Exception as e:
+                            logger.warning(f"Failed to revoke child task {child_task_id}: {e}")
+                logger.info(f"BulkUploadCancelView: Revoked {revoked_count}/{len(batch.child_task_ids)} child tasks for batch {batch.id}")
+
+            # Set batch status to cancelled BEFORE saving (workers check this)
+            batch.status = 'cancelled'
+            batch.save()
 
             # Delete temp files
             files_deleted = 0
@@ -701,9 +742,6 @@ class BulkUploadCancelView(APIView):
                     files_deleted += 1
                 except Exception as e:
                     logger.error(f"Error deleting temp file {file_meta['temp_path']}: {str(e)}")
-
-            batch.status = 'cancelled'
-            batch.save()
 
             return Response({
                 'batch_id': str(batch.id),
@@ -728,12 +766,16 @@ class BulkUploadDecisionView(APIView):
     permission_classes = [IsAuthenticated, IsTAS]
     
     def post(self, request):
-        serializer = BulkUploadDecisionSerializer(data=request.data)
+        serializer = BulkUploadDecisionSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        
+
         batch = serializer.validated_data['batch_id']
         decisions = serializer.validated_data['decisions']
-        
+
+        # Verify ownership: user must own the batch
+        if batch.uploaded_by != request.user:
+            raise PermissionDenied("You do not have permission to make decisions for this batch.")
+
         # Process decisions
         skip_all = False
         include_all = False
