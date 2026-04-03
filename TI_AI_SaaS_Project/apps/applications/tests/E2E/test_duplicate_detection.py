@@ -6,9 +6,7 @@ End-to-end tests for duplicate detection using Selenium.
 
 import os
 from django.test import LiveServerTestCase
-from django.contrib.auth import get_user_model
 from apps.jobs.models import JobListing
-from apps.applications.models import Applicant
 from apps.accounts.models import CustomUser, UserProfile
 from datetime import timedelta
 from django.utils import timezone
