@@ -477,16 +477,29 @@ def process_bulk_upload_batch(self, batch_id: str):
         # We use a chord to wait for all tasks to complete before finalizing
         # The process_resume_async task is idempotent and handles its own retries
         if files_to_process:
-            # Create a group of tasks to process all files in parallel
-            file_tasks = group(
-                process_resume_async.s(file_meta, str(job_listing.id), batch_id)
-                for file_meta in files_to_process
-            )
+            # Manually assign task IDs before sending so we can store them
+            child_ids = []
+            task_signatures = []
             
+            for file_meta in files_to_process:
+                task_id = str(uuid.uuid4())
+                child_ids.append(task_id)
+                sig = process_resume_async.s(file_meta, str(job_listing.id), batch_id)
+                sig.options['task_id'] = task_id
+                task_signatures.append(sig)
+            
+            # Store child task IDs before sending to broker
+            batch.child_task_ids = child_ids
+            batch.save(update_fields=['child_task_ids'])
+            logger.info(f"Stored {len(child_ids)} child task IDs for batch {batch_id}")
+            
+            # Create a group of tasks to process all files in parallel
+            file_tasks = group(task_signatures)
+
             # Use chord to call finalize_bulk_upload_batch after all tasks complete
             # The chord waits for all group tasks to finish before calling the callback
             chord(file_tasks)(finalize_bulk_upload_batch.s(batch_id))
-            
+
             logger.info(f"Started processing {total_files} files for batch {batch_id} with chord callback")
         else:
             # No files to process - finalize immediately

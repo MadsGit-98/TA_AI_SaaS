@@ -91,7 +91,12 @@ class UploadBatch(models.Model):
         default='',
         help_text='Celery task ID for the processing task'
     )
-    
+    child_task_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of Celery task IDs for child tasks (process_resume_async)'
+    )
+
     class Meta:
         ordering = ['batch_number']
         constraints = [
