@@ -439,12 +439,9 @@ class BatchLimitsIntegrationTest(TestCase):
                 }
             )
 
-        # Get status
-        status_response = self.client.get(
-            f'/api/applications/bulk-upload/status/{init_response.json()["batch_id"]}/'
-        )
-
-        self.assertEqual(status_response.json()['progress']['files_uploaded'], 25)
+        # Verify file count directly from database
+        batch = UploadBatch.objects.get(id=init_response.json()['batch_id'])
+        self.assertEqual(batch.file_count, 25)
 
     def test_batch_number_no_longer_has_constraint(self):
         """Test that batch_number no longer has a max 3 constraint."""

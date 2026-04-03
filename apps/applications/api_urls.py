@@ -14,7 +14,6 @@ from .api import (
     BulkUploadValidateView,
     BulkUploadCommitView,
     BulkUploadCancelView,
-    BulkUploadStatusView,
     BulkUploadDecisionView,
 )
 
@@ -32,6 +31,5 @@ urlpatterns = [
     path('bulk-upload/validate/', BulkUploadValidateView.as_view(), name='bulk-upload-validate'),
     path('bulk-upload/commit/', BulkUploadCommitView.as_view(), name='bulk-upload-commit'),
     path('bulk-upload/cancel/<uuid:batch_id>/', BulkUploadCancelView.as_view(), name='bulk-upload-cancel'),
-    path('bulk-upload/status/<uuid:batch_id>/', BulkUploadStatusView.as_view(), name='bulk-upload-status'),
     path('bulk-upload/decisions/', BulkUploadDecisionView.as_view(), name='bulk-upload-decisions'),
 ]

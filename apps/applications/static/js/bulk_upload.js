@@ -233,21 +233,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Check server-provided remaining capacity first
         if (effectiveRemaining <= 0) {
-            alert('Maximum resume limit reached. Cannot add more files.');
+            showErrorModal('Limit Reached', 'Maximum resume limit reached. Cannot add more files.');
             return;
         }
 
         for (const file of newFiles) {
             // Check if we've reached the effective capacity
             if (files.length >= effectiveRemaining) {
-                alert(`Maximum resume limit (${effectiveRemaining}) reached. Cannot add more files.`);
+                showErrorModal('Limit Reached', `Maximum resume limit (${effectiveRemaining}) reached. Cannot add more files.`);
                 break;
             }
 
             // Validate file
             const validation = validateFile(file);
             if (!validation.valid) {
-                alert(`File "${file.name}": ${validation.error}`);
+                showErrorModal('File Error', `File "${file.name}": ${validation.error}`);
                 continue;
             }
 
@@ -376,13 +376,13 @@ document.addEventListener('DOMContentLoaded', function() {
     async function startUpload() {
         if (isUploading) return;
         if (files.length === 0) {
-            alert('Please select files to upload');
+            showErrorModal('No Files Selected', 'Please select files to upload');
             return;
         }
-        
+
         // Check if upload would exceed max files per batch
         if (files.length > config.maxFilesPerBatch) {
-            alert(`Maximum ${config.maxFilesPerBatch} files allowed per upload. Please remove ${files.length - config.maxFilesPerBatch} files.`);
+            showErrorModal('Limit Exceeded', `Maximum ${config.maxFilesPerBatch} files allowed per upload. Please remove ${files.length - config.maxFilesPerBatch} files.`);
             return;
         }
 
@@ -411,7 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Upload error:', error);
-            alert('Upload failed: ' + error.message);
+            showErrorModal('Upload Failed', error.message);
             startUploadBtn.disabled = false;
             startUploadBtn.textContent = `Start Upload (${files.length} files)`;
         }
@@ -702,8 +702,8 @@ document.addEventListener('DOMContentLoaded', function() {
             statusMessage.textContent = 'Processing failed: ' + (data.error || 'Unknown error');
             statusMessage.style.color = 'red';
         }
-        
-        alert('Processing failed: ' + (data.error || 'Unknown error'));
+
+        showErrorModal('Processing Failed', data.error || 'Unknown error');
         
         // Close WebSocket
         if (ws) {
@@ -754,7 +754,7 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function handleError(data) {
         console.error('WebSocket error:', data);
-        alert('Error: ' + (data.message || data.error || 'An error occurred'));
+        showErrorModal('Error', data.message || data.error || 'An error occurred');
     }
 
     /**
@@ -762,7 +762,7 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     async function validateBatch() {
         if (!batchId) {
-            alert('No batch initialized');
+            showErrorModal('Error', 'No batch initialized');
             return;
         }
 
@@ -796,7 +796,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Validation error:', error);
-            alert('Validation failed: ' + error.message);
+            showErrorModal('Validation Failed', error.message);
         } finally {
             validateBtn.disabled = false;
             validateBtn.textContent = 'Check for Duplicates';
@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', function() {
         duplicates.forEach(dup => {
             setDecision(dup.file_id, 'skip');
         });
-        alert('All duplicates marked as Skip');
+        showSuccessModal('Success', 'All duplicates marked as Skip', null);
     }
 
     /**
@@ -886,7 +886,7 @@ document.addEventListener('DOMContentLoaded', function() {
         duplicates.forEach(dup => {
             setDecision(dup.file_id, 'include');
         });
-        alert('All duplicates marked as Include');
+        showSuccessModal('Success', 'All duplicates marked as Include', null);
     }
 
     /**
@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     async function confirmDecisions() {
         if (decisions.length !== duplicates.length) {
-            alert(`Please make decisions for all ${duplicates.length} duplicates (currently ${decisions.length} decisions made)`);
+            showErrorModal('Incomplete Decisions', `Please make decisions for all ${duplicates.length} duplicates (currently ${decisions.length} decisions made)`);
             return;
         }
 
@@ -925,7 +925,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Decision error:', error);
-            alert('Failed to save decisions: ' + error.message);
+            showErrorModal('Save Failed', error.message);
         }
     }
 
@@ -953,7 +953,7 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     async function commitBatch() {
         if (!batchId) {
-            alert('No batch initialized');
+            showErrorModal('Error', 'No batch initialized');
             return;
         }
 
@@ -982,7 +982,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.status === 'processing') {
                 // Processing started - show progress UI
                 commitBtn.textContent = 'Processing...';
-                
+
                 // Show processing status section FIRST (before WebSocket connects)
                 showProcessingUI(data.total_files);
 
@@ -997,7 +997,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Commit error:', error);
-            alert('Commit failed: ' + error.message);
+            showErrorModal('Commit Failed', error.message);
             commitBtn.disabled = false;
             commitBtn.textContent = 'Commit and Create Applicants';
         }
@@ -1075,6 +1075,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
+     * Show error modal (no auto-close, user must click OK)
+     * @param {string} title - Modal title
+     * @param {string} message - Modal message
+     */
+    function showErrorModal(title, message) {
+        const modal = document.getElementById('message-modal');
+        const titleEl = document.getElementById('message-modal-title');
+        const messageEl = document.getElementById('message-modal-message');
+        const okBtn = document.getElementById('message-modal-ok');
+
+        if (modal && titleEl && messageEl) {
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+
+            // Set up OK button to close modal (no callback for errors)
+            if (okBtn) {
+                // Remove any existing listeners by cloning
+                const newOkBtn = okBtn.cloneNode(true);
+                okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+                newOkBtn.addEventListener('click', function() {
+                    closeMessageModal(null);
+                });
+            }
+        }
+    }
+
+    /**
      * Close message modal
      * @param {Function} onClose - Callback function to execute after closing
      */
@@ -1100,7 +1128,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const response = await fetch('/api/applications/bulk-upload/cancel/' + batchId + '/', {
-                method: 'POST',
+                method: 'DELETE',
                 headers: {
                     'X-CSRFToken': config.csrfToken
                 }
@@ -1113,6 +1141,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Cancel error:', error);
+            showErrorModal('Cancel Failed', error.message);
         } finally {
             clearAll();
         }

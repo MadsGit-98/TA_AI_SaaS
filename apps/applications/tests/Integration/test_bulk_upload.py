@@ -456,25 +456,5 @@ class BulkUploadWorkflowIntegrationTest(TestCase):
             error_message = ' '.join(response_data['job_listing_id']) if isinstance(response_data['job_listing_id'], list) else str(response_data['job_listing_id'])
         elif 'error' in response_data:
             error_message = response_data['error']
-        
+
         self.assertIn('bulk upload', error_message.lower())
-
-    def test_bulk_upload_status_endpoint(self):
-        """Test batch status endpoint."""
-        # Initialize batch
-        init_response = self.client.post(
-            '/api/applications/bulk-upload/init/',
-            content_type='application/json',
-            data=json.dumps({'job_listing_id': str(self.job_listing.id)})
-        )
-        batch_id = init_response.json()['batch_id']
-
-        # Get status
-        status_response = self.client.get(
-            f'/api/applications/bulk-upload/status/{batch_id}/'
-        )
-
-        self.assertEqual(status_response.status_code, 200)
-        status_data = status_response.json()
-        self.assertEqual(status_data['batch_id'], batch_id)
-        self.assertEqual(status_data['status'], 'pending')
