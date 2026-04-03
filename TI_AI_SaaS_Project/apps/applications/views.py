@@ -4,12 +4,15 @@ Template Views for Applications App
 Renders HTML templates for:
 - Application form
 - Success confirmation page
+- Bulk upload interface
 """
 
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
 from apps.jobs.models import JobListing
-from apps.applications.models import Applicant
+from apps.applications.models import Applicant, UploadBatch
+from apps.accounts.permissions import IsTAS
 
 
 def application_form_view(request, application_link):
@@ -68,3 +71,31 @@ def applications_submit_view(request):
     Future implementation will handle resume uploads.
     """
     return JsonResponse({'status': 'placeholder', 'message': 'Application submission endpoint will be implemented in future features'})
+
+
+@login_required
+def bulk_upload_view(request, job_listing_id):
+    """
+    Render the bulk upload interface for a job listing.
+
+    Only accessible by Talent Acquisition Specialists (TAS).
+    """
+    # Check if user is TAS
+    if not hasattr(request.user, 'is_tas') or not request.user.is_tas:
+        return render(request, '403.html', status=403)
+
+    job_listing = get_object_or_404(JobListing, id=job_listing_id)
+
+    # Check if bulk upload is allowed
+    if job_listing.upload_type != 'bulk':
+        return redirect('dashboard_jobs:job_detail', job_listing_id=job_listing.id)
+
+    # Calculate remaining capacity (clamped to minimum of 0)
+    remaining_capacity = max(0, job_listing.MAX_RESUMES - job_listing.total_resumes)
+
+    context = {
+        'job_listing': job_listing,
+        'remaining_capacity': remaining_capacity,
+    }
+
+    return render(request, 'applications/bulk_upload.html', context)

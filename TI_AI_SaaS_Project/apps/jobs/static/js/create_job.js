@@ -43,6 +43,7 @@ document.getElementById('jobCreationForm').addEventListener('submit', async func
         required_skills: formData.get('required_skills').split(',').map(skill => skill.trim()).filter(skill => skill !== ''),
         required_experience: parseInt(formData.get('required_experience')),
         job_level: formData.get('job_level'),
+        upload_type: formData.get('upload_type'),
         start_date: formData.get('start_date'),
         expiration_date: formData.get('expiration_date')
     };
@@ -125,6 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 required_skills: formData.get('required_skills').split(',').map(skill => skill.trim()).filter(skill => skill !== ''),
                 required_experience: parseInt(formData.get('required_experience')),
                 job_level: formData.get('job_level'),
+                upload_type: formData.get('upload_type'),
                 start_date: formData.get('start_date'),
                 expiration_date: formData.get('expiration_date')
             };
@@ -222,6 +224,30 @@ if (questionTypeElement) {
     }
   });
 }
+
+// Upload type conditional display
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadTypeSelect = document.getElementById('upload_type');
+    const uploadTypeHelpForm = document.getElementById('upload_type_help_form');
+    const uploadTypeHelpBulk = document.getElementById('upload_type_help_bulk');
+    
+    if (uploadTypeSelect && uploadTypeHelpForm && uploadTypeHelpBulk) {
+        uploadTypeSelect.addEventListener('change', function() {
+            const selectedType = this.value;
+            
+            if (selectedType === 'form') {
+                uploadTypeHelpForm.classList.remove('hidden');
+                uploadTypeHelpBulk.classList.add('hidden');
+            } else if (selectedType === 'bulk') {
+                uploadTypeHelpForm.classList.add('hidden');
+                uploadTypeHelpBulk.classList.remove('hidden');
+            } else {
+                uploadTypeHelpForm.classList.add('hidden');
+                uploadTypeHelpBulk.classList.add('hidden');
+            }
+        });
+    }
+});
 
 // Set up logout event listener
 document.addEventListener('DOMContentLoaded', function() {

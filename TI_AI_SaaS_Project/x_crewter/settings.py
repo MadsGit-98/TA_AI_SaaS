@@ -399,6 +399,9 @@ EMAIL_PORT = 1025 # MailHog's default port
 # Default to local filesystem storage for development
 STORAGE_BACKEND = env('STORAGE_BACKEND', default='local')  # 'local', 's3', or 'gcs'
 
+# Temporary storage location for bulk upload (before commit)
+AWS_TEMP_LOCATION = 'applications/temp'
+
 # Django 4.2+ uses STORAGES dictionary instead of DEFAULT_FILE_STORAGE
 if STORAGE_BACKEND == 's3':
     # S3 backend configuration

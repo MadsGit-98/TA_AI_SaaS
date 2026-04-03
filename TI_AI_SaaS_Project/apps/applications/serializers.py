@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from pathlib import Path
+import uuid
+
 from apps.applications.models import Applicant, ApplicationAnswer
 from apps.jobs.models import ScreeningQuestion, JobListing
 from apps.applications.utils.file_validation import validate_resume_file
@@ -290,7 +292,7 @@ class ContactValidationRequestSerializer(serializers.Serializer):
 class ApplicationStatusSerializer(serializers.Serializer):
     """
     Lean serializer for application status endpoint.
-    
+
     Returns only non-PII fields to prevent IDOR exposure.
     Per security requirements: only status and submitted_at are exposed.
     """
@@ -298,3 +300,183 @@ class ApplicationStatusSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     status = serializers.CharField()
     submitted_at = serializers.DateTimeField()
+
+
+# Bulk Upload Serializers
+
+class BulkUploadInitSerializer(serializers.Serializer):
+    """Serializer for initializing bulk upload session."""
+
+    job_listing_id = serializers.UUIDField()
+
+    def validate_job_listing_id(self, value):
+        """Validate that the job listing exists and allows bulk upload."""
+        try:
+            job_listing = JobListing.objects.get(id=value)
+            if job_listing.upload_type != 'bulk':
+                raise serializers.ValidationError(
+                    "This job listing does not allow bulk uploads."
+                )
+            return job_listing
+        except JobListing.DoesNotExist:
+            raise serializers.ValidationError("Job listing not found.")
+
+
+class BulkUploadFileSerializer(serializers.Serializer):
+    """Serializer for uploading a single file."""
+
+    batch_id = serializers.UUIDField()
+    file = serializers.FileField()
+
+    def validate_file(self, value):
+        """Validate resume file format and size."""
+        validated_file = validate_resume_file(value)
+        return validated_file
+
+    def validate_batch_id(self, value):
+        """Validate that the batch exists and is in valid state."""
+        from apps.applications.models import UploadBatch
+        try:
+            batch = UploadBatch.objects.get(id=value)
+            if batch.status not in ['pending', 'uploading']:
+                raise serializers.ValidationError(
+                    f"Batch is in {batch.status} state, cannot accept files."
+                )
+            if batch.file_count >= 100:
+                raise serializers.ValidationError("Batch is full (max 100 files).")
+            return batch
+        except UploadBatch.DoesNotExist:
+            raise serializers.ValidationError("Upload batch not found.")
+
+
+class BulkUploadCommitSerializer(serializers.Serializer):
+    """Serializer for committing a batch."""
+
+    batch_id = serializers.UUIDField()
+
+    def validate_batch_id(self, value):
+        """Validate that the batch exists and is ready to commit."""
+        from apps.applications.models import UploadBatch
+        try:
+            batch = UploadBatch.objects.get(id=value)
+            can_commit, message = batch.can_commit()
+            if not can_commit:
+                raise serializers.ValidationError(message)
+            return batch
+        except UploadBatch.DoesNotExist:
+            raise serializers.ValidationError("Upload batch not found.")
+
+
+class BulkUploadSummarySerializer(serializers.Serializer):
+    """Serializer for bulk upload summary response."""
+
+    batch_id = serializers.UUIDField()
+    job_listing = serializers.DictField()
+    batch_number = serializers.IntegerField()
+    uploaded_at = serializers.DateTimeField()
+    uploaded_by = serializers.DictField()
+    summary = serializers.DictField()
+    applicants = serializers.ListField(child=serializers.DictField())
+
+
+class BulkUploadValidateSerializer(serializers.Serializer):
+    """Serializer for validating batch and checking duplicates."""
+
+    batch_id = serializers.UUIDField()
+
+    def validate_batch_id(self, value):
+        """Validate that the batch exists and has files."""
+        from apps.applications.models import UploadBatch
+        try:
+            batch = UploadBatch.objects.get(id=value)
+            if batch.file_count == 0:
+                raise serializers.ValidationError("No files uploaded to batch.")
+            if batch.status == 'committed':
+                raise serializers.ValidationError("Batch already committed.")
+            return batch
+        except UploadBatch.DoesNotExist:
+            raise serializers.ValidationError("Upload batch not found.")
+
+
+class BulkUploadDecisionSerializer(serializers.Serializer):
+    """Serializer for submitting duplicate decisions."""
+
+    batch_id = serializers.UUIDField()
+    decisions = serializers.ListField(
+        child=serializers.DictField(),
+        required=True
+    )
+
+    def validate_batch_id(self, value):
+        """Validate that the batch exists and is in review state."""
+        from apps.applications.models import UploadBatch
+        try:
+            batch = UploadBatch.objects.get(id=value)
+            if batch.status not in ['awaiting_review', 'validating']:
+                raise serializers.ValidationError(
+                    f"Batch is in {batch.status} state, not ready for decisions."
+                )
+            return batch
+        except UploadBatch.DoesNotExist:
+            raise serializers.ValidationError("Upload batch not found.")
+
+    def validate_decisions(self, value):
+        """Validate decision format and file_id UUIDs."""
+        valid_actions = ['skip', 'include', 'skip_all', 'include_all']
+        for decision in value:
+            if 'action' not in decision:
+                raise serializers.ValidationError(
+                    "Each decision must have an 'action' field."
+                )
+            if decision['action'] not in valid_actions:
+                raise serializers.ValidationError(
+                    f"Invalid action '{decision['action']}'. Must be one of: {valid_actions}"
+                )
+            # file_id is optional for skip_all/include_all, required for skip/include
+            if decision['action'] in ['skip', 'include']:
+                if 'file_id' not in decision:
+                    raise serializers.ValidationError(
+                        f"Decision with action '{decision['action']}' must have a 'file_id' field."
+                    )
+                # Validate file_id is a valid UUID
+                try:
+                    uuid.UUID(str(decision['file_id']))
+                except (ValueError, AttributeError):
+                    raise serializers.ValidationError(
+                        f"Invalid file_id '{decision['file_id']}'. Must be a valid UUID."
+                    )
+        return value
+
+    def validate(self, attrs):
+        """Validate that all file_ids belong to the batch."""
+        batch = attrs.get('batch_id')
+        decisions = attrs.get('decisions')
+
+        if not batch or not decisions:
+            return attrs
+
+        # Extract file_ids from decisions that have them
+        file_ids = []
+        for decision in decisions:
+            if 'file_id' in decision:
+                file_ids.append(str(decision['file_id']))
+
+        if not file_ids:
+            return attrs
+
+        # Get all file_ids from the batch's temp_files
+        # Guard against None temp_files by treating as empty iterable
+        batch_file_ids = set()
+        temp_files = batch.temp_files or []
+        for file_entry in temp_files:
+            if isinstance(file_entry, dict) and 'file_id' in file_entry:
+                batch_file_ids.add(str(file_entry['file_id']))
+
+        # Check that all provided file_ids belong to the batch
+        invalid_file_ids = set(file_ids) - batch_file_ids
+        if invalid_file_ids:
+            raise serializers.ValidationError({
+                'decisions': f"The following file_ids do not belong to batch {batch.id}: {list(invalid_file_ids)}"
+            })
+
+        return attrs

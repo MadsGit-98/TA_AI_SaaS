@@ -21,6 +21,13 @@ Auto-generated from all feature plans. Last updated: 2025-12-04
 
 - Python 3.11 + Django, Django REST Framework (DRF), Tailwind CSS, shadcn_django (002-compliant-home-page)
 
+- Python 3.11 + Django 5.2.9, Django REST Framework 3.15.2, Celery 5.4.0, Redis 7.1.0, django-storages, python-docx, PyPDF2, phonenumbers (011-bulk-resume-upload)
+- Chunked file upload with server-side temp storage and batch commit pattern (011-bulk-resume-upload)
+- Two-phase duplicate detection (file hash + contact info) with user review modal (011-bulk-resume-upload)
+- WebSocket-based real-time progress tracking with polling fallback (011-bulk-resume-upload)
+- File size validation: 50KB minimum, 10MB maximum (011-bulk-resume-upload)
+- Batch upload limits: 100 files/batch, 3 batches/job listing, 300 resumes max (011-bulk-resume-upload)
+
 ## Project Structure
 
 ```text
@@ -69,6 +76,7 @@ Python 3.11: Follow standard conventions
 3. **Test Execution**: Do not use pytest to run any of the tests created. You must use the "python manage.py test" command.
 
 ## Recent Changes
+- 011-bulk-resume-upload: Added Python 3.11 + Django 5.2.9, DRF 3.15.2, Celery 5.4.0, Redis 7.1.0, django-storages, python-docx, PyPDF2, phonenumbers
 - 010-websocket-analysis-status: Added Python 3.11, JavaScript (ES6) + Django 5.2.9, Django Channels 4.x, Celery 5.4.0, Redis 7.1.0
 - 009-ai-analysis-scoring: Added Python 3.11 + Django 5.2.9, DRF 3.15.2, LangChain 1.1.x, LangGraph 1.0.x, Celery 5.4.0, Redis 7.1.0
 - 008-job-application-submission: Added Python 3.11 + Django, Django REST Framework (DRF), django-storages, Celery, Redis, python-hashlib, python-docx, PyPDF2

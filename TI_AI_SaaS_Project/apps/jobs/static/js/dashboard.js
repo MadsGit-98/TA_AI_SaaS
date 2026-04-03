@@ -259,11 +259,19 @@ function createJobElement(job, container) {
     // Copy link button
     const copyButton = document.createElement('button');
     copyButton.className = 'text-blue-600 hover:text-blue-800 text-sm';
-    
+
     // Check if application link exists and is valid
     if (job.application_link && typeof job.application_link === 'string' && job.application_link.trim() !== '') {
         copyButton.textContent = 'Copy Link';
-        copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+        // For bulk upload type, disable copy functionality but still show the link
+        if (job.upload_type === 'bulk') {
+            copyButton.disabled = true;
+            copyButton.classList.add('opacity-50', 'cursor-not-allowed');
+            copyButton.title = 'Link not copiable for bulk upload jobs';
+        } else {
+            copyButton.addEventListener('click', () => copyApplicationLink(job.application_link));
+            copyButton.title = 'Copy application link to clipboard';
+        }
     } else {
         copyButton.textContent = 'No Link Available';
         copyButton.disabled = true;
@@ -271,22 +279,37 @@ function createJobElement(job, container) {
     }
     rightSide.appendChild(copyButton);
 
-    // Conditional status button - Status may be overridden by automatic checks
-    let statusButton;
-    if (job.status === 'Active') {
-        statusButton = document.createElement('button');
-        statusButton.className = 'text-red-600 hover:text-red-800 text-sm';
-        statusButton.textContent = 'Deactivate';
-        statusButton.addEventListener('click', () => deactivateJob(job.id));
-    } else {
-        statusButton = document.createElement('button');
-        statusButton.className = 'text-green-600 hover:text-green-800 text-sm';
-        statusButton.textContent = 'Activate';
-        statusButton.addEventListener('click', () => activateJob(job.id));
+    // Conditional status button - Only show for 'form' upload type
+    // Bulk upload jobs cannot be activated/deactivated
+    if (job.upload_type === 'form') {
+        let statusButton;
+        if (job.status === 'Active') {
+            statusButton = document.createElement('button');
+            statusButton.className = 'text-red-600 hover:text-red-800 text-sm';
+            statusButton.textContent = 'Deactivate';
+            statusButton.addEventListener('click', () => deactivateJob(job.id));
+        } else {
+            statusButton = document.createElement('button');
+            statusButton.className = 'text-green-600 hover:text-green-800 text-sm';
+            statusButton.textContent = 'Activate';
+            statusButton.addEventListener('click', () => activateJob(job.id));
+        }
+        // Add tooltip to indicate automatic status changes
+        statusButton.title = 'Status may change automatically based on start/expiration dates';
+        rightSide.appendChild(statusButton);
     }
-    // Add tooltip to indicate automatic status changes
-    statusButton.title = 'Status may change automatically based on start/expiration dates';
-    rightSide.appendChild(statusButton);
+
+    // Start Upload button (for bulk upload type jobs)
+    if (job.upload_type === 'bulk') {
+        const uploadButton = document.createElement('button');
+        uploadButton.className = 'text-amber-600 hover:text-amber-800 text-sm font-medium';
+        uploadButton.textContent = 'Start Upload';
+        uploadButton.title = 'Upload resumes in bulk for this job';
+        uploadButton.addEventListener('click', () => {
+            window.location.href = `/bulk-upload/${job.id}/`;
+        });
+        rightSide.appendChild(uploadButton);
+    }
 
     // AI Analysis button
     const analysisButton = document.createElement('button');
