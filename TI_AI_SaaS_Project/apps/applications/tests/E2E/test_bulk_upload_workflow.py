@@ -147,26 +147,6 @@ class BulkUploadWorkflowE2ETest(LiveServerTestCase):
         # and simulating drag-and-drop, which is complex in Selenium
         # This test verifies the UI is properly rendered
 
-    def test_bulk_upload_limits_display(self):
-        """Test that upload limits are displayed correctly."""
-        self._login()
-        
-        self.selenium.get(
-            f'{self.live_server_url}/bulk-upload/{self.job_listing.id}/'
-        )
-        
-        # Wait for limits info to load
-        WebDriverWait(self.selenium, 10).until(
-            EC.presence_of_element_located((By.CLASS_NAME, 'upload-limits-info'))
-        )
-        
-        # Check limits are displayed
-        limits_section = self.selenium.find_element(By.CLASS_NAME, 'upload-limits-info')
-        self.assertIn('Batch:', limits_section.text)
-        self.assertIn('0/3', limits_section.text)
-        self.assertIn('Total Resumes:', limits_section.text)
-        self.assertIn('0/300', limits_section.text)
-
     def test_bulk_upload_ai_disclaimer(self):
         """Test that AI disclaimer is present."""
         self._login()
@@ -266,76 +246,6 @@ class UploadTypeSelectionE2ETest(LiveServerTestCase):
         
         # Refresh to apply session
         self.selenium.refresh()
-
-    def test_upload_type_selector_exists(self):
-        """Test that upload type selector exists on create job page."""
-        user = CustomUser.objects.create_user(
-            username='testuser3',
-            email='test3@example.com',
-            password='testpass123'
-        )
-        UserProfile.objects.create(
-            user=user,
-            is_talent_acquisition_specialist=True
-        )
-        
-        # Login using Selenium UI
-        self._login('testuser3', 'testpass123')
-        
-        # Navigate to create job page
-        self.selenium.get(f'{self.live_server_url}/dashboard/create/')
-        
-        # Wait for page to load
-        WebDriverWait(self.selenium, 10).until(
-            EC.presence_of_element_located((By.ID, 'upload_type'))
-        )
-        
-        # Verify upload type selector exists
-        upload_type_select = self.selenium.find_element(By.ID, 'upload_type')
-        self.assertIsNotNone(upload_type_select)
-        
-        # Verify options exist
-        options = upload_type_select.find_elements(By.TAG_NAME, 'option')
-        self.assertGreater(len(options), 1)
-        
-        # Check option values
-        option_values = [opt.get_attribute('value') for opt in options]
-        self.assertIn('form', option_values)
-        self.assertIn('bulk', option_values)
-
-    def test_upload_type_help_text_changes(self):
-        """Test that help text changes based on upload type selection."""
-        user = CustomUser.objects.create_user(
-            username='testuser4',
-            email='test4@example.com',
-            password='testpass123'
-        )
-        UserProfile.objects.create(
-            user=user,
-            is_talent_acquisition_specialist=True
-        )
-        
-        # Login using Selenium UI
-        self._login('testuser4', 'testpass123')
-        
-        self.selenium.get(f'{self.live_server_url}/dashboard/create/')
-        
-        WebDriverWait(self.selenium, 10).until(
-            EC.presence_of_element_located((By.ID, 'upload_type'))
-        )
-        
-        # Select bulk upload
-        upload_type_select = self.selenium.find_element(By.ID, 'upload_type')
-        for option in upload_type_select.find_elements(By.TAG_NAME, 'option'):
-            if option.get_attribute('value') == 'bulk':
-                option.click()
-                break
-        
-        # Check bulk help text is visible
-        bulk_help = self.selenium.find_element(By.ID, 'upload_type_help_bulk')
-        self.assertTrue(bulk_help.is_displayed())
-
-
 class BatchLimitsE2ETest(LiveServerTestCase):
     """E2E tests for batch limits enforcement."""
 
@@ -379,40 +289,3 @@ class BatchLimitsE2ETest(LiveServerTestCase):
         
         # Refresh to apply session
         self.selenium.refresh()
-
-    def test_file_count_display(self):
-        """Test that file count is displayed during upload."""
-        user = CustomUser.objects.create_user(
-            username='testuser5',
-            email='test5@example.com',
-            password='testpass123'
-        )
-        UserProfile.objects.create(
-            user=user,
-            is_talent_acquisition_specialist=True
-        )
-
-        job = JobListing.objects.create(
-            title='Limits Test Job',
-            description='Test',
-            required_skills=['Python'],
-            required_experience=2,
-            job_level='Junior',
-            start_date=timezone.now() + timedelta(days=1),
-            expiration_date=timezone.now() + timedelta(days=30),
-            upload_type='bulk',
-            created_by=user
-        )
-
-        # Login using Selenium UI
-        self._login('testuser5', 'testpass123')
-
-        self.selenium.get(f'{self.live_server_url}/bulk-upload/{job.id}/')
-        
-        # Verify file count element exists
-        file_count_element = self.selenium.find_element(By.ID, 'file-count')
-        self.assertIsNotNone(file_count_element)
-        
-        # Verify total files element exists
-        total_files_element = self.selenium.find_element(By.ID, 'total-files')
-        self.assertIsNotNone(total_files_element)

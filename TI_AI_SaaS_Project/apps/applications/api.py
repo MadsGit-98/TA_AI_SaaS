@@ -719,48 +719,10 @@ class BulkUploadCancelView(APIView):
             )
 
 
-class BulkUploadStatusView(APIView):
-    """
-    Get batch upload status.
-    
-    GET /api/applications/bulk-upload/status/<batch_id>/
-    """
-    permission_classes = [IsAuthenticated, IsTAS]
-    
-    def get(self, request, batch_id):
-        try:
-            batch = UploadBatch.objects.get(id=batch_id)
-            
-            # Check permission
-            if batch.uploaded_by != request.user and not request.user.is_staff:
-                return Response(
-                    {'error': 'Permission denied'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            return Response({
-                'batch_id': str(batch.id),
-                'status': batch.status,
-                'progress': {
-                    'files_uploaded': batch.file_count,
-                    'files_total': 100,
-                    'files_validated': len(batch.duplicate_summary.get('valid_files', [])) if batch.duplicate_summary else 0,
-                    'files_with_errors': len([f for f in batch.temp_files if f.get('status') == 'failed'])
-                },
-                'files': batch.temp_files[:20]  # Limit to first 20 for performance
-            })
-
-        except UploadBatch.DoesNotExist:
-            return Response(
-                {'error': 'Batch not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-
 class BulkUploadDecisionView(APIView):
     """
     Submit decisions for duplicate files.
-    
+
     POST /api/applications/bulk-upload/decisions/
     """
     permission_classes = [IsAuthenticated, IsTAS]
