@@ -17,6 +17,8 @@ This module contains:
 import logging
 import os
 import mimetypes
+import threading
+import uuid
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -29,7 +31,7 @@ from django.conf import settings
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 from apps.applications.models import ApplicationAnswer, Applicant
-from apps.analysis.tasks import run_ai_analysis
+from apps.analysis.orchestrator import DjangoAnalysisOrchestrator
 from django.db.models import Avg, Count
 from services.ai_analysis_service import (
     acquire_analysis_lock,
@@ -150,35 +152,37 @@ def initiate_analysis(request, job_id):
                 }
             }, status=status.HTTP_409_CONFLICT)
 
-        # Start Celery task
-        try:
-            task = run_ai_analysis.delay(str(job_id), owner_id)
-        except Exception as dispatch_error:
-            # Release lock if task dispatch fails
-            release_analysis_lock(str(job_id), owner_id)
-            logger.error(f"Failed to dispatch analysis task for job {job_id}: {dispatch_error}")
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'TASK_DISPATCH_FAILED',
-                    'message': 'Failed to start analysis task. Please try again.'
-                }
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Set analysis_in_progress flag
+        # Set analysis_in_progress flag BEFORE dispatching
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
+
+        # Start analysis in background thread (replaces Celery task)
+        def run_analysis_thread():
+            """Background thread to run AI analysis."""
+            try:
+                orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
+                result = orchestrator.run()
+                logger.info(f"Analysis completed for job {job_id}: {result['status']}")
+            except Exception as e:
+                logger.error(f"Analysis thread failed for job {job_id}: {e}", exc_info=True)
+
+        thread = threading.Thread(target=run_analysis_thread, daemon=True)
+        thread.start()
 
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
         estimated_duration = applicant_count * 6
 
+        # Generate a unique ID for this analysis run (replaces Celery task_id)
+        analysis_run_id = str(uuid.uuid4())
+
         return Response({
             'success': True,
             'data': {
-                'task_id': task.id,
+                'task_id': analysis_run_id,
                 'status': 'started',
                 'job_id': str(job_id),
                 'applicant_count': applicant_count,
                 'estimated_duration_seconds': estimated_duration,
+                'message': 'Analysis is running in background. Monitor progress via WebSocket.',
             }
         }, status=status.HTTP_202_ACCEPTED)
 
@@ -777,36 +781,36 @@ def rerun_analysis(request, job_id):
                 }
             }, status=status.HTTP_409_CONFLICT)
 
-        # Start Celery task FIRST - only delete data after successful dispatch
-        try:
-            task = run_ai_analysis.delay(str(job_id), owner_id)
-        except Exception as dispatch_error:
-            # Release lock if task dispatch fails - DO NOT delete any data
-            release_analysis_lock(str(job_id), owner_id)
-            logger.error(f"Failed to dispatch analysis task for job {job_id}: {dispatch_error}")
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'TASK_DISPATCH_FAILED',
-                    'message': 'Failed to start analysis task. Please try again.'
-                }
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Task dispatched successfully - now safe to delete previous results
+        # Delete previous results BEFORE starting new analysis
         previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
         AIAnalysisResult.objects.filter(job_listing=job).delete()
 
-        # Set analysis_in_progress flag to keep state consistent with initiate_analysis
+        # Set analysis_in_progress flag
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
-        
-        # Initialize Redis progress tracking synchronously so view detects it immediately
-        # This ensures the progress tag appears after page reload
+
+        # Initialize Redis progress tracking
         update_analysis_progress(str(job_id), 0, applicant_count)
+
+        # Start analysis in background thread
+        def run_analysis_thread():
+            """Background thread to run AI analysis."""
+            try:
+                orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
+                result = orchestrator.run()
+                logger.info(f"Re-run analysis completed for job {job_id}: {result['status']}")
+            except Exception as e:
+                logger.error(f"Re-run analysis thread failed for job {job_id}: {e}", exc_info=True)
+
+        thread = threading.Thread(target=run_analysis_thread, daemon=True)
+        thread.start()
+
+        # Generate a unique ID for this analysis run (replaces task_id)
+        analysis_run_id = str(uuid.uuid4())
 
         return Response({
             'success': True,
             'data': {
-                'task_id': task.id,
+                'task_id': analysis_run_id,
                 'status': 'started',
                 'job_id': str(job_id),
                 'previous_results_deleted': previous_count,

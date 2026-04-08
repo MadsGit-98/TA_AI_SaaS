@@ -13,7 +13,7 @@ Tests cover:
 These are integration tests that use the real implementation without mocks.
 """
 
-from django.test import TestCase, Client
+from django.test import TransactionTestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.core.cache import cache
@@ -24,11 +24,12 @@ from django.utils import timezone
 from datetime import timedelta
 import json
 import uuid
+import time
 
 User = get_user_model()
 
 
-class InitiateAnalysisAPIIntegrationTest(TestCase):
+class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
     """Integration test cases for initiate_analysis API endpoint."""
 
     def setUp(self):
@@ -109,6 +110,9 @@ class InitiateAnalysisAPIIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
+
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
 
         # Should return 202 Accepted (or 200 if celery is not configured)
         # The key is that it should succeed, not fail with validation error
@@ -225,6 +229,9 @@ class InitiateAnalysisAPIIntegrationTest(TestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
+
         # Staff should be able to initiate analysis
         self.assertIn(response.status_code, [200, 202])
         self.assertTrue(response.data['success'])
@@ -259,6 +266,9 @@ class InitiateAnalysisAPIIntegrationTest(TestCase):
         url = f'/api/analysis/jobs/{active_job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
+
         # Should succeed - expiration/deactivation is not required
         self.assertIn(response.status_code, [200, 202])
         self.assertTrue(response.data['success'])
@@ -281,6 +291,9 @@ class InitiateAnalysisAPIIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
+
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
 
         self.assertIn(response.status_code, [200, 202])
         self.assertTrue(response.data['success'])

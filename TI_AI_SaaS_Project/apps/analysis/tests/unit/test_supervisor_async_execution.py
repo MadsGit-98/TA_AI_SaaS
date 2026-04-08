@@ -15,12 +15,16 @@ from django.test import TestCase
 from unittest.mock import patch, MagicMock, call
 from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
-from apps.analysis.graphs.supervisor import (
+from services.ai_analysis_graphs.supervisor import (
     map_workers_node,
     process_single_applicant,
-    create_supervisor_graph,
 )
-from apps.analysis.graphs.worker import create_worker_graph
+from services.ai_analysis_graphs.defaults import (
+    DefaultCancellationChecker,
+    DefaultLLMProvider,
+    DefaultProgressTracker,
+    DefaultNotificationService,
+)
 from django.utils import timezone
 from datetime import timedelta
 from django.contrib.auth import get_user_model
@@ -78,12 +82,12 @@ class AsyncExecutionTest(TestCase):
         thread_ids = {}
         execution_order = []
 
-        def mock_process_single(worker_graph, applicant, job, job_id):
+        def mock_process_single(worker_graph, applicant, job, job_id, cancellation_checker):
             """Mock that captures thread ID."""
             thread_id = threading.current_thread().ident
             thread_ids[applicant.id] = thread_id
             execution_order.append(applicant.id)
-            
+
             # Return minimal valid result
             return {
                 'applicant': applicant,
@@ -108,17 +112,27 @@ class AsyncExecutionTest(TestCase):
 
         # Execute map_workers_node with mocked process_single_applicant
         with patch(
-            'apps.analysis.graphs.supervisor.process_single_applicant',
+            'services.ai_analysis_graphs.supervisor.process_single_applicant',
             side_effect=mock_process_single
         ):
             with patch(
-                'apps.analysis.graphs.supervisor.create_worker_graph'
+                'services.ai_analysis_graphs.supervisor.create_worker_graph'
             ) as mock_create_worker:
                 # Mock worker graph to avoid LLM calls
                 mock_worker_graph = MagicMock()
                 mock_create_worker.return_value = mock_worker_graph
-                
-                result = map_workers_node(state)
+
+                mock_cancellation_checker = DefaultCancellationChecker()
+                mock_progress_tracker = DefaultProgressTracker()
+                mock_notification_service = DefaultNotificationService()
+                mock_llm_provider = DefaultLLMProvider()
+                result = map_workers_node(
+                    state,
+                    mock_cancellation_checker,
+                    mock_progress_tracker,
+                    mock_notification_service,
+                    mock_llm_provider,
+                )
 
         # Verify all applicants were processed
         self.assertEqual(len(thread_ids), 5)
@@ -152,7 +166,7 @@ class AsyncExecutionTest(TestCase):
         # Track execution times
         execution_times = []
 
-        def mock_process_single_with_delay(worker_graph, applicant, job, job_id):
+        def mock_process_single_with_delay(worker_graph, applicant, job, job_id, cancellation_checker):
             """Mock that simulates work with delay."""
             start_time = time.time()
             execution_times.append({
@@ -198,17 +212,27 @@ class AsyncExecutionTest(TestCase):
         start_total = time.time()
         
         with patch(
-            'apps.analysis.graphs.supervisor.process_single_applicant',
+            'services.ai_analysis_graphs.supervisor.process_single_applicant',
             side_effect=mock_process_single_with_delay
         ):
             with patch(
-                'apps.analysis.graphs.supervisor.create_worker_graph'
+                'services.ai_analysis_graphs.supervisor.create_worker_graph'
             ) as mock_create_worker:
                 mock_worker_graph = MagicMock()
                 mock_create_worker.return_value = mock_worker_graph
-                
-                result = map_workers_node(state)
-        
+
+                mock_cancellation_checker = DefaultCancellationChecker()
+                mock_progress_tracker = DefaultProgressTracker()
+                mock_notification_service = DefaultNotificationService()
+                mock_llm_provider = DefaultLLMProvider()
+                result = map_workers_node(
+                    state,
+                    mock_cancellation_checker,
+                    mock_progress_tracker,
+                    mock_notification_service,
+                    mock_llm_provider,
+                )
+
         end_total = time.time()
         concurrent_duration = end_total - start_total
 
@@ -265,7 +289,7 @@ class AsyncExecutionTest(TestCase):
             ThreadPoolExecutor, '__new__', side_effect=mock_executor_new
         ) as mock_new:
             with patch(
-                'apps.analysis.graphs.supervisor.process_single_applicant',
+                'services.ai_analysis_graphs.supervisor.process_single_applicant',
                 return_value={
                     'applicant': self.applicants[0],
                     'job_listing': self.job,
@@ -274,12 +298,22 @@ class AsyncExecutionTest(TestCase):
                 }
             ):
                 with patch(
-                    'apps.analysis.graphs.supervisor.create_worker_graph'
+                    'services.ai_analysis_graphs.supervisor.create_worker_graph'
                 ) as mock_create_worker:
                     mock_worker_graph = MagicMock()
                     mock_create_worker.return_value = mock_worker_graph
-                    
-                    result = map_workers_node(state)
+
+                    mock_cancellation_checker = DefaultCancellationChecker()
+                    mock_progress_tracker = DefaultProgressTracker()
+                    mock_notification_service = DefaultNotificationService()
+                    mock_llm_provider = DefaultLLMProvider()
+                    result = map_workers_node(
+                        state,
+                        mock_cancellation_checker,
+                        mock_progress_tracker,
+                        mock_notification_service,
+                        mock_llm_provider,
+                    )
 
         # Verify executor was created
         self.assertGreater(len(executor_configs), 0, "ThreadPoolExecutor should be created")
@@ -322,7 +356,7 @@ class AsyncExecutionTest(TestCase):
         # Track how many applicants are processed in each call
         batch_sizes = []
 
-        def mock_process_single(worker_graph, applicant, job, job_id):
+        def mock_process_single(worker_graph, applicant, job, job_id, cancellation_checker):
             return {
                 'applicant': applicant,
                 'job_listing': job,
@@ -343,16 +377,26 @@ class AsyncExecutionTest(TestCase):
         }
 
         with patch(
-            'apps.analysis.graphs.supervisor.process_single_applicant',
+            'services.ai_analysis_graphs.supervisor.process_single_applicant',
             side_effect=mock_process_single
         ):
             with patch(
-                'apps.analysis.graphs.supervisor.create_worker_graph'
+                'services.ai_analysis_graphs.supervisor.create_worker_graph'
             ) as mock_create_worker:
                 mock_worker_graph = MagicMock()
                 mock_create_worker.return_value = mock_worker_graph
-                
-                result = map_workers_node(state)
+
+                mock_cancellation_checker = DefaultCancellationChecker()
+                mock_progress_tracker = DefaultProgressTracker()
+                mock_notification_service = DefaultNotificationService()
+                mock_llm_provider = DefaultLLMProvider()
+                result = map_workers_node(
+                    state,
+                    mock_cancellation_checker,
+                    mock_progress_tracker,
+                    mock_notification_service,
+                    mock_llm_provider,
+                )
 
         # Verify only first batch (10 applicants) was processed
         self.assertEqual(result['processed_count'], 10)
@@ -370,7 +414,7 @@ class AsyncExecutionTest(TestCase):
         """
         executor_used = {'value': False}
 
-        def mock_process_single(worker_graph, applicant, job, job_id):
+        def mock_process_single(worker_graph, applicant, job, job_id, cancellation_checker):
             # Set flag when process_single is called (proves executor ran)
             executor_used['value'] = True
             return {
@@ -392,16 +436,26 @@ class AsyncExecutionTest(TestCase):
         }
 
         with patch(
-            'apps.analysis.graphs.supervisor.process_single_applicant',
+            'services.ai_analysis_graphs.supervisor.process_single_applicant',
             side_effect=mock_process_single
         ):
             with patch(
-                'apps.analysis.graphs.supervisor.create_worker_graph'
+                'services.ai_analysis_graphs.supervisor.create_worker_graph'
             ) as mock_create_worker:
                 mock_worker_graph = MagicMock()
                 mock_create_worker.return_value = mock_worker_graph
-                
-                result = map_workers_node(state)
+
+                mock_cancellation_checker = DefaultCancellationChecker()
+                mock_progress_tracker = DefaultProgressTracker()
+                mock_notification_service = DefaultNotificationService()
+                mock_llm_provider = DefaultLLMProvider()
+                result = map_workers_node(
+                    state,
+                    mock_cancellation_checker,
+                    mock_progress_tracker,
+                    mock_notification_service,
+                    mock_llm_provider,
+                )
 
         # Verify process_single was called (which means executor was used)
         self.assertTrue(
@@ -428,7 +482,17 @@ class AsyncExecutionTest(TestCase):
         }
 
         # Should not raise any exceptions
-        result = map_workers_node(state)
+        mock_cancellation_checker = DefaultCancellationChecker()
+        mock_progress_tracker = DefaultProgressTracker()
+        mock_notification_service = DefaultNotificationService()
+        mock_llm_provider = DefaultLLMProvider()
+        result = map_workers_node(
+            state,
+            mock_cancellation_checker,
+            mock_progress_tracker,
+            mock_notification_service,
+            mock_llm_provider,
+        )
 
         # Verify result maintains state (note: result may not have all keys on empty batch)
         self.assertEqual(result.get('processed_count', 0), 0)
@@ -497,11 +561,15 @@ class ProcessSingleApplicantThreadSafetyTest(TestCase):
                     'overall_score': 86 + thread_id,
                 }
 
+                mock_cancellation_checker = MagicMock()
+                mock_cancellation_checker.check_cancellation_flag.return_value = False
+
                 result = process_single_applicant(
                     mock_worker_graph,
                     self.applicant,
                     self.job,
-                    str(self.job.id)
+                    str(self.job.id),
+                    mock_cancellation_checker
                 )
 
                 results[thread_id] = result
