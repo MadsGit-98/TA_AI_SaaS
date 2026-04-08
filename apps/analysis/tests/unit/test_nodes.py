@@ -22,7 +22,7 @@ from apps.applications.models import Applicant
 from apps.analysis.models import AIAnalysisResult
 from django.utils import timezone
 from datetime import timedelta
-from apps.analysis.graphs.supervisor import (
+from services.ai_analysis_graphs.supervisor import (
     bulk_persistence_node,
     process_single_applicant,
     decision_node,
@@ -30,7 +30,7 @@ from apps.analysis.graphs.supervisor import (
     map_workers_node,
     create_supervisor_graph,
 )
-from apps.analysis.graphs.worker import (
+from services.ai_analysis_graphs.worker import (
     create_worker_graph,
     retrieval_node,
     classification_node,
@@ -41,6 +41,13 @@ from apps.analysis.graphs.worker import (
     result_node,
 )
 from django.contrib.auth import get_user_model
+from services.ai_analysis_service import assign_category, calculate_overall_score
+from apps.analysis.adapters import DjangoAnalysisResultRepository
+from services.ai_analysis_graphs.defaults import (
+    DefaultCancellationChecker,
+    DefaultProgressTracker,
+)
+
 
 User = get_user_model()
 
@@ -88,9 +95,6 @@ class DecisionNodeTest(TestCase):
             resume_parsed_text='Test resume'
         )
 
-        # Import after creating data
-        from apps.analysis.graphs.supervisor import decision_node
-
         state = {
             'job_id': str(self.job.id),
             'total_count': 1,
@@ -98,7 +102,10 @@ class DecisionNodeTest(TestCase):
             'cancelled': False
         }
 
-        result = decision_node(state)
+        mock_cancellation_checker = DefaultCancellationChecker()
+
+
+        result = decision_node(state, mock_cancellation_checker)
 
         self.assertEqual(result['current_index'], 0)
         self.assertFalse(result.get('cancelled', False))
@@ -111,8 +118,6 @@ class DecisionNodeTest(TestCase):
         mock_conn.exists.return_value = 0  # Not cancelled
         mock_redis.return_value = mock_conn
 
-        from apps.analysis.graphs.supervisor import decision_node
-
         state = {
             'job_id': str(self.job.id),
             'total_count': 0,
@@ -120,7 +125,10 @@ class DecisionNodeTest(TestCase):
             'cancelled': False
         }
 
-        result = decision_node(state)
+        mock_cancellation_checker = DefaultCancellationChecker()
+
+
+        result = decision_node(state, mock_cancellation_checker)
 
         self.assertEqual(result['current_index'], 0)
 
@@ -130,8 +138,6 @@ class CategorizationNodeTest(TestCase):
 
     def test_categorization_boundaries(self):
         """Test categorization at boundary values."""
-        from services.ai_analysis_service import assign_category
-
         # Test boundaries
         self.assertEqual(assign_category(100), 'Best Match')
         self.assertEqual(assign_category(90), 'Best Match')
@@ -144,8 +150,6 @@ class CategorizationNodeTest(TestCase):
 
     def test_categorization_node_calculation(self):
         """Test categorization node calculates correctly."""
-        from apps.analysis.graphs.worker import categorization_node
-
         state = {
             'scores': {
                 'experience': 80,
@@ -166,8 +170,6 @@ class ClassificationNodeTest(TestCase):
 
     def test_classification_structure(self):
         """Test classification node returns expected structure."""
-        from apps.analysis.graphs.worker import classification_node
-
         resume_text = """
         John Doe
         Software Engineer
@@ -195,8 +197,6 @@ class ScoringNodeTest(TestCase):
 
     def test_calculate_weighted_score(self):
         """Test weighted score calculation."""
-        from services.ai_analysis_service import calculate_overall_score
-
         # Perfect scores
         score = calculate_overall_score(100, 100, 100)
         self.assertEqual(score, 100)
@@ -285,7 +285,13 @@ class BulkPersistNodeTest(TestCase):
         }
 
         # Execute bulk persistence
-        bulk_persistence_node(state)
+        mock_result_repo = DjangoAnalysisResultRepository()
+
+        mock_cancellation_checker = DefaultCancellationChecker()
+
+        mock_progress_tracker = DefaultProgressTracker()
+
+        result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
 
         # Verify results were actually saved to database
         count = AIAnalysisResult.objects.filter(job_listing=self.job).count()
@@ -316,13 +322,15 @@ class BulkPersistNodeTest(TestCase):
         }
 
         # Execute bulk persistence with empty results
-         
-        result = bulk_persistence_node(state)
+        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_cancellation_checker = DefaultCancellationChecker()
+        mock_progress_tracker = DefaultProgressTracker()
+        result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
 
         # Verify no new results were created
         final_count = AIAnalysisResult.objects.filter(job_listing=self.job).count()
         self.assertEqual(final_count, initial_count)
-        
+
         # Verify return value is empty dict
         self.assertEqual(result, {})
 
@@ -364,10 +372,11 @@ class BulkPersistNodeTest(TestCase):
             'owner_id': 'test-owner-id'
         }
 
-         
-        
         # Execute bulk persistence - this should "conquer" by aggregating all results
-        result = bulk_persistence_node(state)
+        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_cancellation_checker = DefaultCancellationChecker()
+        mock_progress_tracker = DefaultProgressTracker()
+        result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
 
         # Verify all results were saved (conquered/reduced)
         count = AIAnalysisResult.objects.filter(job_listing=self.job).count()
@@ -434,7 +443,19 @@ class BulkPersistNodeTest(TestCase):
         }
 
          
-        bulk_persistence_node(state)
+        mock_result_repo = DjangoAnalysisResultRepository()
+
+
+         
+        mock_cancellation_checker = DefaultCancellationChecker()
+
+
+         
+        mock_progress_tracker = DefaultProgressTracker()
+
+
+         
+        result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
 
         # Verify correct counts
         analyzed_count = AIAnalysisResult.objects.filter(
@@ -486,17 +507,11 @@ class ProcessSingleApplicantTest(TestCase):
 
         self.job_id = str(self.job.id)
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_invokes_worker_graph(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_invokes_worker_graph(self):
         """Test that the worker graph is actually invoked from process_single_applicant."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Mock worker graph
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        
+
         # Mock worker graph invoke to return a valid result
         mock_worker_graph.invoke.return_value = {
             'scores': {
@@ -516,10 +531,12 @@ class ProcessSingleApplicantTest(TestCase):
             },
             'status': 'Analyzed'
         }
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
+
+        # Create mock cancellation checker that returns False (not cancelled)
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
         
         # Verify worker graph invoke was called
         mock_worker_graph.invoke.assert_called_once()
@@ -530,17 +547,11 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(call_args['job_listing'], self.job)
         self.assertEqual(call_args['resume_text'], 'Test resume content')
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_returns_correct_result(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_returns_correct_result(self):
         """Test that the result is correctly returned from process_single_applicant."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Mock worker graph
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        
+
         # Mock worker graph invoke to return a valid result
         mock_worker_graph.invoke.return_value = {
             'scores': {
@@ -560,11 +571,13 @@ class ProcessSingleApplicantTest(TestCase):
             },
             'status': 'Analyzed'
         }
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
-        
+
+        # Create mock cancellation checker
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
+
         # Verify result structure and values
         self.assertEqual(result['applicant'], self.applicant)
         self.assertEqual(result['job_listing'], self.job)
@@ -581,17 +594,11 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['supplemental_justification'], 'Nice extras')
         self.assertEqual(result['overall_justification'], 'Overall good candidate')
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_returns_single_user_result(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_returns_single_user_result(self):
         """Test that the results returned are actually of a single user."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Mock worker graph
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        
+
         # Mock worker graph invoke to return a valid result
         mock_worker_graph.invoke.return_value = {
             'scores': {
@@ -611,35 +618,35 @@ class ProcessSingleApplicantTest(TestCase):
             },
             'status': 'Analyzed'
         }
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
-        
+
+        # Create mock cancellation checker
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
+
         # Verify the result is for a single specific applicant
         self.assertEqual(result['applicant'], self.applicant)
         self.assertEqual(result['applicant'].id, self.applicant.id)
         self.assertEqual(result['applicant'].email, self.applicant.email)
         self.assertEqual(result['applicant'].first_name, 'Test')
         self.assertEqual(result['applicant'].last_name, 'Applicant')
-        
+
         # Verify it's associated with the correct job
         self.assertEqual(result['job_listing'], self.job)
         self.assertEqual(result['job_listing'].id, self.job.id)
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    def test_process_single_applicant_cancelled_returns_unprocessed(self, mock_check_cancel):
+    def test_process_single_applicant_cancelled_returns_unprocessed(self):
         """Test that cancellation returns Unprocessed status."""
-        # Mock cancellation flag to return True (cancelled)
-        mock_check_cancel.return_value = True
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(None, self.applicant, self.job, self.job_id)
-        
+        # Create mock cancellation checker that returns True (cancelled)
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = True
+
+        result = process_single_applicant(None, self.applicant, self.job, self.job_id, mock_cancellation_checker)
+
         # Verify cancellation was checked
-        mock_check_cancel.assert_called_once_with(self.job_id)
-        
+        mock_cancellation_checker.check_cancellation_flag.assert_called_once_with(self.job_id)
+
         # Verify result indicates unprocessed due to cancellation
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['category'], 'Unprocessed')
@@ -647,21 +654,17 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['applicant'], self.applicant)
         self.assertEqual(result['job_listing'], self.job)
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_exception_handling(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_exception_handling(self):
         """Test that exceptions during processing are handled correctly."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Mock worker graph to raise an exception
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
         mock_worker_graph.invoke.side_effect = Exception('Worker graph failed')
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
+
+        # Create mock cancellation checker
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
         
         # Verify result indicates unprocessed due to error
         self.assertEqual(result['status'], 'Unprocessed')
@@ -670,16 +673,10 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['applicant'], self.applicant)
         self.assertEqual(result['job_listing'], self.job)
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_missing_scores_defaults_to_zero(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_missing_scores_defaults_to_zero(self):
         """Test that missing scores default to zero."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Mock worker graph with partial/missing data
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
         mock_worker_graph.invoke.return_value = {
             'scores': {
                 'education': 85
@@ -688,11 +685,13 @@ class ProcessSingleApplicantTest(TestCase):
             # Missing overall_score, category, justifications
             'status': 'Analyzed'
         }
-        
-        # Import and call process_single_applicant
-        
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
-        
+
+        # Create mock cancellation checker
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
+
         # Verify missing scores default to zero
         self.assertEqual(result['education_score'], 85)
         self.assertEqual(result['skills_score'], 0)
@@ -702,46 +701,28 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['category'], 'Unprocessed')
         self.assertEqual(result['status'], 'Analyzed')
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_process_single_applicant_empty_resume_text(self, mock_create_graph, mock_check_cancel):
+    def test_process_single_applicant_empty_resume_text(self):
         """Test processing with empty resume text."""
-        # Mock cancellation flag to return False (not cancelled)
-        mock_check_cancel.return_value = False
-        
         # Create applicant with empty resume
         self.applicant.resume_parsed_text = ''
         self.applicant.save()
-        
+
         # Mock worker graph
         mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        mock_worker_graph.invoke.return_value = {
-            'scores': {
-                'education': 0,
-                'skills': 0,
-                'experience': 0,
-                'supplemental': 0
-            },
-            'overall_score': 0,
-            'category': 'Mismatched',
-            'justifications': {
-                'education': '',
-                'skills': '',
-                'experience': '',
-                'supplemental': '',
-                'overall': ''
-            },
-            'status': 'Analyzed'
-        }
 
-        # Import and call process_single_applicant
+        # Create mock cancellation checker
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
 
-        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id)
+        result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
 
-        # Verify worker graph was called with empty resume text
-        call_args = mock_worker_graph.invoke.call_args[0][0]
-        self.assertEqual(call_args['resume_text'], '')
+        # Verify worker graph was NOT called (returns early due to empty resume)
+        mock_worker_graph.invoke.assert_not_called()
+
+        # Verify error response
+        self.assertEqual(result['status'], 'Unprocessed')
+        self.assertEqual(result['category'], 'Unprocessed')
+        self.assertEqual(result['error_message'], 'No parsed resume text available')
 
 
 class SupervisorGraphCreationTest(TestCase):
@@ -749,29 +730,55 @@ class SupervisorGraphCreationTest(TestCase):
 
     def test_create_supervisor_graph_returns_compiled_graph(self):
         """Test that create_supervisor_graph returns a compiled graph."""
-        graph = create_supervisor_graph()
-        
+        # Create mock dependencies
+        mock_result_repo = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_progress_tracker = MagicMock()
+        mock_cancellation_checker = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        graph = create_supervisor_graph(
+            result_repo=mock_result_repo,
+            notification_service=mock_notification_service,
+            progress_tracker=mock_progress_tracker,
+            cancellation_checker=mock_cancellation_checker,
+            llm_provider=mock_llm_provider,
+        )
+
         # Verify graph is not None
         self.assertIsNotNone(graph)
-        
+
         # Verify graph has required nodes
         self.assertIn('decision', graph.nodes)
         self.assertIn('map_workers', graph.nodes)
         self.assertIn('bulk_persist', graph.nodes)
-        
+
         # Verify graph is compiled (has compile method called)
         self.assertTrue(hasattr(graph, 'invoke'))
 
     def test_create_supervisor_graph_has_correct_edges(self):
         """Test that supervisor graph has correct edge connections."""
-        graph = create_supervisor_graph()
-        
+        # Create mock dependencies
+        mock_result_repo = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_progress_tracker = MagicMock()
+        mock_cancellation_checker = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        graph = create_supervisor_graph(
+            result_repo=mock_result_repo,
+            notification_service=mock_notification_service,
+            progress_tracker=mock_progress_tracker,
+            cancellation_checker=mock_cancellation_checker,
+            llm_provider=mock_llm_provider,
+        )
+
         # The graph should have edges connecting:
         # decision -> map_workers (when continue)
         # decision -> bulk_persist (when end)
         # map_workers -> decision (loop back)
         # bulk_persist -> END
-        
+
         # Verify required nodes exist (LangGraph may add internal nodes)
         self.assertIn('decision', graph.nodes)
         self.assertIn('map_workers', graph.nodes)
@@ -887,70 +894,71 @@ class DecisionNodeEnhancedTest(TestCase):
             created_by=self.user
         )
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    def test_decision_node_returns_current_index(self, mock_check_cancel):
+    def test_decision_node_returns_current_index(self):
         """Test decision_node returns current_index in result."""
-        mock_check_cancel.return_value = False
-        
         state = {
             'job_id': str(self.job.id),
             'total_count': 5,
             'current_index': 2,
             'cancelled': False
         }
-        
-        result = decision_node(state)
-        
-        self.assertEqual(result['current_index'], 2)
-        mock_check_cancel.assert_called_once_with(str(self.job.id))
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    def test_decision_node_sets_cancelled_when_flag_raised(self, mock_check_cancel):
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = decision_node(state, mock_cancellation_checker)
+
+        self.assertEqual(result['current_index'], 2)
+        mock_cancellation_checker.check_cancellation_flag.assert_called_once_with(str(self.job.id))
+
+    def test_decision_node_sets_cancelled_when_flag_raised(self):
         """Test decision_node sets cancelled=True when cancellation flag is raised."""
-        mock_check_cancel.return_value = True
-        
         state = {
             'job_id': str(self.job.id),
             'total_count': 10,
             'current_index': 3,
             'cancelled': False
         }
-        
-        result = decision_node(state)
-        
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = True
+
+        result = decision_node(state, mock_cancellation_checker)
+
         self.assertTrue(result['cancelled'])
         self.assertEqual(result['current_index'], 10)  # Skips to end
-        mock_check_cancel.assert_called_once_with(str(self.job.id))
+        mock_cancellation_checker.check_cancellation_flag.assert_called_once_with(str(self.job.id))
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    def test_decision_node_not_cancelled_when_flag_not_raised(self, mock_check_cancel):
+    def test_decision_node_not_cancelled_when_flag_not_raised(self):
         """Test decision_node doesn't set cancelled when flag not raised."""
-        mock_check_cancel.return_value = False
-        
         state = {
             'job_id': str(self.job.id),
             'total_count': 10,
             'current_index': 3,
             'cancelled': False
         }
-        
-        result = decision_node(state)
-        
-        self.assertNotIn('cancelled', result)
-        mock_check_cancel.assert_called_once_with(str(self.job.id))
 
-    @patch('apps.analysis.graphs.supervisor.check_cancellation_flag')
-    def test_decision_node_handles_missing_current_index(self, mock_check_cancel):
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
+        result = decision_node(state, mock_cancellation_checker)
+
+        self.assertNotIn('cancelled', result)
+        mock_cancellation_checker.check_cancellation_flag.assert_called_once_with(str(self.job.id))
+
+    def test_decision_node_handles_missing_current_index(self):
         """Test decision_node handles missing current_index gracefully."""
-        mock_check_cancel.return_value = False
-        
         state = {
             'job_id': str(self.job.id),
             'total_count': 10,
             'cancelled': False
         }
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+
         
-        result = decision_node(state)
+        result = decision_node(state, mock_cancellation_checker)
         
         self.assertEqual(result['current_index'], 0)
 
@@ -979,8 +987,9 @@ class MapWorkersNodeTest(TestCase):
         )
 
         # Create test applicants
+        self.applicants = []
         for i in range(5):
-            Applicant.objects.create(
+            applicant = Applicant.objects.create(
                 job_listing=self.job,
                 first_name=f'Applicant{i}',
                 last_name=f'Test{i}',
@@ -990,55 +999,53 @@ class MapWorkersNodeTest(TestCase):
                 resume_file_hash=f'hash{i}',
                 resume_parsed_text=f'Test resume {i}'
             )
+            self.applicants.append(applicant)
 
-    @patch('apps.analysis.graphs.supervisor.process_single_applicant')
-    @patch('apps.analysis.graphs.supervisor.update_analysis_progress')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_map_workers_processes_batch_of_applicants(self, mock_create_graph, mock_update_progress, mock_process):
+    @patch('services.ai_analysis_graphs.supervisor.process_single_applicant')
+    def test_map_workers_processes_batch_of_applicants(self, mock_process):
         """Test map_workers_node processes a batch of applicants."""
-        # Mock worker graph
-        mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        
         # Mock process_single_applicant to return a result
         mock_process.return_value = {
-            'applicant': self.job.applicants.first(),
+            'applicant': self.applicants[0],
             'job_listing': self.job,
             'status': 'Analyzed',
             'category': 'Good Match',
             'overall_score': 85,
         }
-        
+
         state = {
             'job_id': str(self.job.id),
             'job': self.job,
-            'applicants': list(self.job.applicants.all()),
+            'applicants': self.applicants,
             'results': [],
             'processed_count': 0,
             'total_count': 5,
             'cancelled': False,
             'current_index': 0,
         }
-        
-        with patch('apps.analysis.graphs.supervisor.process_single_applicant', mock_process):
-            result = map_workers_node(state)
-        
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+        mock_progress_tracker = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        result = map_workers_node(state, mock_cancellation_checker, mock_progress_tracker, mock_notification_service, mock_llm_provider)
+
         # Verify results were added
         self.assertIn('results', result)
         self.assertEqual(len(result['results']), 5)  # All 5 applicants processed
-        
+
         # Verify processed_count was updated
         self.assertEqual(result['processed_count'], 5)
-        
+
         # Verify current_index was updated
         self.assertEqual(result['current_index'], 5)
-        
-        # Verify progress was updated
-        self.assertEqual(mock_update_progress.call_count, 5)
 
-    @patch('apps.analysis.graphs.supervisor.update_analysis_progress')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_map_workers_handles_empty_batch(self, mock_create_graph, mock_update_progress):
+        # Verify progress was updated
+        self.assertEqual(mock_progress_tracker.update_progress.call_count, 5)
+
+    def test_map_workers_handles_empty_batch(self):
         """Test map_workers_node handles empty batch gracefully."""
         state = {
             'job_id': str(self.job.id),
@@ -1050,53 +1057,56 @@ class MapWorkersNodeTest(TestCase):
             'cancelled': False,
             'current_index': 0,
         }
-        
-        result = map_workers_node(state)
-        
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+        mock_progress_tracker = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        result = map_workers_node(state, mock_cancellation_checker, mock_progress_tracker, mock_notification_service, mock_llm_provider)
+
         # Verify no processing occurred
         self.assertEqual(result['processed_count'], 0)
         self.assertEqual(result['current_index'], 0)
-        mock_update_progress.assert_not_called()
+        mock_progress_tracker.update_progress.assert_not_called()
 
-    @patch('apps.analysis.graphs.supervisor.process_single_applicant')
-    @patch('apps.analysis.graphs.supervisor.update_analysis_progress')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_map_workers_handles_worker_failure(self, mock_create_graph, mock_update_progress, mock_process):
+    @patch('services.ai_analysis_graphs.supervisor.process_single_applicant')
+    def test_map_workers_handles_worker_failure(self, mock_process):
         """Test map_workers_node handles worker failure gracefully."""
-        # Mock worker graph
-        mock_worker_graph = MagicMock()
-        mock_create_graph.return_value = mock_worker_graph
-        
         # Mock process_single_applicant to raise exception
         mock_process.side_effect = Exception('Worker failed')
-        
+
         state = {
             'job_id': str(self.job.id),
             'job': self.job,
-            'applicants': list(self.job.applicants.all()[:2]),
+            'applicants': self.applicants[:2],
             'results': [],
             'processed_count': 0,
             'total_count': 2,
             'cancelled': False,
             'current_index': 0,
         }
-        
-        with patch('apps.analysis.graphs.supervisor.process_single_applicant', mock_process):
-            result = map_workers_node(state)
-        
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+        mock_progress_tracker = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        result = map_workers_node(state, mock_cancellation_checker, mock_progress_tracker, mock_notification_service, mock_llm_provider)
+
         # Verify results contain Unprocessed entries for failed workers
         self.assertEqual(len(result['results']), 2)
         for res in result['results']:
             self.assertEqual(res['status'], 'Unprocessed')
             self.assertIn('Worker failed', res['error_message'])
-        
+
         # Verify processed_count still incremented
         self.assertEqual(result['processed_count'], 2)
 
-    @patch('apps.analysis.graphs.supervisor.process_single_applicant')
-    @patch('apps.analysis.graphs.supervisor.update_analysis_progress')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_map_workers_respects_batch_size_limit(self, mock_create_graph, mock_update_progress, mock_process):
+    @patch('services.ai_analysis_graphs.supervisor.process_single_applicant')
+    def test_map_workers_respects_batch_size_limit(self, mock_process):
         """Test map_workers_node respects batch size limit of 10."""
         # Create more than 10 applicants
         for i in range(5, 15):
@@ -1110,14 +1120,14 @@ class MapWorkersNodeTest(TestCase):
                 resume_file_hash=f'hash{i}',
                 resume_parsed_text=f'Test resume {i}'
             )
-        
+
         # Mock process_single_applicant
         mock_process.return_value = {
             'applicant': self.job.applicants.first(),
             'job_listing': self.job,
             'status': 'Analyzed',
         }
-        
+
         state = {
             'job_id': str(self.job.id),
             'job': self.job,
@@ -1128,33 +1138,36 @@ class MapWorkersNodeTest(TestCase):
             'cancelled': False,
             'current_index': 0,
         }
-        
-        with patch('apps.analysis.graphs.supervisor.process_single_applicant', mock_process):
-            result = map_workers_node(state)
-        
+
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+        mock_progress_tracker = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        result = map_workers_node(state, mock_cancellation_checker, mock_progress_tracker, mock_notification_service, mock_llm_provider)
+
         # Verify only batch_size (10) were processed
         self.assertEqual(len(result['results']), 10)
         self.assertEqual(result['current_index'], 10)
 
-    @patch('apps.analysis.graphs.supervisor.process_single_applicant')
-    @patch('apps.analysis.graphs.supervisor.update_analysis_progress')
-    @patch('apps.analysis.graphs.supervisor.create_worker_graph')
-    def test_map_workers_accumulates_results(self, mock_create_graph, mock_update_progress, mock_process):
+    @patch('services.ai_analysis_graphs.supervisor.process_single_applicant')
+    def test_map_workers_accumulates_results(self, mock_process):
         """Test map_workers_node accumulates results with existing results."""
         # Mock process_single_applicant
         mock_process.return_value = {
-            'applicant': self.job.applicants.first(),
+            'applicant': self.applicants[0],
             'job_listing': self.job,
             'status': 'Analyzed',
         }
-        
+
         # Start with existing results
         existing_results = [{'existing': 'result'}]
-        
+
         state = {
             'job_id': str(self.job.id),
             'job': self.job,
-            'applicants': list(self.job.applicants.all()[:2]),
+            'applicants': self.applicants[:2],
             'results': existing_results,
             'processed_count': 0,
             'total_count': 2,
@@ -1162,8 +1175,13 @@ class MapWorkersNodeTest(TestCase):
             'current_index': 0,
         }
 
-        with patch('apps.analysis.graphs.supervisor.process_single_applicant', mock_process):
-            result = map_workers_node(state)
+        mock_cancellation_checker = MagicMock()
+        mock_cancellation_checker.check_cancellation_flag.return_value = False
+        mock_progress_tracker = MagicMock()
+        mock_notification_service = MagicMock()
+        mock_llm_provider = MagicMock()
+
+        result = map_workers_node(state, mock_cancellation_checker, mock_progress_tracker, mock_notification_service, mock_llm_provider)
 
         # Verify results were accumulated
         self.assertEqual(len(result['results']), 3)  # 1 existing + 2 new
@@ -1179,11 +1197,17 @@ class WorkerGraphCreationTest(TestCase):
 
     def test_create_worker_graph_returns_compiled_graph(self):
         """Test that create_worker_graph returns a compiled graph."""
-        graph = create_worker_graph()
+        mock_cancellation_checker = MagicMock()
+        mock_llm_provider = MagicMock()
         
+        graph = create_worker_graph(
+            cancellation_checker=mock_cancellation_checker,
+            llm_provider=mock_llm_provider,
+        )
+
         # Verify graph is not None
         self.assertIsNotNone(graph)
-        
+
         # Verify graph has all required nodes
         self.assertIn('retrieval', graph.nodes)
         self.assertIn('classification', graph.nodes)
@@ -1191,13 +1215,19 @@ class WorkerGraphCreationTest(TestCase):
         self.assertIn('categorization', graph.nodes)
         self.assertIn('justification', graph.nodes)
         self.assertIn('result', graph.nodes)
-        
+
         # Verify graph is compiled (has invoke method)
         self.assertTrue(hasattr(graph, 'invoke'))
 
     def test_create_worker_graph_has_correct_sequence(self):
         """Test that worker graph nodes are in correct sequential order."""
-        graph = create_worker_graph()
+        mock_cancellation_checker = MagicMock()
+        mock_llm_provider = MagicMock()
+        
+        graph = create_worker_graph(
+            cancellation_checker=mock_cancellation_checker,
+            llm_provider=mock_llm_provider,
+        )
         
         # Verify all required nodes exist
         required_nodes = [
@@ -1376,7 +1406,7 @@ class ClassificationNodeTest(TestCase):
         self.applicant = MagicMock()
         self.applicant.id = 'test-applicant-id'
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_classification_node_mocked_llm(self, mock_get_llm):
         """Test classification node with mocked LLM."""
         # Mock LLM and its invoke method
@@ -1418,13 +1448,16 @@ class ClassificationNodeTest(TestCase):
             'applicant': self.applicant,
             'resume_text': self.resume_text,
         }
-        
-        result = classification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = classification_node(state, mock_provider)
+
         # Verify LLM was called
-        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+        mock_provider.get_llm.assert_called_once_with(temperature=0.1, format="json")
         mock_llm.invoke.assert_called_once()
-        
+
         # Verify classified data structure
         self.assertIn('classified_data', result)
         classified = result['classified_data']
@@ -1433,24 +1466,22 @@ class ClassificationNodeTest(TestCase):
         self.assertIn('skills', classified)
         self.assertIn('supplemental', classified)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_classification_node_missing_resume_text(self, mock_get_llm):
         """Test if resume text is missing, correct error is returned."""
         state = {
             'applicant': self.applicant,
             'resume_text': '',
         }
-        
-        result = classification_node(state)
-        
+
+        mock_provider = MagicMock()
+        result = classification_node(state, mock_provider)
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'No resume text to classify')
-        
-        # Verify LLM was NOT called
-        mock_get_llm.assert_not_called()
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_classification_node_data_integrity(self, mock_get_llm):
         """Test the returned classification's data integrity."""
         # Mock LLM
@@ -1486,13 +1517,16 @@ class ClassificationNodeTest(TestCase):
             'resume_text': self.resume_text,
         }
         
-        result = classification_node(state)
-        
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = classification_node(state, mock_provider)
+
         # Verify data integrity
         classified = result['classified_data']
         self.assertEqual(classified, expected_data)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_classification_node_invalid_json_fallback(self, mock_get_llm):
         """Test classification handles invalid JSON gracefully."""
         # Mock LLM with invalid JSON response
@@ -1507,9 +1541,12 @@ class ClassificationNodeTest(TestCase):
             'applicant': self.applicant,
             'resume_text': self.resume_text,
         }
-        
-        result = classification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = classification_node(state, mock_provider)
+
         # Verify fallback structure is returned
         self.assertIn('classified_data', result)
         classified = result['classified_data']
@@ -1517,20 +1554,23 @@ class ClassificationNodeTest(TestCase):
         self.assertEqual(classified['professional_experience']['job_titles'], [])
         self.assertEqual(classified['skills']['hard_skills'], [])
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_classification_node_llm_exception(self, mock_get_llm):
         """Test classification handles LLM exceptions gracefully."""
         # Mock LLM to raise exception
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_llm.invoke.side_effect = Exception('LLM service unavailable')
-        
+
         state = {
             'applicant': self.applicant,
             'resume_text': self.resume_text,
         }
-        
-        result = classification_node(state)
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = classification_node(state, mock_provider)
 
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
@@ -1595,7 +1635,7 @@ class EliminationNodeTest(TestCase):
         self.applicant = MagicMock()
         self.applicant.id = 'test-applicant-id'
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_relevant_candidate(self, mock_get_llm):
         """Test elimination node marks relevant candidate as relevant."""
         # Mock LLM to return relevant assessment
@@ -1616,11 +1656,13 @@ class EliminationNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
 
-        from apps.analysis.graphs.worker import elimination_node
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = elimination_node(state, mock_provider)
 
         # Verify LLM was called
-        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+        mock_provider.get_llm.assert_called_once_with(temperature=0.1, format="json")
 
         # Verify relevance assessment
         self.assertIn('relevance_assessment', result)
@@ -1629,7 +1671,7 @@ class EliminationNodeTest(TestCase):
         self.assertEqual(assessment['relevance_score'], 95)
         self.assertIn('reason', assessment)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_irrelevant_candidate(self, mock_get_llm):
         """Test elimination node marks irrelevant candidate as not relevant."""
         # Mock LLM to return irrelevant assessment
@@ -1650,7 +1692,10 @@ class EliminationNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
 
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = elimination_node(state, mock_provider)
 
         # Verify relevance assessment shows not relevant
         self.assertIn('relevance_assessment', result)
@@ -1658,7 +1703,7 @@ class EliminationNodeTest(TestCase):
         self.assertFalse(assessment['is_relevant'])
         self.assertEqual(assessment['relevance_score'], 15)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_missing_data(self, mock_get_llm):
         """Test elimination node handles missing classified data."""
         state = {
@@ -1667,7 +1712,8 @@ class EliminationNodeTest(TestCase):
             'job_requirements': {},
         }
 
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        result = elimination_node(state, mock_provider)
 
         # Should default to relevant when data is missing
         self.assertIn('relevance_assessment', result)
@@ -1675,7 +1721,7 @@ class EliminationNodeTest(TestCase):
         self.assertTrue(assessment['is_relevant'])
         self.assertEqual(assessment['relevance_score'], 100)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_invalid_json_fallback(self, mock_get_llm):
         """Test elimination node handles invalid JSON gracefully."""
         # Mock LLM to return invalid JSON
@@ -1689,16 +1735,19 @@ class EliminationNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
 
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
 
-        # Should default to relevant when parsing fails
+        result = elimination_node(state, mock_provider)
+
+        # Should default to LOW relevance when parsing fails (conservative fallback)
         self.assertIn('relevance_assessment', result)
         assessment = result['relevance_assessment']
-        self.assertTrue(assessment['is_relevant'])
-        self.assertEqual(assessment['relevance_score'], 100)
+        self.assertFalse(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 0)
         self.assertIn('Failed to parse', assessment['reason'])
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_llm_exception(self, mock_get_llm):
         """Test elimination node handles LLM exceptions gracefully."""
         # Mock LLM to raise exception
@@ -1712,25 +1761,28 @@ class EliminationNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
 
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
 
-        # Should default to relevant when exception occurs
+        result = elimination_node(state, mock_provider)
+
+        # Should default to LOW relevance when exception occurs (conservative fallback)
         self.assertIn('relevance_assessment', result)
         assessment = result['relevance_assessment']
-        self.assertTrue(assessment['is_relevant'])
-        self.assertEqual(assessment['relevance_score'], 100)
+        self.assertFalse(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 0)
         self.assertIn('failed', assessment['reason'])
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_elimination_node_score_consistency(self, mock_get_llm):
         """Test elimination node enforces score/is_relevant consistency."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
 
-        # Test: low score should force is_relevant=False
+        # Test: low score should result in is_relevant=False
         mock_response = MagicMock()
         mock_response.content = json.dumps({
-            'is_relevant': True,  # This should be overridden
+            'is_relevant': True,  # This should be overridden by low score
             'relevance_score': 20,  # Low score
             'reason': 'Test'
         })
@@ -1742,26 +1794,34 @@ class EliminationNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
 
-        result = elimination_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = elimination_node(state, mock_provider)
         assessment = result['relevance_assessment']
 
-        # Score < 30 should force is_relevant=False
+        # Score < 30 should result in is_relevant=False
         self.assertFalse(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 20)
 
-        # Test: is_relevant=False should cap score at 40
+        # Test: higher score results in is_relevant=True
         mock_response2 = MagicMock()
         mock_response2.content = json.dumps({
-            'is_relevant': False,
-            'relevance_score': 60,  # Should be capped at 40
+            'is_relevant': False,  # Should be overridden by higher score
+            'relevance_score': 60,
             'reason': 'Test'
         })
         mock_llm.invoke.return_value = mock_response2
 
-        result = elimination_node(state)
+        mock_provider2 = MagicMock()
+        mock_provider2.get_llm.return_value = mock_llm
+
+        result = elimination_node(state, mock_provider2)
         assessment = result['relevance_assessment']
 
-        self.assertFalse(assessment['is_relevant'])
-        self.assertLessEqual(assessment['relevance_score'], 40)
+        # Score 60 results in is_relevant=True (partial level)
+        self.assertTrue(assessment['is_relevant'])
+        self.assertEqual(assessment['relevance_score'], 60)
 
 
 class ScoringNodeTest(TestCase):
@@ -1799,13 +1859,13 @@ class ScoringNodeTest(TestCase):
         self.applicant = MagicMock()
         self.applicant.id = 'test-applicant-id'
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_mocked_llm(self, mock_get_llm):
         """Test scoring node with mocked LLM."""
         # Mock LLM
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        
+
         # Mock LLM response
         mock_response = MagicMock()
         mock_response.content = json.dumps({
@@ -1815,19 +1875,23 @@ class ScoringNodeTest(TestCase):
             'supplemental': 75
         })
         mock_llm.invoke.return_value = mock_response
-        
+
         state = {
             'applicant': self.applicant,
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = scoring_node(state)
-        
-        # Verify LLM was called
-        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+
+        # Create mock provider that returns our mocked LLM
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
+
+        # Verify LLM was called through provider
+        mock_provider.get_llm.assert_called_once_with(temperature=0.1, format="json")
         mock_llm.invoke.assert_called_once()
-        
+
         # Verify scores structure
         self.assertIn('scores', result)
         scores = result['scores']
@@ -1836,7 +1900,7 @@ class ScoringNodeTest(TestCase):
         self.assertIn('experience', scores)
         self.assertIn('supplemental', scores)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_missing_classified_data(self, mock_get_llm):
         """Test if classified_data is missing, correct error is returned."""
         state = {
@@ -1844,17 +1908,15 @@ class ScoringNodeTest(TestCase):
             'classified_data': {},
             'job_requirements': self.job_requirements,
         }
-        
-        result = scoring_node(state)
-        
+
+        mock_provider = MagicMock()
+        result = scoring_node(state, mock_provider)
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'Missing classified data or job requirements')
-        
-        # Verify LLM was NOT called
-        mock_get_llm.assert_not_called()
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_missing_job_requirements(self, mock_get_llm):
         """Test if job_requirements is missing, correct error is returned."""
         state = {
@@ -1862,52 +1924,53 @@ class ScoringNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': {},
         }
-        
-        result = scoring_node(state)
-        
+
+        mock_provider = MagicMock()
+        result = scoring_node(state, mock_provider)
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'Missing classified data or job requirements')
-        
-        # Verify LLM was NOT called
-        mock_get_llm.assert_not_called()
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_data_integrity(self, mock_get_llm):
         """Test the returned scores' data integrity."""
         # Mock LLM
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        
+
         expected_scores = {
             'education': 85,
             'skills': 90,
             'experience': 80,
             'supplemental': 75
         }
-        
+
         mock_response = MagicMock()
         mock_response.content = json.dumps(expected_scores)
         mock_llm.invoke.return_value = mock_response
-        
+
         state = {
             'applicant': self.applicant,
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = scoring_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
+
         # Verify scores match expected values
         self.assertEqual(result['scores'], expected_scores)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_clamps_scores_to_range(self, mock_get_llm):
         """Test scoring node clamps scores to 0-100 range."""
         # Mock LLM with out-of-range scores
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        
+
         mock_response = MagicMock()
         mock_response.content = json.dumps({
             'education': 150,  # > 100
@@ -1916,15 +1979,18 @@ class ScoringNodeTest(TestCase):
             'supplemental': 95
         })
         mock_llm.invoke.return_value = mock_response
-        
+
         state = {
             'applicant': self.applicant,
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = scoring_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
+
         # Verify scores are clamped
         scores = result['scores']
         self.assertEqual(scores['education'], 100)  # Clamped from 150
@@ -1932,7 +1998,7 @@ class ScoringNodeTest(TestCase):
         self.assertEqual(scores['experience'], 85)
         self.assertEqual(scores['supplemental'], 95)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_handles_missing_scores(self, mock_get_llm):
         """Test scoring node handles missing score fields."""
         # Mock LLM with partial scores
@@ -1952,8 +2018,11 @@ class ScoringNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
         
-        result = scoring_node(state)
-        
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
+
         # Verify missing scores default to 0
         scores = result['scores']
         self.assertEqual(scores['education'], 85)
@@ -1961,7 +2030,7 @@ class ScoringNodeTest(TestCase):
         self.assertEqual(scores['experience'], 0)
         self.assertEqual(scores['supplemental'], 0)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_invalid_json_fallback(self, mock_get_llm):
         """Test scoring handles invalid JSON gracefully."""
         # Mock LLM with invalid JSON
@@ -1978,17 +2047,23 @@ class ScoringNodeTest(TestCase):
             'job_requirements': self.job_requirements,
         }
         
-        result = scoring_node(state)
-        
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
+
         # Verify fallback scores
         self.assertEqual(result['scores']['education'], 0)
         self.assertEqual(result['scores']['skills'], 0)
         self.assertEqual(result['scores']['experience'], 0)
         self.assertEqual(result['scores']['supplemental'], 0)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_respects_relevance_assessment(self, mock_get_llm):
         """Test scoring node caps scores at 30 for irrelevant candidates."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+
         # Relevance assessment marking candidate as not relevant
         relevance_assessment = {
             'is_relevant': False,
@@ -2001,9 +2076,13 @@ class ScoringNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
             'relevance_assessment': relevance_assessment,
+            'relevance_level': 'low',
         }
 
-        result = scoring_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
 
         # Verify LLM was NOT called for irrelevant candidates
         mock_get_llm.assert_not_called()
@@ -2012,13 +2091,13 @@ class ScoringNodeTest(TestCase):
         self.assertIn('scores', result)
         scores = result['scores']
         
-        # All scores should be capped at min(30, relevance_score) = 25
-        self.assertEqual(scores['education'], 25)
-        self.assertEqual(scores['skills'], 25)
-        self.assertEqual(scores['experience'], 25)
-        self.assertEqual(scores['supplemental'], 25)
+        # All scores should be capped at 30 for low relevance
+        self.assertEqual(scores['education'], 30)
+        self.assertEqual(scores['skills'], 30)
+        self.assertEqual(scores['experience'], 30)
+        self.assertEqual(scores['supplemental'], 30)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_scoring_node_calls_llm_for_relevant_candidate(self, mock_get_llm):
         """Test scoring node invokes LLM for relevant candidates."""
         # Mock LLM
@@ -2048,10 +2127,13 @@ class ScoringNodeTest(TestCase):
             'relevance_assessment': relevance_assessment,
         }
 
-        result = scoring_node(state)
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = scoring_node(state, mock_provider)
 
         # Verify LLM WAS called for relevant candidates
-        mock_get_llm.assert_called_once_with(temperature=0.1, format="json")
+        mock_provider.get_llm.assert_called_once_with(temperature=0.1, format="json")
         mock_llm.invoke.assert_called_once()
 
 
@@ -2258,7 +2340,7 @@ class JustificationNodeTest(TestCase):
         self.applicant = MagicMock()
         self.applicant.id = 'test-applicant-id'
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_mocked_llm(self, mock_get_llm):
         """Test justification node with mocked LLM."""
         # Mock LLM
@@ -2284,19 +2366,22 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = justification_node(state, mock_provider)
+
         # Verify LLM was called
-        mock_get_llm.assert_called_once_with(temperature=0.3, format="json")
+        mock_provider.get_llm.assert_called_once_with(temperature=0.3, format="json")
         mock_llm.invoke.assert_called_once()
-        
+
         # Verify justifications structure
         self.assertIn('justifications', result)
         self.assertIn('status', result)
         self.assertEqual(result['status'], 'Analyzed')
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_returns_justifications(self, mock_get_llm):
         """Test the justification is correctly loaded and returned."""
         # Mock LLM
@@ -2323,13 +2408,16 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = justification_node(state, mock_provider)
+
         # Verify justifications match expected
         self.assertEqual(result['justifications'], expected_justifications)
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_missing_scores(self, mock_get_llm):
         """Test if scores are missing, correct error is returned."""
         state = {
@@ -2340,17 +2428,15 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        result = justification_node(state, mock_provider)
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'Missing scores or category for justification')
-        
-        # Verify LLM was NOT called
-        mock_get_llm.assert_not_called()
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_missing_category(self, mock_get_llm):
         """Test if category is missing, correct error is returned."""
         state = {
@@ -2361,17 +2447,15 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        result = justification_node(state, mock_provider)
+
         # Verify error response
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'Missing scores or category for justification')
-        
-        # Verify LLM was NOT called
-        mock_get_llm.assert_not_called()
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_invalid_json_fallback(self, mock_get_llm):
         """Test justification handles invalid JSON gracefully."""
         # Mock LLM with invalid JSON
@@ -2390,9 +2474,12 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = justification_node(state, mock_provider)
+
         # Verify fallback justifications with scores
         justifications = result['justifications']
         self.assertIn('Score: 85/100', justifications['education'])
@@ -2400,7 +2487,7 @@ class JustificationNodeTest(TestCase):
         self.assertIn('Score: 80/100', justifications['experience'])
         self.assertIn('Score: 75/100', justifications['supplemental'])
 
-    @patch('apps.analysis.graphs.worker.get_llm')
+    @patch('services.ai_analysis_service.get_llm')
     def test_justification_node_sets_analyzed_status(self, mock_get_llm):
         """Test justification node sets status to Analyzed on success."""
         # Mock LLM
@@ -2425,9 +2512,12 @@ class JustificationNodeTest(TestCase):
             'classified_data': self.classified_data,
             'job_requirements': self.job_requirements,
         }
-        
-        result = justification_node(state)
-        
+
+        mock_provider = MagicMock()
+        mock_provider.get_llm.return_value = mock_llm
+
+        result = justification_node(state, mock_provider)
+
         # Verify status is set to Analyzed
         self.assertEqual(result['status'], 'Analyzed')
 

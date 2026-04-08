@@ -12,47 +12,33 @@ Graph Flow:
 6. Categorization: Calculate overall score and assign category
 7. Justification (LLM): Generate textual justifications
 8. Result: Return complete analysis result
+
+This version uses dependency injection via interfaces, making it portable
+across different deployment architectures (Django, remote service, etc.).
 """
 
 import json
 import logging
 import math
 from datetime import datetime
-from typing import TypedDict, Any, Dict, Literal, List
+from typing import Any, Dict, Literal, List
 from langgraph.graph import StateGraph, END
-from services.ai_analysis_service import get_llm, check_cancellation_flag
+from services.ai_analysis_graphs.interfaces import ICancellationChecker, ILLMProvider
+from services.ai_analysis_graphs.types import WorkerState
 
 logger = logging.getLogger(__name__)
 
 
-class WorkerState(TypedDict):
-    """State for the worker sub-graph."""
-    applicant: Any  # Applicant instance
-    job_listing: Any  # JobListing instance
-    job_id: str  # Job ID for cancellation check
-    resume_text: str
-    job_requirements: Dict[str, Any]  # Job requirements from retrieval_node
-    classified_data: Dict[str, Any]
-    relevance_assessment: Dict[str, Any]  # Relevance assessment from elimination_node
-    relevance_level: str  # Relevance level: 'high', 'partial', or 'low'
-    # Level assessment fields
-    employment_dates: List[Dict[str, str]]  # Extracted employment periods from classification
-    total_experience_years: float  # Calculated total professional experience in years
-    experience_gaps: List[str]  # Employment gaps > 6 months
-    level_assessment: Dict[str, Any]  # Level match assessment result
-    experience_level_match: str  # 'exceeds', 'meets', 'partial', 'insufficient'
-    scores: Dict[str, int]
-    overall_score: int
-    category: str
-    justifications: Dict[str, str]
-    status: str
-    error_message: str
-    cancelled: bool  # Flag to track if analysis was cancelled
-
-
-def create_worker_graph():
+def create_worker_graph(
+    cancellation_checker: ICancellationChecker,
+    llm_provider: ILLMProvider,
+):
     """
     Create and configure the worker sub-graph.
+
+    Args:
+        cancellation_checker: Service for checking cancellation flags
+        llm_provider: LLM provider for AI analysis
 
     Returns:
         Compiled StateGraph for processing single applicant
@@ -60,20 +46,20 @@ def create_worker_graph():
     # Create the state graph
     workflow = StateGraph(WorkerState)
 
-    # Add nodes
+    # Add nodes with injected dependencies
     workflow.add_node("retrieval", retrieval_node)
-    workflow.add_node("classification", classification_node)
-    workflow.add_node("level_assessment", level_assessment_node)
-    workflow.add_node("elimination", elimination_node)
-    workflow.add_node("scoring", scoring_node)
+    workflow.add_node("classification", lambda state: classification_node(state, llm_provider))
+    workflow.add_node("level_assessment", lambda state: level_assessment_node(state, llm_provider))
+    workflow.add_node("elimination", lambda state: elimination_node(state, llm_provider))
+    workflow.add_node("scoring", lambda state: scoring_node(state, llm_provider))
     workflow.add_node("categorization", categorization_node)
-    workflow.add_node("justification", justification_node)
+    workflow.add_node("justification", lambda state: justification_node(state, llm_provider))
     workflow.add_node("result", result_node)
 
     # Add conditional edges that check cancellation before each node
     workflow.add_conditional_edges(
         "retrieval",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "classification",
             "cancel": "result"
@@ -82,7 +68,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "classification",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "level_assessment",
             "cancel": "result"
@@ -91,7 +77,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "level_assessment",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "elimination",
             "cancel": "result"
@@ -100,7 +86,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "elimination",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "scoring",
             "cancel": "result"
@@ -109,7 +95,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "scoring",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "categorization",
             "cancel": "result"
@@ -118,7 +104,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "categorization",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "justification",
             "cancel": "result"
@@ -127,7 +113,7 @@ def create_worker_graph():
 
     workflow.add_conditional_edges(
         "justification",
-        check_cancellation_edge,
+        lambda state: check_cancellation_edge(state, cancellation_checker),
         {
             "continue": "result",
             "cancel": "result"
@@ -143,23 +129,39 @@ def create_worker_graph():
     return workflow.compile()
 
 
-def check_cancellation_edge(state: WorkerState) -> Literal["continue", "cancel"]:
+def check_cancellation_edge(state: WorkerState, cancellation_checker: ICancellationChecker) -> Literal["continue", "cancel"]:
     """
     Conditional edge: Check if analysis was cancelled.
 
     Args:
         state: Current worker state
+        cancellation_checker: Service to check cancellation flag
 
     Returns:
         "continue" if not cancelled, "cancel" if cancelled
     """
     job_id = state.get('job_id', '')
-    
-    if check_cancellation_flag(job_id):
+
+    if cancellation_checker.check_cancellation_flag(job_id):
         logger.info(f"Cancellation detected for job {job_id}")
         return "cancel"
-    
+
     return "continue"
+
+
+def _get_llm(llm_provider: ILLMProvider, temperature: float = 0.1, format: str = None):
+    """
+    Get LLM instance from the injected provider.
+
+    Args:
+        llm_provider: LLM provider interface (required)
+        temperature: LLM temperature
+        format: Response format
+
+    Returns:
+        LLM instance
+    """
+    return llm_provider.get_llm(temperature=temperature, format=format)
 
 
 def retrieval_node(state: WorkerState) -> dict:
@@ -222,7 +224,7 @@ def retrieval_node(state: WorkerState) -> dict:
     }
 
 
-def classification_node(state: WorkerState) -> dict:
+def classification_node(state: WorkerState, llm_provider: ILLMProvider) -> dict:
     """
     Classification Node: Structure resume data into categories.
 
@@ -234,6 +236,7 @@ def classification_node(state: WorkerState) -> dict:
 
     Args:
         state: Current worker state
+        llm_provider: LLM provider interface
 
     Returns:
         Updated state with classified data
@@ -253,7 +256,7 @@ def classification_node(state: WorkerState) -> dict:
         }
 
     try:
-        llm = get_llm(temperature=0.1, format="json")
+        llm = _get_llm(llm_provider, temperature=0.1, format="json")
         logger.info(f"[Classification] LLM initialized for applicant {applicant_id}")
 
         classification_prompt = f"""
@@ -701,20 +704,21 @@ def assess_experience_level(total_years: float, required_years: int) -> Dict[str
     }
 
 
-def level_assessment_node(state: WorkerState) -> dict:
+def level_assessment_node(state: WorkerState, llm_provider: ILLMProvider = None) -> dict:
     """
     Level Assessment Node: Extract employment dates and calculate experience duration.
-    
+
     This node uses LLM to extract precise employment start/end dates from the resume,
     then calculates total professional experience and compares it against job requirements.
-    
+
     The assessment affects downstream relevance and scoring:
     - Candidates with insufficient experience will have their relevance downgraded
     - Experience scores will be capped based on level match
-    
+
     Args:
         state: Current worker state with classified_data from classification_node
-        
+        llm_provider: LLM provider interface
+
     Returns:
         Updated state with:
         - employment_dates: Extracted employment periods
@@ -727,9 +731,9 @@ def level_assessment_node(state: WorkerState) -> dict:
     job_requirements = state.get('job_requirements', {})
     applicant = state.get('applicant')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
-    
+
     logger.info(f"[LevelAssessment] Starting for applicant {applicant_id}")
-    
+
     if not classified_data or not job_requirements:
         logger.warning(f"[LevelAssessment] Missing classified data or job requirements for applicant {applicant_id}")
         return {
@@ -745,9 +749,9 @@ def level_assessment_node(state: WorkerState) -> dict:
             },
             'experience_level_match': 'partial',
         }
-    
+
     try:
-        llm = get_llm(temperature=0.1, format="json")
+        llm = _get_llm(llm_provider, temperature=0.1, format="json")
         logger.info(f"[LevelAssessment] LLM initialized for applicant {applicant_id}")
 
         # Always use LLM to extract employment dates from resume text
@@ -875,7 +879,7 @@ Output ONLY valid JSON in this exact format:
         }
 
 
-def elimination_node(state: WorkerState) -> dict:
+def elimination_node(state: WorkerState, llm_provider: ILLMProvider = None) -> dict:
     """
     Elimination Node: Assess relevance of candidate profile to job requirements.
 
@@ -944,7 +948,7 @@ def elimination_node(state: WorkerState) -> dict:
         }
 
     try:
-        llm = get_llm(temperature=0.1, format="json")
+        llm = _get_llm(llm_provider, temperature=0.1, format="json")
         logger.info(f"[Elimination] LLM initialized for applicant {applicant_id}")
 
         # Extract key information for the prompt
@@ -1144,7 +1148,7 @@ Output ONLY valid JSON in this exact format:
         }
 
 
-def scoring_node(state: WorkerState) -> dict:
+def scoring_node(state: WorkerState, llm_provider: ILLMProvider = None) -> dict:
     """
     Scoring Node: Generate scores for each metric using LLM.
 
@@ -1227,7 +1231,7 @@ def scoring_node(state: WorkerState) -> dict:
         logger.info(f"[Scoring] Candidate has HIGH relevance and {experience_level_match} experience for applicant {applicant_id}. No score cap applied.")
 
     try:
-        llm = get_llm(temperature=0.1, format="json")
+        llm = _get_llm(llm_provider, temperature=0.1, format="json")
         logger.info(f"[Scoring] LLM initialized for applicant {applicant_id}")
 
         scoring_prompt = f"""
@@ -1393,7 +1397,7 @@ def categorization_node(state: WorkerState) -> dict:
         }
 
 
-def justification_node(state: WorkerState) -> dict:
+def justification_node(state: WorkerState, llm_provider: ILLMProvider = None) -> dict:
     """
     Justification Node: Generate textual justifications using LLM.
 
@@ -1444,7 +1448,7 @@ def justification_node(state: WorkerState) -> dict:
     required_experience = job_requirements.get('required_experience', 0)
 
     try:
-        llm = get_llm(temperature=0.3, format="json")
+        llm = _get_llm(llm_provider, temperature=0.3, format="json")
         logger.info(f"[Justification] LLM initialized for applicant {applicant_id}")
 
         # Build experience level context
@@ -1599,15 +1603,10 @@ def result_node(state: WorkerState) -> dict:
     applicant = state.get('applicant')
     job_listing = state.get('job_listing')
     applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
-    
-    # Check if analysis was cancelled
+
+    # Check if analysis was cancelled (set by edge functions)
     cancelled = state.get('cancelled', False)
-    job_id = state.get('job_id', '')
-    
-    # Also check cancellation flag in case it was set during processing
-    if check_cancellation_flag(job_id):
-        cancelled = True
-    
+
     if cancelled:
         logger.info(f"[Result] Analysis cancelled for applicant {applicant_id}")
         return {
