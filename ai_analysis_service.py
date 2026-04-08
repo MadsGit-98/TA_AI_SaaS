@@ -14,7 +14,7 @@ This service handles:
 import logging
 import math
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
 
