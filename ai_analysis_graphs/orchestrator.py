@@ -120,7 +120,7 @@ def run_analysis(
             'total_count': total_count,
             'cancelled': False,
             'current_index': 0,
-            'sent_milestones': set(),
+            'sent_milestones': [],  # Use list for JSON serialization; supervisor converts to set
             'owner_id': job_context.get('owner_id'),
         }
         
@@ -206,6 +206,8 @@ def run_analysis(
         try:
             user_id = job_context.get('created_by_id', 'unknown')
             progress = progress_tracker.get_progress(job_id)
+            if progress is None:
+                progress = {'processed': 0, 'total': 0}
             notification_service.notify_failed(
                 job_id, user_id,
                 'TASK_FAILURE',
