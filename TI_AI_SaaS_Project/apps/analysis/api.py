@@ -24,10 +24,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import SimpleRateThrottle
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ParseError
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.conf import settings
+from django.db import close_old_connections
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 from apps.applications.models import ApplicationAnswer, Applicant
@@ -39,8 +40,10 @@ from services.ai_analysis_service import (
     set_cancellation_flag,
     get_analysis_progress,
     check_cancellation_flag,
-    clear_cancellation_flag,
     update_analysis_progress,
+    persist_analysis_run_id,
+    resolve_job_from_analysis_run_id,
+    get_current_analysis_run_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +125,17 @@ def initiate_analysis(request, job_id):
     are applicants to analyze.
     """
     try:
+        # Validate content type - only accept JSON
+        content_type = request.content_type or ''
+        if 'application/json' not in content_type.lower():
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'UNSUPPORTED_MEDIA_TYPE',
+                    'message': 'Content-Type must be application/json'
+                }
+            }, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
         # Get job listing
         job = get_object_or_404(JobListing, id=job_id)
 
@@ -155,17 +169,27 @@ def initiate_analysis(request, job_id):
         # Set analysis_in_progress flag BEFORE dispatching
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
 
-        # Start analysis in background thread (replaces Celery task)
+        # Start analysis in background thread (non-daemon for observable failures)
         def run_analysis_thread():
-            """Background thread to run AI analysis."""
+            """Background thread to run AI analysis with guaranteed cleanup."""
             try:
                 orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
                 result = orchestrator.run()
                 logger.info(f"Analysis completed for job {job_id}: {result['status']}")
             except Exception as e:
                 logger.error(f"Analysis thread failed for job {job_id}: {e}", exc_info=True)
+            finally:
+                # Guarantee lock release even if thread crashes before orchestrator.run()
+                try:
+                    release_analysis_lock(str(job_id), owner_id)
+                    logger.info(f"Released analysis lock for job {job_id}")
+                except Exception as e:
+                    logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
+                finally:
+                    # Close DB connections to prevent connection leaks in background threads
+                    close_old_connections()
 
-        thread = threading.Thread(target=run_analysis_thread, daemon=True)
+        thread = threading.Thread(target=run_analysis_thread, daemon=False)
         thread.start()
 
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
@@ -173,6 +197,9 @@ def initiate_analysis(request, job_id):
 
         # Generate a unique ID for this analysis run (replaces Celery task_id)
         analysis_run_id = str(uuid.uuid4())
+
+        # Persist analysis_run_id in Redis for tracking/cancellation
+        persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600)
 
         return Response({
             'success': True,
@@ -223,6 +250,10 @@ def analysis_status(request, job_id):
     API endpoint to get analysis progress status.
 
     GET /api/jobs/{job_id}/analysis/status/
+    GET /api/jobs/{job_id}/analysis/status/?analysis_run_id=<run_id>
+
+    Query Parameters:
+    - analysis_run_id: Optional analysis run ID to track (resolved to job_id internally)
 
     Returns current progress including:
     - Status (not_started, pending, processing, completed, failed, cancelled)
@@ -230,15 +261,33 @@ def analysis_status(request, job_id):
     - Processed count
     - Total count
     - Started/completed timestamps
+    - analysis_run_id: The current analysis run ID for tracking
 
     Note: Checks database first for completed analyses to avoid stale Redis data.
-    
+
     DEPRECATED: This endpoint is deprecated in favor of WebSocket-based real-time updates.
     The endpoint remains available for backward compatibility and fallback polling scenarios.
     New implementations should use the WebSocket endpoint at /ws/analysis-notifications/
     """
     try:
-        job = get_object_or_404(JobListing, id=job_id)
+        # Optionally resolve job_id from analysis_run_id if provided
+        analysis_run_id_param = request.query_params.get('analysis_run_id')
+        if analysis_run_id_param:
+            resolved_job_id = resolve_job_from_analysis_run_id(analysis_run_id_param)
+            if resolved_job_id:
+                # Use the resolved job_id but keep original for authorization check
+                job = get_object_or_404(JobListing, id=resolved_job_id)
+                job_id = resolved_job_id
+            else:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_ANALYSIS_RUN_ID',
+                        'message': 'Invalid or expired analysis_run_id'
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            job = get_object_or_404(JobListing, id=job_id)
 
         # Authorization check: only owner or staff can view analysis status
         if job.created_by != request.user and not request.user.is_staff:
@@ -257,10 +306,14 @@ def analysis_status(request, job_id):
             analyzed_count = results.filter(status='Analyzed').count()
             unprocessed_count = results.filter(status='Unprocessed').count()
 
+            # Get current analysis_run_id if available
+            current_run_id = get_current_analysis_run_id(str(job_id))
+
             return Response({
                 'success': True,
                 'data': {
                     'job_id': str(job_id),
+                    'analysis_run_id': current_run_id,
                     'status': 'completed',
                     'progress_percentage': 100,
                     'processed_count': db_result_count,
@@ -286,12 +339,16 @@ def analysis_status(request, job_id):
             # Cancellation was requested - return cancelled status
             # DO NOT clear the flag here - the Celery task needs it to detect cancellation
             # The flag will be cleared by the task when it finishes
-            
+
+            # Get current analysis_run_id if available
+            current_run_id = get_current_analysis_run_id(str(job_id))
+
             progress_percentage = int((processed_count / total_count) * 100) if (processed_count > 0 and total_count > 0) else 0
             return Response({
                 'success': True,
                 'data': {
                     'job_id': str(job_id),
+                    'analysis_run_id': current_run_id,
                     'status': 'cancelled',
                     'progress_percentage': progress_percentage,
                     'processed_count': processed_count,
@@ -331,10 +388,14 @@ def analysis_status(request, job_id):
                 'mismatched_count': results.filter(category='Mismatched').count(),
             }
 
+        # Get current analysis_run_id if available
+        current_run_id = get_current_analysis_run_id(str(job_id))
+
         return Response({
             'success': True,
             'data': {
                 'job_id': str(job_id),
+                'analysis_run_id': current_run_id,
                 'status': status_text,
                 'progress_percentage': progress_percentage,
                 'processed_count': processed_count,
@@ -559,6 +620,15 @@ def analysis_results(request, job_id):
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        if page < 1:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_PARAMETER',
+                    'message': 'page must be a positive integer (>= 1)'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             page_size = int(page_size_param)
         except ValueError:
@@ -674,11 +744,32 @@ def cancel_analysis(request, job_id):
     API endpoint to cancel a running analysis.
 
     POST /api/jobs/{job_id}/analysis/cancel/
+    POST /api/jobs/{job_id}/analysis/cancel/?analysis_run_id=<run_id>
+
+    Query Parameters:
+    - analysis_run_id: Optional analysis run ID to cancel (resolved to job_id internally)
 
     Preserves results for already-processed applicants.
     """
     try:
-        job = get_object_or_404(JobListing, id=job_id)
+        # Optionally resolve job_id from analysis_run_id if provided
+        analysis_run_id_param = request.query_params.get('analysis_run_id')
+        if analysis_run_id_param:
+            resolved_job_id = resolve_job_from_analysis_run_id(analysis_run_id_param)
+            if resolved_job_id:
+                # Use the resolved job_id for the operation
+                job = get_object_or_404(JobListing, id=resolved_job_id)
+                job_id = resolved_job_id
+            else:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_ANALYSIS_RUN_ID',
+                        'message': 'Invalid or expired analysis_run_id'
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            job = get_object_or_404(JobListing, id=job_id)
 
         # Authorization check: only owner or staff can cancel analysis
         if job.created_by != request.user and not request.user.is_staff:
@@ -749,8 +840,9 @@ def rerun_analysis(request, job_id):
     Requires confirmation to prevent accidental data loss.
     """
     try:
-        # Check confirmation
-        confirm = request.data.get('confirm', False)
+        # Check confirmation - handle None body gracefully
+        request_body = request.data if request.data is not None else {}
+        confirm = request_body.get('confirm', False)
 
         if not confirm:
             return Response({
@@ -770,7 +862,7 @@ def rerun_analysis(request, job_id):
         # Get applicant count
         applicant_count = job.applicants.count()
 
-        # Try to acquire lock BEFORE deleting any data
+        # Try to acquire lock BEFORE starting analysis
         owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
         if not owner_id:
             return Response({
@@ -781,31 +873,50 @@ def rerun_analysis(request, job_id):
                 }
             }, status=status.HTTP_409_CONFLICT)
 
-        # Delete previous results BEFORE starting new analysis
-        previous_count = AIAnalysisResult.objects.filter(job_listing=job).count()
-        AIAnalysisResult.objects.filter(job_listing=job).delete()
-
         # Set analysis_in_progress flag
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
 
-        # Initialize Redis progress tracking
-        update_analysis_progress(str(job_id), 0, applicant_count)
+        # Count previous results for response (actual deletion happens in thread)
+        previous_results_count = AIAnalysisResult.objects.filter(job_listing=job).count()
 
-        # Start analysis in background thread
+        # Start analysis in background thread (non-daemon for observable failures)
         def run_analysis_thread():
-            """Background thread to run AI analysis."""
+            """Background thread to run AI analysis with guaranteed cleanup."""
             try:
+                # Defer deletion until orchestrator confirms new analysis has started
+                # Delete previous results AFTER lock is acquired and analysis_in_progress is set
+                AIAnalysisResult.objects.filter(job_listing=job).delete()
+                logger.info(f"Deleted {previous_results_count} previous analysis results for job {job_id}")
+
+                # Initialize Redis progress tracking AFTER deletion
+                update_analysis_progress(str(job_id), 0, applicant_count)
+
+                # Run orchestrator with guaranteed cleanup
                 orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
                 result = orchestrator.run()
                 logger.info(f"Re-run analysis completed for job {job_id}: {result['status']}")
             except Exception as e:
                 logger.error(f"Re-run analysis thread failed for job {job_id}: {e}", exc_info=True)
+            finally:
+                # Guarantee lock release even if thread crashes before orchestrator.run()
+                try:
+                    release_analysis_lock(str(job_id), owner_id)
+                    logger.info(f"Released analysis lock for job {job_id}")
+                except Exception as e:
+                    logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
+                finally:
+                    # Close DB connections to prevent connection leaks in background threads
+                    close_old_connections()
 
-        thread = threading.Thread(target=run_analysis_thread, daemon=True)
+        # Use non-daemon thread so failures can be observed and cleanup runs
+        thread = threading.Thread(target=run_analysis_thread, daemon=False)
         thread.start()
 
         # Generate a unique ID for this analysis run (replaces task_id)
         analysis_run_id = str(uuid.uuid4())
+
+        # Persist analysis_run_id in Redis for tracking/cancellation
+        persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600)
 
         return Response({
             'success': True,
@@ -813,9 +924,9 @@ def rerun_analysis(request, job_id):
                 'task_id': analysis_run_id,
                 'status': 'started',
                 'job_id': str(job_id),
-                'previous_results_deleted': previous_count,
+                'previous_results_deleted': previous_results_count,
                 'applicant_count': applicant_count,
-                'message': f'Previous analysis results deleted. New analysis started for {applicant_count} applicants.'
+                'message': f'Previous analysis will be deleted. New analysis started for {applicant_count} applicants.'
             }
         }, status=status.HTTP_202_ACCEPTED)
 
@@ -836,6 +947,15 @@ def rerun_analysis(request, job_id):
                 'message': str(e)
             }
         }, status=status.HTTP_403_FORBIDDEN)
+
+    except ParseError as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INVALID_JSON',
+                'message': f'Request body must be valid JSON: {str(e)}'
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
         logger.error(f"Error re-running analysis for job {job_id}: {e}", exc_info=True)

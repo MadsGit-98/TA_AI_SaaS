@@ -96,12 +96,10 @@ class DjangoAnalysisOrchestratorTest(TestCase):
         orchestrator = DjangoAnalysisOrchestrator('non-existent-id', self.owner_id)
         result = orchestrator.run()
 
-        # Should return failure (may be UUID validation error or DoesNotExist)
+        # Should return failure status with generic error message
         self.assertEqual(result['status'], 'failed')
-        # Error message should indicate the problem
-        error_msg = result.get('error', '').lower()
-        has_relevant_error = 'not found' in error_msg or 'uuid' in error_msg or 'valid' in error_msg
-        self.assertTrue(has_relevant_error, f"Expected error to mention 'not found' or 'uuid', got: {result.get('error')}")
+        # Error message should be generic to not expose internal details
+        self.assertEqual(result['error'], 'An internal error occurred while processing the analysis')
 
     def test_clears_analysis_in_progress_flag_on_success(self):
         """Test that analysis_in_progress flag is cleared on success."""

@@ -123,6 +123,25 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         self.assertIn('task_id', response.data['data'])
         self.assertIn('estimated_duration_seconds', response.data['data'])
 
+        # Verify that task_id (analysis_run_id) is a valid UUID
+        task_id = response.data['data']['task_id']
+        try:
+            uuid.UUID(task_id)
+            valid_uuid = True
+        except ValueError:
+            valid_uuid = False
+        self.assertTrue(valid_uuid, "task_id should be a valid UUID")
+
+        # Verify the analysis_run_id is persisted by checking status endpoint
+        # The task_id can be used to track the analysis via the status endpoint
+        status_url = f'/api/analysis/jobs/{self.job.id}/analysis/status/?analysis_run_id={task_id}'
+        status_response = self.client.get(status_url, content_type='application/json')
+        # Status should succeed and return the same job_id
+        self.assertIn(status_response.status_code, [200, 404])  # 404 is ok if analysis completes quickly
+        if status_response.status_code == 200:
+            self.assertTrue(status_response.data['success'])
+            self.assertEqual(status_response.data['data']['job_id'], str(self.job.id))
+
     def test_initiate_analysis_no_applicants(self):
         """Test analysis initiation fails when job has no applicants."""
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'

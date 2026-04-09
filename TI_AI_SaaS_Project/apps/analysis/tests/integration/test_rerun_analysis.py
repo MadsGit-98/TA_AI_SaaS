@@ -273,6 +273,18 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
 
     def test_rerun_analysis_multiple_times(self):
         """Test that multiple re-run requests are handled."""
+        # Create an applicant so analysis actually runs and holds the lock
+        applicant = Applicant.objects.create(
+            job_listing=self.job,
+            first_name='Applicant1',
+            last_name='Test1',
+            email='app1@example.com',
+            phone='+1-555-001',
+            resume_file='test1.pdf',
+            resume_file_hash='hash1',
+            resume_parsed_text='Test resume text for multiple rerun test'
+        )
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
 
         # First re-run
