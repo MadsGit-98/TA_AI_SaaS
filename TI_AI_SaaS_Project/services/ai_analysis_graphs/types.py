@@ -58,11 +58,11 @@ class WorkerState(TypedDict, total=False):
 class AnalysisResultDTO(TypedDict, total=False):
     """
     Data Transfer Object for analysis results.
-    
+
     Used to pass results between graphs and persistence layer.
     """
-    applicant: Any
-    job_listing: Any
+    applicant_id: str
+    job_listing_id: str
     education_score: int
     skills_score: int
     experience_score: int

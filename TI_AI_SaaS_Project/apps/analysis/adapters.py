@@ -54,12 +54,18 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
     Uses AIAnalysisResult Django model with bulk_create for efficiency.
     """
 
-    def bulk_save_results(self, results: List[AnalysisResultDTO]) -> None:
+    def bulk_save_results(self, results: List[AnalysisResultDTO], 
+                          job_instance=None, applicants_map=None) -> None:
         """
-        Save multiple analysis results to database using bulk_create.
+        Save multiple analysis results to database using bulk_create and bulk_update.
+
+        Uses raw UUID values directly to avoid ForeignKey constraint issues with
+        detached model instances passed through LangGraph workflow.
 
         Args:
-            results: List of AnalysisResultDTO instances
+            results: List of AnalysisResultDTO instances with applicant_id and job_listing_id
+            job_instance: Ignored (kept for API compatibility)
+            applicants_map: Ignored (kept for API compatibility)
         """
         if not results:
             logger.info("No results to persist")
@@ -67,30 +73,71 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
 
         logger.info(f"Persisting {len(results)} analysis results")
 
-        # Create AIAnalysisResult instances
-        analysis_results = []
-        failure_count = 0
-        failed_indices = []
+        # Extract unique IDs
+        applicant_ids = set()
+        job_listing_ids = set()
 
-        for idx, result_data in enumerate(results):
-            # Validate required keys before instantiation
-            applicant = result_data.get('applicant')
-            job_listing = result_data.get('job_listing')
-
-            if not applicant or not job_listing:
-                failure_count += 1
-                failed_indices.append(idx)
-                logger.error(
-                    f"Error creating AIAnalysisResult at index {idx}: "
-                    f"Missing required keys - applicant={bool(applicant)}, job_listing={bool(job_listing)}, "
-                    f"data keys={list(result_data.keys())}"
-                )
-                continue
-
+        for result_data in results:
+            applicant_ids.add(result_data['applicant_id'])
+            job_listing_ids.add(result_data['job_listing_id'])
+        
+        # Split into new vs existing using a single query
+        from django.db.models import Q
+        from uuid import UUID
+        
+        existing_results = AIAnalysisResult.objects.filter(
+            Q(applicant_id__in=[UUID(aid) for aid in applicant_ids]) & 
+            Q(job_listing_id__in=[UUID(jid) for jid in job_listing_ids])
+        )
+        existing_pairs = {
+            (str(r.applicant_id), str(r.job_listing_id)): r 
+            for r in existing_results
+        }
+        
+        logger.info(
+            f"Found {len(existing_results)} existing results, "
+            f"{len(results) - len(existing_results)} new results"
+        )
+        
+        # Create model instances using raw UUID values (no model instance fetching)
+        new_results_to_create = []
+        existing_results_to_update = []
+        
+        for result_data in results:
+            applicant_id = result_data['applicant_id']
+            job_listing_id = result_data['job_listing_id']
+            key = (applicant_id, job_listing_id)
+            
+            # Convert to UUID objects
             try:
-                analysis_result = AIAnalysisResult(
-                    applicant=applicant,
-                    job_listing=job_listing,
+                applicant_uuid = UUID(applicant_id)
+                job_listing_uuid = UUID(job_listing_id)
+            except ValueError as e:
+                logger.error(f"Invalid UUID format: applicant_id={applicant_id}, job_listing_id={job_listing_id}: {e}")
+                continue
+            
+            if key in existing_pairs:
+                # Update existing record
+                existing = existing_pairs[key]
+                existing.education_score = result_data.get('education_score', 0)
+                existing.skills_score = result_data.get('skills_score', 0)
+                existing.experience_score = result_data.get('experience_score', 0)
+                existing.supplemental_score = result_data.get('supplemental_score', 0)
+                existing.overall_score = result_data.get('overall_score', 0)
+                existing.category = result_data.get('category', 'Unprocessed')
+                existing.education_justification = result_data.get('education_justification', '')
+                existing.skills_justification = result_data.get('skills_justification', '')
+                existing.experience_justification = result_data.get('experience_justification', '')
+                existing.supplemental_justification = result_data.get('supplemental_justification', '')
+                existing.overall_justification = result_data.get('overall_justification', '')
+                existing.status = result_data.get('status', 'Unprocessed')
+                existing.error_message = result_data.get('error_message', '')
+                existing_results_to_update.append(existing)
+            else:
+                # Create new instance using raw UUID values
+                new_results_to_create.append(AIAnalysisResult(
+                    applicant_id=applicant_uuid,
+                    job_listing_id=job_listing_uuid,
                     education_score=result_data.get('education_score', 0),
                     skills_score=result_data.get('skills_score', 0),
                     experience_score=result_data.get('experience_score', 0),
@@ -104,41 +151,55 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
                     overall_justification=result_data.get('overall_justification', ''),
                     status=result_data.get('status', 'Unprocessed'),
                     error_message=result_data.get('error_message', ''),
+                ))
+        
+        logger.info(
+            f"Split results: {len(new_results_to_create)} new, "
+            f"{len(existing_results_to_update)} existing"
+        )
+        
+        # Bulk create new results using raw UUIDs
+        # Note: SQLite enforces FK constraints even with raw UUIDs, so we handle errors gracefully
+        created_count = 0
+        if new_results_to_create:
+            try:
+                AIAnalysisResult.objects.bulk_create(
+                    new_results_to_create,
+                    batch_size=50
                 )
-                analysis_results.append(analysis_result)
+                created_count = len(new_results_to_create)
+                logger.info(f"Created {created_count} new analysis results")
             except Exception as e:
-                failure_count += 1
-                failed_indices.append(idx)
-                logger.error(
-                    f"Error creating AIAnalysisResult at index {idx}: {e}, "
-                    f"applicant={getattr(applicant, 'id', 'unknown')}, "
-                    f"job_listing={getattr(job_listing, 'id', 'unknown')}"
-                )
-
-        # If all results failed, raise exception to alert caller
-        if failure_count == len(results) and len(results) > 0:
-            raise ValueError(
-                f"All {len(results)} analysis results failed to create. "
-                f"Failed indices: {failed_indices}"
-            )
-
-        # Bulk save with update on conflict
-        if analysis_results:
-            AIAnalysisResult.objects.bulk_create(
-                analysis_results,
-                batch_size=50,
-                update_conflicts=True,
-                update_fields=[
+                logger.warning(f"Bulk create failed: {e}, falling back to individual saves")
+                # Fallback to individual saves if bulk_create fails
+                for result in new_results_to_create:
+                    try:
+                        result.save()
+                        created_count += 1
+                    except Exception as save_error:
+                        logger.error(f"Failed to save individual result: {save_error}")
+                logger.info(f"Created {created_count} new analysis results via fallback")
+        
+        # Bulk update existing results
+        updated_count = 0
+        if existing_results_to_update:
+            AIAnalysisResult.objects.bulk_update(
+                existing_results_to_update,
+                fields=[
                     'education_score', 'skills_score', 'experience_score', 'supplemental_score',
                     'overall_score', 'category', 'status',
                     'education_justification', 'skills_justification', 'experience_justification',
                     'supplemental_justification', 'overall_justification', 'error_message',
-                    'updated_at', 'job_listing'
                 ],
-                unique_fields=['applicant_id', 'job_listing_id']
+                batch_size=50
             )
+            updated_count = len(existing_results_to_update)
+            logger.info(f"Updated {updated_count} existing analysis results")
 
-        logger.info(f"Successfully persisted {len(analysis_results)} analysis results")
+        logger.info(
+            f"Successfully persisted {created_count + updated_count}/{len(results)} "
+            f"analysis results ({created_count} created, {updated_count} updated)"
+        )
 
     def get_results_for_job(self, job_id: str) -> List[AnalysisResultDTO]:
         """

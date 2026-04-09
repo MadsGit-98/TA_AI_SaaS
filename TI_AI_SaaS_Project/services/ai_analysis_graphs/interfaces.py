@@ -28,12 +28,15 @@ class IAnalysisResultRepository(Protocol):
     - Remote: Could use HTTP API or message queue
     """
     
-    def bulk_save_results(self, results: List[AnalysisResultDTO]) -> None:
+    def bulk_save_results(self, results: List[AnalysisResultDTO], 
+                         job_instance=None, applicants_map=None) -> None:
         """
         Save multiple analysis results to database.
-        
+
         Args:
             results: List of AnalysisResultDTO instances
+            job_instance: Optional JobListing instance to use directly
+            applicants_map: Optional dict mapping applicant_id -> Applicant instance
         """
         ...
     

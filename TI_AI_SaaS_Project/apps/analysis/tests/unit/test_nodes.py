@@ -262,8 +262,8 @@ class BulkPersistNodeTest(TestCase):
 
         for applicant in applicants:
             results.append({
-                'applicant': applicant,
-                'job_listing': self.job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(self.job.id),
                 'education_score': 85,
                 'skills_score': 90,
                 'experience_score': 80,
@@ -349,8 +349,8 @@ class BulkPersistNodeTest(TestCase):
         # Create results with varying statuses to test reduction
         for i, applicant in enumerate(applicants):
             results.append({
-                'applicant': applicant,
-                'job_listing': self.job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(self.job.id),
                 'education_score': 80 + i,
                 'skills_score': 85 + i,
                 'experience_score': 90 + i,
@@ -413,8 +413,8 @@ class BulkPersistNodeTest(TestCase):
         for i, applicant in enumerate(applicants):
             if i < 3:
                 results.append({
-                    'applicant': applicant,
-                    'job_listing': self.job,
+                    'applicant_id': str(applicant.id),
+                    'job_listing_id': str(self.job.id),
                     'education_score': 85,
                     'skills_score': 90,
                     'experience_score': 80,
@@ -430,8 +430,8 @@ class BulkPersistNodeTest(TestCase):
                 })
             else:
                 results.append({
-                    'applicant': applicant,
-                    'job_listing': self.job,
+                    'applicant_id': str(applicant.id),
+                    'job_listing_id': str(self.job.id),
                     'status': 'Unprocessed',
                     'error_message': 'Analysis failed due to timeout',
                 })
@@ -579,8 +579,8 @@ class ProcessSingleApplicantTest(TestCase):
         result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
 
         # Verify result structure and values
-        self.assertEqual(result['applicant'], self.applicant)
-        self.assertEqual(result['job_listing'], self.job)
+        self.assertEqual(result['applicant_id'], str(self.applicant.id))
+        self.assertEqual(result['job_listing_id'], str(self.job.id))
         self.assertEqual(result['education_score'], 85)
         self.assertEqual(result['skills_score'], 90)
         self.assertEqual(result['experience_score'], 80)
@@ -626,15 +626,8 @@ class ProcessSingleApplicantTest(TestCase):
         result = process_single_applicant(mock_worker_graph, self.applicant, self.job, self.job_id, mock_cancellation_checker)
 
         # Verify the result is for a single specific applicant
-        self.assertEqual(result['applicant'], self.applicant)
-        self.assertEqual(result['applicant'].id, self.applicant.id)
-        self.assertEqual(result['applicant'].email, self.applicant.email)
-        self.assertEqual(result['applicant'].first_name, 'Test')
-        self.assertEqual(result['applicant'].last_name, 'Applicant')
-
-        # Verify it's associated with the correct job
-        self.assertEqual(result['job_listing'], self.job)
-        self.assertEqual(result['job_listing'].id, self.job.id)
+        self.assertEqual(result['applicant_id'], str(self.applicant.id))
+        self.assertEqual(result['job_listing_id'], str(self.job.id))
 
     def test_process_single_applicant_cancelled_returns_unprocessed(self):
         """Test that cancellation returns Unprocessed status."""
@@ -651,8 +644,8 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['category'], 'Unprocessed')
         self.assertEqual(result['error_message'], 'Analysis cancelled')
-        self.assertEqual(result['applicant'], self.applicant)
-        self.assertEqual(result['job_listing'], self.job)
+        self.assertEqual(result['applicant_id'], str(self.applicant.id))
+        self.assertEqual(result['job_listing_id'], str(self.job.id))
 
     def test_process_single_applicant_exception_handling(self):
         """Test that exceptions during processing are handled correctly."""
@@ -670,8 +663,8 @@ class ProcessSingleApplicantTest(TestCase):
         self.assertEqual(result['status'], 'Unprocessed')
         self.assertEqual(result['category'], 'Unprocessed')
         self.assertIn('Worker graph failed', result['error_message'])
-        self.assertEqual(result['applicant'], self.applicant)
-        self.assertEqual(result['job_listing'], self.job)
+        self.assertEqual(result['applicant_id'], str(self.applicant.id))
+        self.assertEqual(result['job_listing_id'], str(self.job.id))
 
     def test_process_single_applicant_missing_scores_defaults_to_zero(self):
         """Test that missing scores default to zero."""
