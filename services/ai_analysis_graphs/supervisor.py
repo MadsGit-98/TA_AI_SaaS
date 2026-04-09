@@ -187,7 +187,9 @@ def map_workers_node(
     new_results = []
 
     # Get sent_milestones from state (persists across batch cycles to avoid duplicate notifications)
-    sent_milestones = state.get('sent_milestones', set())
+    # Coerce to set since JSON serialization may have converted it to a list
+    raw_milestones = state.get('sent_milestones', [])
+    sent_milestones = set(raw_milestones) if isinstance(raw_milestones, (list, tuple, set)) else set()
 
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
@@ -212,12 +214,16 @@ def map_workers_node(
             # Check cancellation during batch processing
             if cancellation_checker.check_cancellation_flag(job_id):
                 logger.info(f"Analysis cancelled for job {job_id} during batch processing")
+                # Cancel pending futures and avoid blocking on exit
+                for fut in future_to_applicant:
+                    fut.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
                 return {
                     'results': results + new_results,
                     'processed_count': processed_count,
                     'current_index': current_index,
                     'cancelled': True,
-                    'sent_milestones': sent_milestones,
+                    'sent_milestones': list(sent_milestones),
                 }
 
             try:
@@ -227,12 +233,16 @@ def map_workers_node(
                 # Check if this applicant was cancelled
                 if result.get('cancelled', False):
                     logger.info(f"Applicant {applicant.id} processing cancelled")
+                    # Cancel pending futures and avoid blocking on exit
+                    for fut in future_to_applicant:
+                        fut.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
                     return {
                         'results': results + new_results + [result],
                         'processed_count': processed_count + 1,
                         'current_index': current_index,
                         'cancelled': True,
-                        'sent_milestones': sent_milestones,
+                        'sent_milestones': list(sent_milestones),
                     }
 
                 new_results.append(result)
@@ -282,7 +292,7 @@ def map_workers_node(
         'results': results + new_results,
         'processed_count': processed_count,
         'current_index': new_index,
-        'sent_milestones': sent_milestones,  # Persist milestones across batch cycles
+        'sent_milestones': list(sent_milestones),  # Serialize as list for JSON compatibility
     }
 
 
@@ -321,8 +331,8 @@ def process_single_applicant(
                 'error_message': 'Analysis cancelled',
             }
 
-        # Check if resume text is available
-        resume_text = applicant.resume_parsed_text or ''
+        # Check if resume text is available (use getattr for safe attribute access)
+        resume_text = getattr(applicant, "resume_parsed_text", "") or ''
         if not resume_text:
             logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
             return {

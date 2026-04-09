@@ -69,12 +69,28 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
 
         # Create AIAnalysisResult instances
         analysis_results = []
+        failure_count = 0
+        failed_indices = []
 
-        for result_data in results:
+        for idx, result_data in enumerate(results):
+            # Validate required keys before instantiation
+            applicant = result_data.get('applicant')
+            job_listing = result_data.get('job_listing')
+
+            if not applicant or not job_listing:
+                failure_count += 1
+                failed_indices.append(idx)
+                logger.error(
+                    f"Error creating AIAnalysisResult at index {idx}: "
+                    f"Missing required keys - applicant={bool(applicant)}, job_listing={bool(job_listing)}, "
+                    f"data keys={list(result_data.keys())}"
+                )
+                continue
+
             try:
                 analysis_result = AIAnalysisResult(
-                    applicant=result_data['applicant'],
-                    job_listing=result_data['job_listing'],
+                    applicant=applicant,
+                    job_listing=job_listing,
                     education_score=result_data.get('education_score', 0),
                     skills_score=result_data.get('skills_score', 0),
                     experience_score=result_data.get('experience_score', 0),
@@ -91,7 +107,20 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
                 )
                 analysis_results.append(analysis_result)
             except Exception as e:
-                logger.error(f"Error creating AIAnalysisResult: {e}")
+                failure_count += 1
+                failed_indices.append(idx)
+                logger.error(
+                    f"Error creating AIAnalysisResult at index {idx}: {e}, "
+                    f"applicant={getattr(applicant, 'id', 'unknown')}, "
+                    f"job_listing={getattr(job_listing, 'id', 'unknown')}"
+                )
+
+        # If all results failed, raise exception to alert caller
+        if failure_count == len(results) and len(results) > 0:
+            raise ValueError(
+                f"All {len(results)} analysis results failed to create. "
+                f"Failed indices: {failed_indices}"
+            )
 
         # Bulk save with update on conflict
         if analysis_results:
@@ -119,10 +148,29 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
             job_id: Job listing UUID
 
         Returns:
-            List of AnalysisResultDTO instances
+            List of AnalysisResultDTO instances (dicts)
         """
         results = AIAnalysisResult.objects.filter(job_listing_id=UUID(job_id))
-        return list(results)
+        return [
+            {
+                'applicant': result.applicant,
+                'job_listing': result.job_listing,
+                'education_score': result.education_score,
+                'skills_score': result.skills_score,
+                'experience_score': result.experience_score,
+                'supplemental_score': result.supplemental_score,
+                'overall_score': result.overall_score,
+                'category': result.category,
+                'education_justification': result.education_justification or '',
+                'skills_justification': result.skills_justification or '',
+                'experience_justification': result.experience_justification or '',
+                'supplemental_justification': result.supplemental_justification or '',
+                'overall_justification': result.overall_justification or '',
+                'status': result.status,
+                'error_message': result.error_message or '',
+            }
+            for result in results
+        ]
 
 
 class DjangoNotificationService(INotificationService):

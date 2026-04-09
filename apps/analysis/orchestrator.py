@@ -148,9 +148,10 @@ class DjangoAnalysisOrchestrator:
             }
         except Exception as e:
             # Handle all other errors (including database errors)
-            logger.error(f"Analysis orchestrator failed for job {self.job_id}: {str(e)}", exc_info=True)
+            # Log full details internally for debugging
+            logger.error(f"Analysis orchestrator failed for job {self.job_id}", exc_info=True)
 
-            # Send failure notification
+            # Send failure notification with generic user-facing message
             try:
                 if job:
                     user_id = str(job.created_by_id)
@@ -163,7 +164,7 @@ class DjangoAnalysisOrchestrator:
                 notification_service.notify_failed(
                     self.job_id, user_id,
                     'TASK_FAILURE',
-                    f'Analysis task failed: {str(e)}',
+                    'An internal error occurred while processing the analysis',
                     progress.get('processed', 0),
                     progress.get('total', 0)
                 )
@@ -173,7 +174,7 @@ class DjangoAnalysisOrchestrator:
             return {
                 'job_id': self.job_id,
                 'status': 'failed',
-                'error': str(e),
+                'error': 'An internal error occurred while processing the analysis',
             }
         finally:
             # ALWAYS clear the analysis_in_progress flag, even on failure
