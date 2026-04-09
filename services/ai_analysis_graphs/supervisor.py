@@ -276,8 +276,8 @@ def map_workers_node(
                 # Handle worker failure - mark as Unprocessed
                 logger.warning(f"Worker failed for applicant {applicant.id}: {e}", exc_info=True)
                 new_results.append({
-                    'applicant': applicant,
-                    'job_listing': job,
+                    'applicant_id': str(applicant.id),
+                    'job_listing_id': str(job.id),
                     'status': 'Unprocessed',
                     'category': 'Unprocessed',
                     'error_message': str(e)[:500],
@@ -324,8 +324,8 @@ def process_single_applicant(
         if cancellation_checker.check_cancellation_flag(job_id):
             logger.info(f"[ProcessSingle] Cancelled before processing for applicant {applicant_id}")
             return {
-                'applicant': applicant,
-                'job_listing': job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(job.id),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
                 'error_message': 'Analysis cancelled',
@@ -336,8 +336,8 @@ def process_single_applicant(
         if not resume_text:
             logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
             return {
-                'applicant': applicant,
-                'job_listing': job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(job.id),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
                 'error_message': 'No parsed resume text available',
@@ -362,8 +362,8 @@ def process_single_applicant(
 
         # Build result dict
         result = {
-            'applicant': applicant,
-            'job_listing': job,
+            'applicant_id': str(applicant.id),
+            'job_listing_id': str(job.id),
             'education_score': final_state.get('scores', {}).get('education', 0),
             'skills_score': final_state.get('scores', {}).get('skills', 0),
             'experience_score': final_state.get('scores', {}).get('experience', 0),
@@ -384,8 +384,8 @@ def process_single_applicant(
     except Exception as e:
         logger.warning(f"Error processing applicant {applicant_id}: {e}", exc_info=True)
         return {
-            'applicant': applicant,
-            'job_listing': job,
+            'applicant_id': str(applicant.id),
+            'job_listing_id': str(job.id),
             'status': 'Unprocessed',
             'category': 'Unprocessed',
             'error_message': str(e)[:500],
@@ -415,6 +415,15 @@ def bulk_persistence_node(
     results = state.get('results', [])
     job_id = state['job_id']
     owner_id = state.get('owner_id')
+    
+    # Get job instance and applicants from state if available
+    job_instance = state.get('job')
+    applicants = state.get('applicants', [])
+    
+    # Build applicants_map from state for repository
+    applicants_map = None
+    if applicants:
+        applicants_map = {str(a.id): a for a in applicants}
 
     if not results:
         logger.info(f"No results to persist for job {job_id}")
@@ -425,13 +434,9 @@ def bulk_persistence_node(
 
     logger.info(f"Persisting {len(results)} analysis results for job {job_id}")
 
-    # Convert results to DTOs for repository
-    # Note: results already contain applicant and job_listing objects
-    # Repository implementation will handle the actual persistence
-
-    # Bulk save via repository interface
+    # Bulk save via repository interface with model instances from state
     try:
-        result_repo.bulk_save_results(results)
+        result_repo.bulk_save_results(results, job_instance=job_instance, applicants_map=applicants_map)
         logger.info(f"Successfully persisted {len(results)} analysis results")
     except Exception as e:
         logger.error(f"Error persisting analysis results for job {job_id}: {e}")

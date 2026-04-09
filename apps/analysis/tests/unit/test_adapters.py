@@ -61,8 +61,8 @@ class DjangoAnalysisResultRepositoryTest(TestCase):
         """Test that bulk_save_results actually saves to database."""
         results = [
             {
-                'applicant': self.applicant,
-                'job_listing': self.job,
+                'applicant_id': str(self.applicant.id),
+                'job_listing_id': str(self.job.id),
                 'education_score': 85,
                 'skills_score': 90,
                 'experience_score': 80,
