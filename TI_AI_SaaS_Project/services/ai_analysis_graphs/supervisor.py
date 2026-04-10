@@ -8,53 +8,66 @@ Graph Flow:
 2. Map Workers: Process applicants concurrently using ThreadPoolExecutor
 3. Loop back to Decision Node
 4. Bulk Persist: Save all results to database when complete
+
+This version uses dependency injection via interfaces, making it portable
+across different deployment architectures (Django, remote service, etc.).
 """
 
-from typing import TypedDict, List, Any, Literal
+from typing import Literal
 from langgraph.graph import StateGraph, END
-from apps.analysis.models import AIAnalysisResult
-from apps.analysis.consumers import AnalysisNotificationConsumer
+from langgraph.graph.state import CompiledStateGraph
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from apps.analysis.graphs.worker import create_worker_graph
-from services.ai_analysis_service import (
-    check_cancellation_flag,
-    update_analysis_progress,
-    release_analysis_lock,
-    clear_analysis_progress,
-    clear_cancellation_flag,
-)
 from datetime import datetime, timezone
 import logging
+
+from services.ai_analysis_graphs.types import (
+    AnalysisState,
+    AnalysisResultDTO,
+)
+from services.ai_analysis_graphs.interfaces import (
+    IAnalysisResultRepository,
+    INotificationService,
+    IProgressTracker,
+    ICancellationChecker,
+    ILLMProvider,
+)
+from services.ai_analysis_graphs.worker import create_worker_graph
+
 logger = logging.getLogger(__name__)
 
-class AnalysisState(TypedDict):
-    """State for the supervisor graph."""
-    job_id: str
-    job: Any  # JobListing instance
-    applicants: List[Any]  # List of Applicant instances
-    results: List[dict]  # List of analysis result dicts
-    processed_count: int
-    total_count: int
-    cancelled: bool
-    current_index: int  # Index of current applicant being processed
-    sent_milestones: set  # Set of milestone percentages already sent (25, 50, 75, 90)
 
-
-def create_supervisor_graph():
+def create_supervisor_graph(
+    result_repo: IAnalysisResultRepository,
+    notification_service: INotificationService,
+    progress_tracker: IProgressTracker,
+    cancellation_checker: ICancellationChecker,
+    llm_provider: ILLMProvider,
+) -> CompiledStateGraph:
     """
     Create and configure the supervisor graph.
-    
+
+    Args:
+        result_repo: Repository for persisting analysis results
+        notification_service: Service for sending notifications
+        progress_tracker: Service for tracking analysis progress
+        cancellation_checker: Service for checking cancellation flags
+        llm_provider: LLM provider for AI analysis
+
     Returns:
         Compiled StateGraph for orchestrating bulk analysis
     """
     # Create the state graph
     workflow = StateGraph(AnalysisState)
-    
-    # Add nodes
-    workflow.add_node("decision", decision_node)
-    workflow.add_node("map_workers", map_workers_node)
-    workflow.add_node("bulk_persist", bulk_persistence_node)
-    
+
+    # Add nodes (bind dependencies via closures)
+    workflow.add_node("decision", lambda state: decision_node(state, cancellation_checker))
+    workflow.add_node("map_workers", lambda state: map_workers_node(
+        state, cancellation_checker, progress_tracker, notification_service, llm_provider
+    ))
+    workflow.add_node("bulk_persist", lambda state: bulk_persistence_node(
+        state, result_repo, cancellation_checker, progress_tracker
+    ))
+
     # Add edges
     workflow.add_conditional_edges(
         "decision",
@@ -64,37 +77,39 @@ def create_supervisor_graph():
             "end": "bulk_persist"
         }
     )
-    
+
     workflow.add_edge("map_workers", "decision")
     workflow.add_edge("bulk_persist", END)
-    
+
     # Set entry point
     workflow.set_entry_point("decision")
-    
+
     # Compile the graph
     return workflow.compile()
 
 
-def decision_node(state: AnalysisState) -> dict:
+def decision_node(state: AnalysisState, cancellation_checker: ICancellationChecker) -> dict:
     """
     Decision node: Check if there are more applicants to process.
-    
+
     Args:
         state: Current analysis state
-    
+        cancellation_checker: Service to check cancellation flag
+
     Returns:
         Updated state with current_index
     """
     current_index = state.get('current_index', 0)
     total_count = state['total_count']
-    
+    job_id = state['job_id']
+
     # Check for cancellation
-    if check_cancellation_flag(state['job_id']):
+    if cancellation_checker.check_cancellation_flag(job_id):
         return {
             'cancelled': True,
             'current_index': total_count,  # Skip to end
         }
-    
+
     return {
         'current_index': current_index,
     }
@@ -103,24 +118,30 @@ def decision_node(state: AnalysisState) -> dict:
 def should_continue(state: AnalysisState) -> Literal["continue", "end"]:
     """
     Conditional edge: Determine if we should continue processing or end.
-    
+
     Args:
         state: Current analysis state
-    
+
     Returns:
         "continue" if more applicants to process, "end" otherwise
     """
     current_index = state.get('current_index', 0)
     total_count = state['total_count']
     cancelled = state.get('cancelled', False)
-    
+
     if cancelled or current_index >= total_count:
         return "end"
-    
+
     return "continue"
 
 
-def map_workers_node(state: AnalysisState) -> dict:
+def map_workers_node(
+    state: AnalysisState,
+    cancellation_checker: ICancellationChecker,
+    progress_tracker: IProgressTracker,
+    notification_service: INotificationService,
+    llm_provider: ILLMProvider,
+) -> dict:
     """
     Map workers node: Process applicants concurrently.
 
@@ -129,11 +150,14 @@ def map_workers_node(state: AnalysisState) -> dict:
 
     Args:
         state: Current analysis state
+        cancellation_checker: Service to check cancellation flag
+        progress_tracker: Service to update progress
+        notification_service: Service to send notifications
+        llm_provider: LLM provider for AI analysis
 
     Returns:
         Updated state with new results
     """
-
     current_index = state.get('current_index', 0)
     applicants = state['applicants']
     job = state['job']
@@ -154,14 +178,19 @@ def map_workers_node(state: AnalysisState) -> dict:
             'current_index': current_index,
         }
 
-    # Create worker graph
-    worker_graph = create_worker_graph()
+    # Create worker graph with interfaces
+    worker_graph = create_worker_graph(
+        cancellation_checker=cancellation_checker,
+        llm_provider=llm_provider,
+    )
 
     # Process applicants concurrently
     new_results = []
 
     # Get sent_milestones from state (persists across batch cycles to avoid duplicate notifications)
-    sent_milestones = state.get('sent_milestones', set())
+    # Coerce to set since JSON serialization may have converted it to a list
+    raw_milestones = state.get('sent_milestones', [])
+    sent_milestones = set(raw_milestones) if isinstance(raw_milestones, (list, tuple, set)) else set()
 
     # Use ThreadPoolExecutor for concurrent processing
     max_workers = min(32, (batch_size or 1) * 2)
@@ -170,7 +199,7 @@ def map_workers_node(state: AnalysisState) -> dict:
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_applicant = {
-            executor.submit(process_single_applicant, worker_graph, applicant, job, job_id): applicant
+            executor.submit(process_single_applicant, worker_graph, applicant, job, job_id, cancellation_checker): applicant
             for applicant in batch_applicants
         }
 
@@ -184,14 +213,18 @@ def map_workers_node(state: AnalysisState) -> dict:
             logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {applicant.id}")
 
             # Check cancellation during batch processing
-            if check_cancellation_flag(job_id):
+            if cancellation_checker.check_cancellation_flag(job_id):
                 logger.info(f"Analysis cancelled for job {job_id} during batch processing")
+                # Cancel pending futures and avoid blocking on exit
+                for fut in future_to_applicant:
+                    fut.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
                 return {
                     'results': results + new_results,
                     'processed_count': processed_count,
                     'current_index': current_index,
                     'cancelled': True,
-                    'sent_milestones': sent_milestones,
+                    'sent_milestones': list(sent_milestones),
                 }
 
             try:
@@ -201,26 +234,30 @@ def map_workers_node(state: AnalysisState) -> dict:
                 # Check if this applicant was cancelled
                 if result.get('cancelled', False):
                     logger.info(f"Applicant {applicant.id} processing cancelled")
+                    # Cancel pending futures and avoid blocking on exit
+                    for fut in future_to_applicant:
+                        fut.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
                     return {
                         'results': results + new_results + [result],
                         'processed_count': processed_count + 1,
                         'current_index': current_index,
                         'cancelled': True,
-                        'sent_milestones': sent_milestones,
+                        'sent_milestones': list(sent_milestones),
                     }
 
                 new_results.append(result)
                 processed_count += 1
 
                 # Update progress in Redis
-                update_analysis_progress(job_id, processed_count, len(applicants))
+                progress_tracker.update_progress(job_id, processed_count, len(applicants))
 
                 # Send WebSocket notification at milestone checkpoints
                 percentage = int((processed_count / len(applicants)) * 100)
                 if percentage in [25, 50, 75, 90] and percentage not in sent_milestones:
                     try:
                         user_id = str(job.created_by_id)
-                        AnalysisNotificationConsumer.notify_progress(
+                        notification_service.notify_progress(
                             job_id, user_id,
                             {
                                 'progress_percentage': percentage,
@@ -230,18 +267,18 @@ def map_workers_node(state: AnalysisState) -> dict:
                                 'timestamp': datetime.now(timezone.utc).isoformat()
                             }
                         )
-                        logger.info(f"Sent WebSocket progress update: {percentage}% for job {job_id}")
+                        logger.info(f"Sent progress update: {percentage}% for job {job_id}")
                         # Mark this milestone as sent
                         sent_milestones.add(percentage)
                     except Exception as e:
-                        logger.error(f"Failed to send WebSocket progress update: {e}")
+                        logger.error(f"Failed to send progress update: {e}")
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
                 logger.warning(f"Worker failed for applicant {applicant.id}: {e}", exc_info=True)
                 new_results.append({
-                    'applicant': applicant,
-                    'job_listing': job,
+                    'applicant_id': str(applicant.id),
+                    'job_listing_id': str(job.id),
                     'status': 'Unprocessed',
                     'category': 'Unprocessed',
                     'error_message': str(e)[:500],
@@ -256,11 +293,17 @@ def map_workers_node(state: AnalysisState) -> dict:
         'results': results + new_results,
         'processed_count': processed_count,
         'current_index': new_index,
-        'sent_milestones': sent_milestones,  # Persist milestones across batch cycles
+        'sent_milestones': list(sent_milestones),  # Serialize as list for JSON compatibility
     }
 
 
-def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
+def process_single_applicant(
+    worker_graph,
+    applicant,
+    job,
+    job_id: str,
+    cancellation_checker: ICancellationChecker,
+) -> dict:
     """
     Process a single applicant through the worker graph.
 
@@ -269,32 +312,33 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
         applicant: Applicant instance
         job: JobListing instance
         job_id: Job UUID
+        cancellation_checker: Service to check cancellation flag
 
     Returns:
         Analysis result dict
     """
     applicant_id = getattr(applicant, 'id', 'unknown')
     logger.info(f"[ProcessSingle] Starting processing for applicant {applicant_id}")
-    
+
     try:
         # Check for cancellation before processing
-        if check_cancellation_flag(job_id):
+        if cancellation_checker.check_cancellation_flag(job_id):
             logger.info(f"[ProcessSingle] Cancelled before processing for applicant {applicant_id}")
             return {
-                'applicant': applicant,
-                'job_listing': job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(job.id),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
                 'error_message': 'Analysis cancelled',
             }
 
-        # Check if resume text is available
-        resume_text = applicant.resume_parsed_text or ''
+        # Check if resume text is available (use getattr for safe attribute access)
+        resume_text = getattr(applicant, "resume_parsed_text", "") or ''
         if not resume_text:
             logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
             return {
-                'applicant': applicant,
-                'job_listing': job,
+                'applicant_id': str(applicant.id),
+                'job_listing_id': str(job.id),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
                 'error_message': 'No parsed resume text available',
@@ -319,8 +363,8 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
 
         # Build result dict
         result = {
-            'applicant': applicant,
-            'job_listing': job,
+            'applicant_id': str(applicant.id),
+            'job_listing_id': str(job.id),
             'education_score': final_state.get('scores', {}).get('education', 0),
             'skills_score': final_state.get('scores', {}).get('skills', 0),
             'experience_score': final_state.get('scores', {}).get('experience', 0),
@@ -341,22 +385,30 @@ def process_single_applicant(worker_graph, applicant, job, job_id: str) -> dict:
     except Exception as e:
         logger.warning(f"Error processing applicant {applicant_id}: {e}", exc_info=True)
         return {
-            'applicant': applicant,
-            'job_listing': job,
+            'applicant_id': str(applicant.id),
+            'job_listing_id': str(job.id),
             'status': 'Unprocessed',
             'category': 'Unprocessed',
             'error_message': str(e)[:500],
         }
 
 
-def bulk_persistence_node(state: AnalysisState) -> dict:
+def bulk_persistence_node(
+    state: AnalysisState,
+    result_repo: IAnalysisResultRepository,
+    cancellation_checker: ICancellationChecker,
+    progress_tracker: IProgressTracker,
+) -> dict:
     """
     Bulk persistence node: Save all results to the database.
 
-    Uses Django's bulk_create with update_conflicts for efficient persistence.
+    Uses repository interface for efficient persistence.
 
     Args:
         state: Final analysis state with all results
+        result_repo: Repository for persisting results
+        cancellation_checker: Service for clearing cancellation flag
+        progress_tracker: Service for clearing progress data
 
     Returns:
         Empty dict (end of workflow)
@@ -364,71 +416,36 @@ def bulk_persistence_node(state: AnalysisState) -> dict:
     results = state.get('results', [])
     job_id = state['job_id']
     owner_id = state.get('owner_id')
+    
+    # Get job instance and applicants from state if available
+    job_instance = state.get('job')
+    applicants = state.get('applicants', [])
+    
+    # Build applicants_map from state for repository
+    applicants_map = None
+    if applicants:
+        applicants_map = {str(a.id): a for a in applicants}
 
     if not results:
         logger.info(f"No results to persist for job {job_id}")
-        if owner_id:
-            release_analysis_lock(job_id, owner_id)
-        # Clear Redis progress data to avoid stale data
-        clear_analysis_progress(job_id)
+        # Clear Redis data even if no results
+        progress_tracker.clear_progress(job_id)
+        cancellation_checker.clear_cancellation_flag(job_id)
         return {}
 
     logger.info(f"Persisting {len(results)} analysis results for job {job_id}")
 
-    # Create AIAnalysisResult instances
-    analysis_results = []
-
-    for result_data in results:
-        try:
-            analysis_result = AIAnalysisResult(
-                applicant=result_data['applicant'],
-                job_listing=result_data['job_listing'],
-                education_score=result_data.get('education_score', 0),
-                skills_score=result_data.get('skills_score', 0),
-                experience_score=result_data.get('experience_score', 0),
-                supplemental_score=result_data.get('supplemental_score', 0),
-                overall_score=result_data.get('overall_score', 0),
-                category=result_data.get('category', 'Unprocessed'),
-                education_justification=result_data.get('education_justification', ''),
-                skills_justification=result_data.get('skills_justification', ''),
-                experience_justification=result_data.get('experience_justification', ''),
-                supplemental_justification=result_data.get('supplemental_justification', ''),
-                overall_justification=result_data.get('overall_justification', ''),
-                status=result_data.get('status', 'Unprocessed'),
-                error_message=result_data.get('error_message', ''),
-            )
-            analysis_results.append(analysis_result)
-        except Exception as e:
-            logger.error(f"Error creating AIAnalysisResult: {e}")
-
-    # Bulk save with update on conflict - ensure lock is always released
+    # Bulk save via repository interface with model instances from state
     try:
-        if analysis_results:
-            AIAnalysisResult.objects.bulk_create(
-                analysis_results,
-                batch_size=50,
-                update_conflicts=True,
-                update_fields=[
-                    'education_score', 'skills_score', 'experience_score', 'supplemental_score',
-                    'overall_score', 'category', 'status',
-                    'education_justification', 'skills_justification', 'experience_justification',
-                    'supplemental_justification', 'overall_justification', 'error_message',
-                    'updated_at', 'job_listing'
-                ],
-                unique_fields=['applicant_id', 'job_listing_id']
-            )
-
-        logger.info(f"Successfully persisted {len(analysis_results)} analysis results")
+        result_repo.bulk_save_results(results, job_instance=job_instance, applicants_map=applicants_map)
+        logger.info(f"Successfully persisted {len(results)} analysis results")
     except Exception as e:
         logger.error(f"Error persisting analysis results for job {job_id}: {e}")
         raise
     finally:
-        # Always release the lock and clear Redis progress, even if bulk_create fails
-        if owner_id:
-            release_analysis_lock(job_id, owner_id)
         # Clear Redis progress data to avoid stale data and re-analysis loops
-        clear_analysis_progress(job_id)
+        progress_tracker.clear_progress(job_id)
         # Clear cancellation flag
-        clear_cancellation_flag(job_id)
+        cancellation_checker.clear_cancellation_flag(job_id)
 
     return {}

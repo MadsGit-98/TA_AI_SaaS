@@ -7,8 +7,13 @@ Tests cover:
 """
 
 from django.test import TestCase
-from apps.analysis.graphs.supervisor import create_supervisor_graph
-from apps.analysis.graphs.worker import create_worker_graph
+from services.ai_analysis_graphs.supervisor import create_supervisor_graph
+from services.ai_analysis_graphs.worker import create_worker_graph
+from services.ai_analysis_graphs.defaults import (
+    DefaultCancellationChecker,
+    DefaultLLMProvider,
+)
+from services.ai_analysis_graphs.defaults import StubResultRepository, DefaultNotificationService, DefaultProgressTracker
 from apps.jobs.models import JobListing
 from django.utils import timezone
 from datetime import timedelta
@@ -42,12 +47,38 @@ class SupervisorGraphTest(TestCase):
 
     def test_supervisor_graph_creation(self):
         """Test supervisor graph can be created."""
-        graph = create_supervisor_graph()
+        # Create mock interfaces
+        result_repo = StubResultRepository()
+        notification_service = DefaultNotificationService()
+        progress_tracker = DefaultProgressTracker()
+        cancellation_checker = DefaultCancellationChecker()
+        llm_provider = DefaultLLMProvider()
+
+        graph = create_supervisor_graph(
+            result_repo=result_repo,
+            notification_service=notification_service,
+            progress_tracker=progress_tracker,
+            cancellation_checker=cancellation_checker,
+            llm_provider=llm_provider,
+        )
         self.assertIsNotNone(graph)
 
     def test_supervisor_graph_nodes(self):
         """Test supervisor graph has required nodes."""
-        graph = create_supervisor_graph()
+        # Create mock interfaces
+        result_repo = StubResultRepository()
+        notification_service = DefaultNotificationService()
+        progress_tracker = DefaultProgressTracker()
+        cancellation_checker = DefaultCancellationChecker()
+        llm_provider = DefaultLLMProvider()
+
+        graph = create_supervisor_graph(
+            result_repo=result_repo,
+            notification_service=notification_service,
+            progress_tracker=progress_tracker,
+            cancellation_checker=cancellation_checker,
+            llm_provider=llm_provider,
+        )
         # Check graph has required nodes
         self.assertIn('decision', graph.nodes)
         self.assertIn('map_workers', graph.nodes)
@@ -59,12 +90,16 @@ class WorkerGraphTest(TestCase):
 
     def test_worker_graph_creation(self):
         """Test worker graph can be created."""
-        graph = create_worker_graph()
+        cancellation_checker = DefaultCancellationChecker()
+        llm_provider = DefaultLLMProvider()
+        graph = create_worker_graph(cancellation_checker=cancellation_checker, llm_provider=llm_provider)
         self.assertIsNotNone(graph)
 
     def test_worker_subgraph_sequence(self):
         """Test worker graph has correct node sequence."""
-        graph = create_worker_graph()
+        cancellation_checker = DefaultCancellationChecker()
+        llm_provider = DefaultLLMProvider()
+        graph = create_worker_graph(cancellation_checker=cancellation_checker, llm_provider=llm_provider)
         # Check graph has required nodes in sequence
         self.assertIn('retrieval', graph.nodes)
         self.assertIn('classification', graph.nodes)
@@ -72,3 +107,4 @@ class WorkerGraphTest(TestCase):
         self.assertIn('categorization', graph.nodes)
         self.assertIn('justification', graph.nodes)
         self.assertIn('result', graph.nodes)
+

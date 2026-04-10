@@ -15,7 +15,7 @@ Tests cover:
 These are integration tests that use the real implementation without mocks.
 """
 
-from django.test import TestCase, Client
+from django.test import TransactionTestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.core.cache import cache
@@ -25,13 +25,15 @@ from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import UserProfile
 from django.utils import timezone
 from datetime import timedelta
+from unittest.mock import patch
 import json
 import uuid
+import time
 
 User = get_user_model()
 
 
-class RerunAnalysisAPIIntegrationTest(TestCase):
+class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
     """Integration test cases for rerun_analysis API endpoint."""
 
     def setUp(self):
@@ -99,6 +101,9 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
+
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['status'], 'started')
@@ -160,6 +165,9 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
+
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['previous_results_deleted'], 5)
@@ -172,6 +180,9 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         """Test re-run works without existing results."""
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
 
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
@@ -253,16 +264,33 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
+
         # Staff should be able to re-run analysis
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
 
     def test_rerun_analysis_multiple_times(self):
         """Test that multiple re-run requests are handled."""
+        # Create an applicant so analysis actually runs and holds the lock
+        applicant = Applicant.objects.create(
+            job_listing=self.job,
+            first_name='Applicant1',
+            last_name='Test1',
+            email='app1@example.com',
+            phone='+1-555-001',
+            resume_file='test1.pdf',
+            resume_file_hash='hash1',
+            resume_parsed_text='Test resume text for multiple rerun test'
+        )
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
 
         # First re-run
         response1 = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+        # Allow background thread to start and acquire lock
+        time.sleep(0.2)
         self.assertEqual(response1.status_code, 202)
         self.assertTrue(response1.data['success'])
 
@@ -277,6 +305,9 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         """Test that response has correct structure."""
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
 
         self.assertEqual(response.status_code, 202)
         self.assertIn('success', response.data)
@@ -369,12 +400,16 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
         # Re-run job1
         url1 = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response1 = self.client.post(url1, data=json.dumps({'confirm': True}), content_type='application/json')
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
         self.assertEqual(response1.status_code, 202)
         self.assertEqual(response1.data['data']['previous_results_deleted'], 1)
 
         # Re-run job2
         url2 = f'/api/analysis/jobs/{job2.id}/analysis/re-run/'
         response2 = self.client.post(url2, data=json.dumps({'confirm': True}), content_type='application/json')
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
         self.assertEqual(response2.status_code, 202)
         self.assertEqual(response2.data['data']['previous_results_deleted'], 1)
 
@@ -432,6 +467,9 @@ class RerunAnalysisAPIIntegrationTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+
+        # Allow background thread to start without holding DB lock
+        time.sleep(0.1)
 
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])

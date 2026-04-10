@@ -14,7 +14,7 @@ This service handles:
 import logging
 import math
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
 
@@ -272,6 +272,133 @@ def clear_analysis_progress(job_id: str):
 
     progress_key = f"analysis_progress:{job_id}"
     r.delete(progress_key)
+
+
+# =============================================================================
+# Analysis Run ID Tracking
+# =============================================================================
+
+def persist_analysis_run_id(analysis_run_id: str, job_id: str, ttl_seconds: int = 600) -> bool:
+    """
+    Persist the analysis_run_id to Redis with a mapping to job_id.
+
+    This allows clients to track or cancel runs using the analysis_run_id
+    returned in the initiate_analysis response.
+
+    Args:
+        analysis_run_id: Unique identifier for this analysis run
+        job_id: UUID of the job listing
+        ttl_seconds: Time-to-live for the mapping (default 10 minutes)
+
+    Returns:
+        True if persisted successfully, False otherwise
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        # Use dummy client when Redis is unavailable
+        return False
+
+    # Store bidirectional mapping:
+    # 1. analysis_run_id -> job_id (for resolving run_id to job)
+    # 2. job_id -> analysis_run_id (for getting current run_id for a job)
+    run_to_job_key = f"analysis_run:{analysis_run_id}"
+    job_to_run_key = f"analysis_current_run:{job_id}"
+
+    # Use pipeline for atomic set + expire
+    pipe = r.pipeline()
+    pipe.setex(run_to_job_key, ttl_seconds, job_id)
+    pipe.setex(job_to_run_key, ttl_seconds, analysis_run_id)
+    pipe.execute()
+
+    return True
+
+
+def resolve_job_from_analysis_run_id(analysis_run_id: str) -> Optional[str]:
+    """
+    Resolve job_id from an analysis_run_id.
+
+    Args:
+        analysis_run_id: Unique identifier for an analysis run
+
+    Returns:
+        job_id if found, None otherwise
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        return None
+
+    run_to_job_key = f"analysis_run:{analysis_run_id}"
+    job_id = r.get(run_to_job_key)
+
+    if job_id:
+        # Handle both byte and string responses
+        if isinstance(job_id, bytes):
+            return job_id.decode('utf-8')
+        return job_id
+
+    return None
+
+
+def get_current_analysis_run_id(job_id: str) -> Optional[str]:
+    """
+    Get the current analysis_run_id for a job.
+
+    Args:
+        job_id: UUID of the job listing
+
+    Returns:
+        analysis_run_id if found, None otherwise
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        return None
+
+    job_to_run_key = f"analysis_current_run:{job_id}"
+    run_id = r.get(job_to_run_key)
+
+    if run_id:
+        # Handle both byte and string responses
+        if isinstance(run_id, bytes):
+            return run_id.decode('utf-8')
+        return run_id
+
+    return None
+
+
+def clear_analysis_run_id_mapping(job_id: str, analysis_run_id: Optional[str] = None):
+    """
+    Clear the analysis_run_id mapping when analysis completes or is cancelled.
+
+    Args:
+        job_id: UUID of the job listing
+        analysis_run_id: Optional run_id to clear (if not provided, will try to get from Redis)
+    """
+    try:
+        r = get_redis_client()
+    except RedisConnectionError:
+        return
+
+    # Clear job -> run_id mapping
+    job_to_run_key = f"analysis_current_run:{job_id}"
+
+    # Clear run_id -> job_id mapping if we have the run_id
+    if analysis_run_id:
+        run_to_job_key = f"analysis_run:{analysis_run_id}"
+        r.delete(run_to_job_key)
+    else:
+        # Read the current run id from Redis before deleting job_to_run_key
+        current_run_id = r.get(job_to_run_key)
+        if current_run_id:
+            if isinstance(current_run_id, bytes):
+                current_run_id = current_run_id.decode('utf-8')
+            run_to_job_key = f"analysis_run:{current_run_id}"
+            r.delete(run_to_job_key)
+
+    # Now delete the job -> run_id mapping
+    r.delete(job_to_run_key)
 
 
 # =============================================================================
