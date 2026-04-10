@@ -156,8 +156,8 @@ def initiate_analysis(request, job_id):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Try to acquire lock
-        owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
-        if not owner_id:
+        lock_owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
+        if not lock_owner_id:
             return Response({
                 'success': False,
                 'error': {
@@ -169,11 +169,36 @@ def initiate_analysis(request, job_id):
         # Set analysis_in_progress flag BEFORE dispatching
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
 
+        # Generate a unique ID for this analysis run (replaces Celery task_id)
+        analysis_run_id = str(uuid.uuid4())
+
+        # Persist analysis_run_id in Redis for tracking/cancellation BEFORE starting work
+        if not persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600):
+            logger.error(f"Failed to persist analysis_run_id for job {job_id}")
+            # Rollback the flag since we're aborting
+            JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
+            try:
+                release_analysis_lock(str(job_id), lock_owner_id)
+            except Exception:
+                pass
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INTERNAL_ERROR',
+                    'message': 'Failed to initialize analysis tracking'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Capture requester ID for notifications (before thread spawns)
+        requester_id = str(request.user.id)
+
         # Start analysis in background thread (non-daemon for observable failures)
         def run_analysis_thread():
             """Background thread to run AI analysis with guaranteed cleanup."""
             try:
-                orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
+                orchestrator = DjangoAnalysisOrchestrator(
+                    str(job_id), lock_owner_id=lock_owner_id, requester_id=requester_id
+                )
                 result = orchestrator.run()
                 logger.info(f"Analysis completed for job {job_id}: {result['status']}")
             except Exception as e:
@@ -181,7 +206,7 @@ def initiate_analysis(request, job_id):
             finally:
                 # Guarantee lock release even if thread crashes before orchestrator.run()
                 try:
-                    release_analysis_lock(str(job_id), owner_id)
+                    release_analysis_lock(str(job_id), lock_owner_id)
                     logger.info(f"Released analysis lock for job {job_id}")
                 except Exception as e:
                     logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
@@ -194,12 +219,6 @@ def initiate_analysis(request, job_id):
 
         # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
         estimated_duration = applicant_count * 6
-
-        # Generate a unique ID for this analysis run (replaces Celery task_id)
-        analysis_run_id = str(uuid.uuid4())
-
-        # Persist analysis_run_id in Redis for tracking/cancellation
-        persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600)
 
         return Response({
             'success': True,
@@ -840,9 +859,17 @@ def rerun_analysis(request, job_id):
     Requires confirmation to prevent accidental data loss.
     """
     try:
-        # Check confirmation - handle None body gracefully
-        request_body = request.data if request.data is not None else {}
-        confirm = request_body.get('confirm', False)
+        # Check confirmation - validate request body is a dict
+        if not isinstance(request.data, dict):
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body must be a JSON object'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        confirm = request.data.get('confirm', False)
 
         if not confirm:
             return Response({
@@ -863,8 +890,8 @@ def rerun_analysis(request, job_id):
         applicant_count = job.applicants.count()
 
         # Try to acquire lock BEFORE starting analysis
-        owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
-        if not owner_id:
+        lock_owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
+        if not lock_owner_id:
             return Response({
                 'success': False,
                 'error': {
@@ -876,23 +903,46 @@ def rerun_analysis(request, job_id):
         # Set analysis_in_progress flag
         JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
 
-        # Count previous results for response (actual deletion happens in thread)
+        # Count previous results for response (actual deletion happens before thread)
         previous_results_count = AIAnalysisResult.objects.filter(job_listing=job).count()
+
+        # Delete previous results BEFORE starting background work
+        AIAnalysisResult.objects.filter(job_listing=job).delete()
+
+        # Initialize Redis progress tracking BEFORE starting background work
+        update_analysis_progress(str(job_id), 0, applicant_count)
+
+        # Generate a unique ID for this analysis run (replaces task_id)
+        analysis_run_id = str(uuid.uuid4())
+
+        # Capture requester ID for notifications (before thread spawns)
+        requester_id = str(request.user.id)
+
+        # Persist analysis_run_id in Redis for tracking/cancellation BEFORE starting work
+        if not persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600):
+            logger.error(f"Failed to persist analysis_run_id for job {job_id}")
+            # Rollback the flag since we're aborting
+            JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
+            try:
+                release_analysis_lock(str(job_id), lock_owner_id)
+            except Exception:
+                pass
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INTERNAL_ERROR',
+                    'message': 'Failed to initialize analysis tracking'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Start analysis in background thread (non-daemon for observable failures)
         def run_analysis_thread():
             """Background thread to run AI analysis with guaranteed cleanup."""
             try:
-                # Defer deletion until orchestrator confirms new analysis has started
-                # Delete previous results AFTER lock is acquired and analysis_in_progress is set
-                AIAnalysisResult.objects.filter(job_listing=job).delete()
-                logger.info(f"Deleted {previous_results_count} previous analysis results for job {job_id}")
-
-                # Initialize Redis progress tracking AFTER deletion
-                update_analysis_progress(str(job_id), 0, applicant_count)
-
                 # Run orchestrator with guaranteed cleanup
-                orchestrator = DjangoAnalysisOrchestrator(str(job_id), owner_id)
+                orchestrator = DjangoAnalysisOrchestrator(
+                    str(job_id), lock_owner_id=lock_owner_id, requester_id=requester_id
+                )
                 result = orchestrator.run()
                 logger.info(f"Re-run analysis completed for job {job_id}: {result['status']}")
             except Exception as e:
@@ -900,7 +950,7 @@ def rerun_analysis(request, job_id):
             finally:
                 # Guarantee lock release even if thread crashes before orchestrator.run()
                 try:
-                    release_analysis_lock(str(job_id), owner_id)
+                    release_analysis_lock(str(job_id), lock_owner_id)
                     logger.info(f"Released analysis lock for job {job_id}")
                 except Exception as e:
                     logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
@@ -911,12 +961,6 @@ def rerun_analysis(request, job_id):
         # Use non-daemon thread so failures can be observed and cleanup runs
         thread = threading.Thread(target=run_analysis_thread, daemon=False)
         thread.start()
-
-        # Generate a unique ID for this analysis run (replaces task_id)
-        analysis_run_id = str(uuid.uuid4())
-
-        # Persist analysis_run_id in Redis for tracking/cancellation
-        persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600)
 
         return Response({
             'success': True,

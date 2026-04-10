@@ -15,6 +15,7 @@ across different deployment architectures (Django, remote service, etc.).
 
 from typing import Literal
 from langgraph.graph import StateGraph, END
+from langgraph.graph.state import CompiledStateGraph
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import logging
@@ -41,7 +42,7 @@ def create_supervisor_graph(
     progress_tracker: IProgressTracker,
     cancellation_checker: ICancellationChecker,
     llm_provider: ILLMProvider,
-) -> 'CompiledStateGraph':
+) -> CompiledStateGraph:
     """
     Create and configure the supervisor graph.
 
