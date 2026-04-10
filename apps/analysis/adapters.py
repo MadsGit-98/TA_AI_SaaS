@@ -214,8 +214,8 @@ class DjangoAnalysisResultRepository(IAnalysisResultRepository):
         results = AIAnalysisResult.objects.filter(job_listing_id=UUID(job_id))
         return [
             {
-                'applicant': result.applicant,
-                'job_listing': result.job_listing,
+                'applicant_id': str(result.applicant_id),
+                'job_listing_id': str(result.job_listing_id),
                 'education_score': result.education_score,
                 'skills_score': result.skills_score,
                 'experience_score': result.experience_score,

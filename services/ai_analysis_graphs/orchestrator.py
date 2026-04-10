@@ -128,6 +128,12 @@ def run_analysis(
         # This will be set by the Django orchestrator
         if 'job_instance' in job_context:
             initial_state['job'] = job_context['job_instance']
+        elif 'job' in job_context:
+            # Support non-Django callers passing a DTO with title/description/required_* keys
+            initial_state['job'] = job_context['job']
+        elif 'job_dto' in job_context:
+            # Alternate key for DTO-based callers
+            initial_state['job'] = job_context['job_dto']
         
         # Run the supervisor graph
         logger.info(f"Invoking supervisor graph for job {job_id}")
@@ -211,7 +217,7 @@ def run_analysis(
             notification_service.notify_failed(
                 job_id, user_id,
                 'TASK_FAILURE',
-                f'Analysis task failed: {str(e)}',
+                'Analysis task failed',
                 progress.get('processed', 0),
                 progress.get('total', 0)
             )

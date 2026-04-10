@@ -47,16 +47,18 @@ class DjangoAnalysisOrchestrator:
     - Ensures cleanup of analysis_in_progress flag
     """
 
-    def __init__(self, job_id: str, owner_id: str = None):
+    def __init__(self, job_id: str, lock_owner_id: str = None, requester_id: str = None):
         """
         Initialize the orchestrator.
 
         Args:
             job_id: Job listing UUID
-            owner_id: Owner ID for lock release (from lock acquisition)
+            lock_owner_id: Lock owner token for lock release (from acquire_analysis_lock)
+            requester_id: User ID who initiated the analysis (for notifications)
         """
         self.job_id = str(job_id)
-        self.owner_id = owner_id
+        self.lock_owner_id = lock_owner_id
+        self.requester_id = requester_id
 
     def run(self) -> Dict[str, Any]:
         """
@@ -106,7 +108,7 @@ class DjangoAnalysisOrchestrator:
                 required_experience=job.required_experience or 0,
                 job_level=job.job_level or '',
                 created_by_id=str(job.created_by_id),
-                owner_id=self.owner_id,
+                owner_id=self.requester_id,
             )
 
             # Add job instance to context for adapter access
@@ -133,7 +135,7 @@ class DjangoAnalysisOrchestrator:
             try:
                 notification_service = DjangoNotificationService()
                 notification_service.notify_failed(
-                    self.job_id, self.owner_id or 'unknown',
+                    self.job_id, self.requester_id or 'unknown',
                     'JOB_NOT_FOUND',
                     'Job listing not found',
                     0, 0
@@ -156,7 +158,7 @@ class DjangoAnalysisOrchestrator:
                 if job:
                     user_id = str(job.created_by_id)
                 else:
-                    user_id = self.owner_id or 'unknown'
+                    user_id = self.requester_id or 'unknown'
 
                 progress = get_analysis_progress(self.job_id)
 
