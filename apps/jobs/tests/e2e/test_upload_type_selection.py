@@ -17,9 +17,7 @@ try:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
-    from webdriver_manager.chrome import ChromeDriverManager
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
@@ -33,17 +31,14 @@ class UploadTypeSelectionE2ETest(LiveServerTestCase):
         super().setUpClass()
         if not SELENIUM_AVAILABLE:
             return
-        
+
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
-        
-        cls.selenium = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
+
+        cls.selenium = webdriver.Chrome(options=chrome_options)
         cls.selenium.implicitly_wait(10)
 
     @classmethod
@@ -56,7 +51,7 @@ class UploadTypeSelectionE2ETest(LiveServerTestCase):
         """Test that upload type selector exists in create job form."""
         if not SELENIUM_AVAILABLE:
             self.skipTest("Selenium is not installed")
-        
+
         user = CustomUser.objects.create_user(
             username='testuser_upload',
             email='upload@example.com',
@@ -66,29 +61,37 @@ class UploadTypeSelectionE2ETest(LiveServerTestCase):
             user=user,
             is_talent_acquisition_specialist=True
         )
-        
+
         # Login
-        self.selenium.get(f'{self.live_server_url}/accounts/login/')
-        self.selenium.find_element(By.NAME, 'username').send_keys('testuser_upload')
-        self.selenium.find_element(By.NAME, 'password').send_keys('testpass123')
-        self.selenium.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
-        
+        self.selenium.get(f'{self.live_server_url}/login/')
+        email_input = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.ID, 'login-email'))
+        )
+        email_input.send_keys('upload@example.com')
+        self.selenium.find_element(By.ID, 'login-password').send_keys('testpass123')
+        self.selenium.find_element(By.ID, 'login-submit-btn').click()
+
+        # Wait for any page load after login (login page or redirect)
+        WebDriverWait(self.selenium, 10).until(
+            lambda driver: driver.current_url != f'{self.live_server_url}/login/'
+        )
+
         # Navigate to create job
         self.selenium.get(f'{self.live_server_url}/dashboard/create/')
-        
+
         # Wait for upload type selector
         WebDriverWait(self.selenium, 10).until(
             EC.presence_of_element_located((By.ID, 'upload_type'))
         )
-        
+
         # Verify selector exists
         upload_type_select = self.selenium.find_element(By.ID, 'upload_type')
         self.assertIsNotNone(upload_type_select)
-        
+
         # Verify options
         options = upload_type_select.find_elements(By.TAG_NAME, 'option')
-        self.assertGreaterEqual(len(options), 3)  # Default + form + bulk
-        
+        self.assertGreaterEqual(len(options), 2)  # form + bulk
+
         # Check option values
         option_values = [opt.get_attribute('value') for opt in options]
         self.assertIn('form', option_values)
@@ -103,15 +106,15 @@ class BatchLimitsE2ETest(LiveServerTestCase):
         super().setUpClass()
         if not SELENIUM_AVAILABLE:
             return
-        
+
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
-        
-        cls.selenium = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
 
     @classmethod
     def tearDownClass(cls):
@@ -123,7 +126,7 @@ class BatchLimitsE2ETest(LiveServerTestCase):
         """Test that batch limits are displayed on upload page."""
         if not SELENIUM_AVAILABLE:
             self.skipTest("Selenium is not installed")
-        
+
         user = CustomUser.objects.create_user(
             username='testuser_batch',
             email='batch@example.com',
@@ -133,7 +136,7 @@ class BatchLimitsE2ETest(LiveServerTestCase):
             user=user,
             is_talent_acquisition_specialist=True
         )
-        
+
         job = JobListing.objects.create(
             title='Batch Limits Test',
             description='Test',
@@ -145,12 +148,20 @@ class BatchLimitsE2ETest(LiveServerTestCase):
             upload_type='bulk',
             created_by=user
         )
-        
+
         # Login
-        self.selenium.get(f'{self.live_server_url}/accounts/login/')
-        self.selenium.find_element(By.NAME, 'username').send_keys('testuser_batch')
-        self.selenium.find_element(By.NAME, 'password').send_keys('testpass123')
-        self.selenium.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
+        self.selenium.get(f'{self.live_server_url}/login/')
+        email_input = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.ID, 'login-email'))
+        )
+        email_input.send_keys('batch@example.com')
+        self.selenium.find_element(By.ID, 'login-password').send_keys('testpass123')
+        self.selenium.find_element(By.ID, 'login-submit-btn').click()
+
+        # Wait for any page load after login (login page or redirect)
+        WebDriverWait(self.selenium, 10).until(
+            lambda driver: driver.current_url != f'{self.live_server_url}/login/'
+        )
         
         # Navigate to bulk upload
         self.selenium.get(f'{self.live_server_url}/bulk-upload/{job.id}/')
