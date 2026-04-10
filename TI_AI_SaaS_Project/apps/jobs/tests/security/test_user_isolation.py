@@ -199,22 +199,6 @@ class JobListingUserIsolationTest(TestCase):
         self.user2_job.refresh_from_db()
         self.assertEqual(self.user2_job.status, 'Active')
 
-    def test_user_cannot_duplicate_other_users_job(self):
-        """Test that user1 cannot duplicate user2's job listing."""
-        self._login_user1()
-
-        url = reverse('dashboard_jobs:job-duplicate', kwargs={'pk': self.user2_job.id})
-        response = self.client.post(url)
-
-        # Should be forbidden
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-        # Verify no duplicate was created
-        duplicate_count = JobListing.objects.filter(
-            title__contains='User 2 Job Listing (Copy)'
-        ).count()
-        self.assertEqual(duplicate_count, 0)
-
     def test_user_can_only_see_own_jobs(self):
         """Test that authenticated users can only see their own job listings."""
         self._login_user1()

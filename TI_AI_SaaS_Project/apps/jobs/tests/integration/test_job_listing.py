@@ -5,6 +5,8 @@ Tests the complete job listing creation workflow with upload type selection.
 """
 
 from django.test import TestCase, Client
+from django.core.cache import cache
+from django.urls import reverse
 from apps.accounts.models import CustomUser, UserProfile
 from apps.jobs.models import JobListing
 from datetime import timedelta
@@ -16,6 +18,7 @@ class JobListingCreationIntegrationTest(TestCase):
     """Integration tests for job listing creation with upload type."""
 
     def setUp(self):
+        cache.clear()  # Clear throttling counters between tests
         self.client = Client()
         self.user = self._create_tas_user()
 
@@ -33,8 +36,16 @@ class JobListingCreationIntegrationTest(TestCase):
         return user
 
     def _login(self):
-        """Login the test user."""
-        self.client.login(username='testuser', password='testpass123')
+        """Login the test user using the JWT login endpoint."""
+        response = self.client.post(
+            reverse('api:login'),
+            data=json.dumps({
+                'username': 'testuser',
+                'password': 'testpass123'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200, f"Login failed: {response.json()}")
 
     def test_create_job_listing_with_bulk_upload_type(self):
         """Test creating job listing with bulk upload type."""
