@@ -383,20 +383,22 @@ def clear_analysis_run_id_mapping(job_id: str, analysis_run_id: Optional[str] = 
 
     # Clear job -> run_id mapping
     job_to_run_key = f"analysis_current_run:{job_id}"
-    r.delete(job_to_run_key)
 
     # Clear run_id -> job_id mapping if we have the run_id
     if analysis_run_id:
         run_to_job_key = f"analysis_run:{analysis_run_id}"
         r.delete(run_to_job_key)
     else:
-        # Try to get it from Redis first
+        # Read the current run id from Redis before deleting job_to_run_key
         current_run_id = r.get(job_to_run_key)
         if current_run_id:
             if isinstance(current_run_id, bytes):
                 current_run_id = current_run_id.decode('utf-8')
             run_to_job_key = f"analysis_run:{current_run_id}"
             r.delete(run_to_job_key)
+
+    # Now delete the job -> run_id mapping
+    r.delete(job_to_run_key)
 
 
 # =============================================================================
