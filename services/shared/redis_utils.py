@@ -43,10 +43,17 @@ def get_redis_client():
     """
     max_retries = 3
     base_delay = 0.5  # seconds
+    redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
 
     for attempt in range(max_retries):
         try:
-            return redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
+            client = redis.from_url(
+                redis_url,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
+            client.ping()  # Force a real connection test
+            return client
         except Exception as e:
             logger.error(f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {str(e)}")
             if attempt < max_retries - 1:  # Don't sleep on the last attempt
