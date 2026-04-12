@@ -23,7 +23,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from apps.applications.models import Applicant, UploadBatch
 from apps.jobs.models import JobListing
-from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+from apps.applications.services.resume_parser import ResumeParserService, ConfidentialInfoFilter
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
