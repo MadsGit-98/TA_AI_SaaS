@@ -508,3 +508,22 @@ LOGGING = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ==========================================
+# AI Service Layer Configuration (Feature 013)
+# ==========================================
+# Feature flag: Switch between direct imports (False) and HTTP client (True)
+USE_AI_SERVICE_HTTP = env.bool('USE_AI_SERVICE_HTTP', default=False)
+
+# AI Service base URL (when USE_AI_SERVICE_HTTP is True)
+AI_SERVICE_BASE_URL = env('AI_SERVICE_BASE_URL', default='http://localhost:9000/api/v1')
+
+# AI Service API key for authentication
+AI_SERVICE_API_KEY = env('AI_SERVICE_API_KEY', default='')
+
+# AI Service request timeout (seconds)
+AI_SERVICE_TIMEOUT = env.int('AI_SERVICE_TIMEOUT', default=30)
+
+# AI Service circuit breaker configuration
+AI_SERVICE_CIRCUIT_BREAKER_FAILURE_THRESHOLD = env.int('AI_SERVICE_CIRCUIT_BREAKER_FAILURE_THRESHOLD', default=5)
+AI_SERVICE_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = env.int('AI_SERVICE_CIRCUIT_BREAKER_RECOVERY_TIMEOUT', default=30)

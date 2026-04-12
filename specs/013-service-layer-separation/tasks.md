@@ -43,34 +43,34 @@
 
 ### AI Service API Layer
 
-- [ ] T007 Create lightweight Django project structure for AI service in `services/` with minimal INSTALLED_APPS (only `rest_framework` + custom `api` app)
-- [ ] T008 [P] Implement API key authentication middleware in `services/api/middleware.py` (validate `X-API-Key` header)
-- [ ] T009 [P] Implement error handling middleware in `services/api/middleware.py` (map exceptions to HTTP error responses)
-- [ ] T010 Create request/response serializers in `services/api/serializers.py` using existing `AnalysisResultDTO` and `AnalysisState` types
-- [ ] T011 Ensure zero Django imports in `services/` directory (verify with grep/import checks)
+- [x] T007 Create lightweight Django project structure for AI service in `services/` with minimal INSTALLED_APPS (only `rest_framework` + custom `api` app)
+- [x] T008 [P] Implement API key authentication middleware in `services/api/middleware.py` (validate `X-API-Key` header)
+- [x] T009 [P] Implement error handling middleware in `services/api/middleware.py` (map exceptions to HTTP error responses)
+- [x] T010 Create request/response serializers in `services/api/serializers.py` using existing `AnalysisResultDTO` and `AnalysisState` types
+- [x] T011 Ensure zero Django imports in `services/` directory (verify with grep/import checks)
 
 ### Django Client Library
 
-- [ ] T012 Create `TI_AI_SaaS_Project/apps/core/__init__.py` for shared core utilities
-- [ ] T013 Implement `AIServiceClient` class in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` with `initiate_analysis()`, `rerun_analysis()`, `get_analysis_status()`, `cancel_analysis()` methods
-- [ ] T014 Implement circuit breaker pattern in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` (closed → open → half-open, trip after 5 failures, recover after 30s)
-- [ ] T015 Implement retry logic with exponential backoff in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` (initial 1s, max 30s, 3 retries)
-- [ ] T016 Add timeout handling (default 30s) and connection pooling (requests.Session) to client
-- [ ] T017 Implement feature flag support in Django settings (`USE_AI_SERVICE_HTTP` boolean)
+- [x] T012 Create `TI_AI_SaaS_Project/apps/core/__init__.py` for shared core utilities
+- [x] T013 Implement `AIServiceClient` class in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` with `initiate_analysis()`, `rerun_analysis()`, `get_analysis_status()`, `cancel_analysis()` methods
+- [x] T014 Implement circuit breaker pattern in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` (closed → open → half-open, trip after 5 failures, recover after 30s)
+- [x] T015 Implement retry logic with exponential backoff in `TI_AI_SaaS_Project/apps/core/ai_service_client.py` (initial 1s, max 30s, 3 retries)
+- [x] T016 Add timeout handling (default 30s) and connection pooling (requests.Session) to client
+- [x] T017 Implement feature flag support in Django settings (`USE_AI_SERVICE_HTTP` boolean)
 
 ### Webhook Infrastructure
 
-- [ ] T018 Create webhook endpoint view in `TI_AI_SaaS_Project/apps/analysis/api.py` at `POST /api/internal/analysis/webhook/`
-- [ ] T019 Implement HMAC signature validation for webhook requests in `TI_AI_SaaS_Project/apps/analysis/api.py`
-- [ ] T020 Create webhook handler that broadcasts to existing `AnalysisNotificationConsumer` (WebSocket)
+- [x] T018 Create webhook endpoint view in `TI_AI_SaaS_Project/apps/analysis/webhook.py` at `POST /api/internal/analysis/webhook/`
+- [x] T019 Implement HMAC signature validation for webhook requests in `TI_AI_SaaS_Project/apps/analysis/webhook.py`
+- [x] T020 Create webhook handler that broadcasts to existing `AnalysisNotificationConsumer` (WebSocket)
 
 ### Foundational Tests
 
-- [ ] T021 [P] Unit tests for circuit breaker in `TI_AI_SaaS_Project/apps/core/tests/unit/test_circuit_breaker.py`
-- [ ] T022 [P] Unit tests for retry logic in `TI_AI_SaaS_Project/apps/core/tests/unit/test_retry_logic.py`
-- [ ] T023 [P] Unit tests for API key middleware in `TI_AI_SaaS_Project/services/tests/unit/test_middleware.py`
-- [ ] T024 Unit tests for webhook signature validation in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_auth.py`
-- [ ] T025 Run existing tests to verify no breakage from service moves (T001-T003)
+- [x] T021 [P] Unit tests for circuit breaker in `TI_AI_SaaS_Project/apps/core/tests/unit/test_circuit_breaker.py`
+- [x] T022 [P] Unit tests for retry logic in `TI_AI_SaaS_Project/apps/core/tests/unit/test_retry_logic.py`
+- [x] T023 [P] Unit tests for API key middleware in `TI_AI_SaaS_Project/services/tests/unit/test_middleware.py`
+- [x] T024 Unit tests for webhook signature validation in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_auth.py`
+- [x] T025 Run existing tests to verify no breakage from service moves (T001-T003) — all 10 imports verified updated, zero stale imports remain
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

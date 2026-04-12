@@ -15,7 +15,6 @@ import os
 from apps.applications.services.resume_parser import ResumeParserService
 from apps.applications.models import Applicant
 from apps.applications.utils.file_validation import (
-    validate_resume_file as validate_file_util,
     MIN_FILE_SIZE,
     MAX_FILE_SIZE,
 )

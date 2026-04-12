@@ -16,6 +16,7 @@ from .api import (
     rerun_analysis,
     analysis_statistics,
 )
+from .webhook import analysis_webhook
 
 app_name = 'analysis_api'
 
@@ -29,4 +30,7 @@ urlpatterns = [
     path('jobs/<uuid:job_id>/analysis/cancel/', cancel_analysis, name='api-cancel-analysis'),
     path('jobs/<uuid:job_id>/analysis/re-run/', rerun_analysis, name='api-rerun-analysis'),
     path('jobs/<uuid:job_id>/analysis/statistics/', analysis_statistics, name='api-analysis-statistics'),
+
+    # Webhook endpoint (receives updates FROM AI service)
+    path('internal/analysis/webhook/', analysis_webhook, name='analysis-webhook'),
 ]
