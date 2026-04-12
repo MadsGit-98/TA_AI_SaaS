@@ -17,20 +17,29 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Initiate AI Analysis (Priority: P1)
+### User Story 1 - Initiate + Rerun AI Analysis (Priority: P1)
 
-As a Platform User (Recruiter/Hiring Manager), I want to start AI analysis on a job listing with applicants, so that I can get scored and categorized candidates.
+As a Platform User (Recruiter/Hiring Manager), I want to start or re-run AI analysis on a job listing with applicants, so that I can get scored and categorized candidates. Re-running analysis deletes previous results and starts a fresh analysis, requiring explicit confirmation to prevent accidental data loss.
 
-**Why this priority**: This is the core functionality that delivers the primary value proposition of the platform - automated candidate screening and scoring. Without this, the AI service provides no value.
+**Why this priority**: This is the core functionality that delivers the primary value proposition of the platform - automated candidate screening and scoring. Without this, the AI service provides no value. Rerun capability allows users to refresh analysis when applicants are added or job requirements change.
 
-**Independent Test**: Can be fully tested by initiating an analysis job on a job listing with applicants and verifying that the job is created, queued for processing, and eventually produces scored results. Delivers complete candidate analysis functionality.
+**Independent Test**: Can be fully tested by (a) initiating an analysis job on a job listing with applicants and verifying that the job is created, queued for processing, and eventually produces scored results, AND (b) re-running analysis with confirmation and verifying previous results are deleted before fresh analysis starts. Delivers complete candidate analysis and refresh functionality.
 
 **Acceptance Scenarios**:
+
+*Initiate Analysis:*
 
 1. **Given** I am a logged-in recruiter with a job listing that has applicants, **When** I click "Start AI Analysis", **Then** the system creates an analysis job and displays a confirmation message with the job ID
 2. **Given** I have an active analysis job running, **When** I try to start another analysis on the same job listing, **Then** the system prevents duplicate jobs and shows the status of the existing job
 3. **Given** the AI service is temporarily unavailable, **When** I try to start analysis, **Then** the system displays a clear error message indicating the service is unavailable and suggests retrying later
 4. **Given** the job listing has no applicants, **When** I try to start analysis, **Then** the system prevents the request and shows a message indicating applicants are required
+
+*Rerun Analysis:*
+
+5. **Given** I have completed analysis results for a job listing, **When** I click "Re-run Analysis", **Then** the system displays a confirmation dialog warning that previous results will be deleted
+6. **Given** I confirmed the rerun request, **When** the system processes the request, **Then** all previous analysis results are deleted and a fresh analysis job is started
+7. **Given** I have an active analysis job running, **When** I try to re-run analysis on the same job listing, **Then** the system prevents the request and shows the status of the existing job
+8. **Given** I attempt to re-run analysis without confirmation, **When** the request is submitted, **Then** the system rejects the request with a "confirmation required" error
 
 ---
 

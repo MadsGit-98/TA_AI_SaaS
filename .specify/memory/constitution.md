@@ -67,6 +67,12 @@ The following services MUST be implemented as distinct, decoupled Python modules
 - **logging_service**: Centralized debugging utility (staged for removal in production)
 - **ai_email_assistance_service**: TAS support for drafting follow-up emails
 
+**Exemption for Feature 013 (Service Layer Separation)**: As part of the service layer separation initiative (spec 013), the following services are intentionally moved from the `services/` directory to the application layer (`apps/applications/`) because they are NOT AI services and belong in the Django application layer:
+- `resume_parsing_service` → `apps/applications/resume_parser.py`
+- `duplication_service` → `apps/applications/services/duplication_service.py`
+
+This exemption is scoped ONLY to Feature 013 and does not change the general principle that AI/ML services belong in `services/`. The `ai_analysis_service` and its related graphs remain in `services/` as an independently deployable AI service layer.
+
 ### 5. Quality, Testing, and Security Standards
 
 **Coding & Quality**:

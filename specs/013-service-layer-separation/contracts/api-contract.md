@@ -188,7 +188,74 @@ X-API-Key: <api-key>
 
 ---
 
-## 3. Cancel Analysis
+## 3. Rerun Analysis
+
+**Endpoint**: `POST /api/v1/analysis/{job_id}/rerun/`
+
+**Description**: Re-run AI analysis for a job listing, deleting previous results and starting fresh analysis.
+
+### Request
+
+**Headers**:
+```
+Content-Type: application/json
+X-API-Key: <api-key>
+```
+
+**Path Parameters**:
+- `job_id`: UUID of the job listing
+
+**Body**:
+```json
+{
+  "confirm": true
+}
+```
+
+**Field Validation**:
+- `confirm`: Required, must be `true` to prevent accidental data loss
+
+### Response
+
+**Success (202 Accepted)**:
+```json
+{
+  "analysis_run_id": "run-abc123",
+  "job_id": "uuid-string",
+  "status": "queued",
+  "previous_results_deleted": 45,
+  "applicants_total": 50,
+  "estimated_completion": "2026-04-12T16:30:00Z"
+}
+```
+
+**Error - Confirmation Required (400)**:
+```json
+{
+  "error": "confirmation_required",
+  "message": "Must set 'confirm': true to re-run analysis (this will delete previous results)"
+}
+```
+
+**Error - Not Found (404)**:
+```json
+{
+  "error": "not_found",
+  "message": "No job listing found for this ID"
+}
+```
+
+**Error - Duplicate Job (409 Conflict)**:
+```json
+{
+  "error": "duplicate_analysis",
+  "message": "An analysis job is already running for this job listing"
+}
+```
+
+---
+
+## 4. Cancel Analysis
 
 **Endpoint**: `POST /api/v1/analysis/{job_id}/cancel/`
 
@@ -484,6 +551,7 @@ All error responses follow a consistent format:
 | Endpoint | Rate Limit |
 |----------|------------|
 | `POST /api/v1/analysis/initiate/` | 10 requests per minute per API key |
+| `POST /api/v1/analysis/{job_id}/rerun/` | 10 requests per minute per API key |
 | `GET /api/v1/analysis/{job_id}/status/` | 60 requests per minute per API key |
 | `POST /api/v1/analysis/{job_id}/cancel/` | 10 requests per minute per API key |
 | `GET /health` | No limit |
@@ -494,6 +562,7 @@ All error responses follow a consistent format:
 | Endpoint | Timeout |
 |----------|---------|
 | `POST /api/v1/analysis/initiate/` | 30 seconds |
+| `POST /api/v1/analysis/{job_id}/rerun/` | 30 seconds |
 | `GET /api/v1/analysis/{job_id}/status/` | 10 seconds |
 | `POST /api/v1/analysis/{job_id}/cancel/` | 10 seconds |
 | `GET /health` | 5 seconds |
