@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Separate AI service layer into independently deployable component with REST API communication"
 
+## Clarifications
+
+### Session 2026-04-12
+
+- Q: What API versioning strategy should be used for the service communication layer? → A: URL-based versioning (e.g., `/api/v1/analyze`)
+- Q: How should API keys for service authentication be managed and rotated? → A: External secret manager (e.g., HashiCorp Vault, AWS Secrets Manager)
+- Q: How should analysis job state transitions be tracked? → A: Simple states tracked in memory (queued → processing → done/failed)
+- Q: What migration approach should be used to transition from monolithic to distributed architecture? → A: Big bang switch (deploy service, flip feature flag, disable old path)
+- Q: How should webhook delivery failures be handled after max retries? → A: Drop after max retries with error log only
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Initiate AI Analysis (Priority: P1)
@@ -85,7 +95,7 @@ As a Platform User, I want to view the completed analysis results for a job list
 
 **Acceptance Scenarios**:
 
-1. **Given** an analysis job has completed, **When** I view the results, **Then** I see a list of all analyzed applicants sorted by score with their category (e.g., "Strong Match", "Potential Match", "Not a Match")
+1. **Given** an analysis job has completed, **When** I view the results, **Then** I see a list of all analyzed applicants sorted by score with their category (e.g., "Best Match", "Good Match", "Partial Match", "Mismatched")
 2. **Given** I am viewing results, **When** I click on an applicant, **Then** I see detailed information including their score (0-100), category, and AI-generated justification for the score
 3. **Given** the analysis included an AI disclaimer, **When** I view results, **Then** I see a clear notice that AI scores are supplementary and should not be the sole decision criteria
 4. **Given** the results are displayed, **When** I export or share the results, **Then** the exported data includes all scores, categories, and justifications in a readable format
@@ -151,14 +161,14 @@ As a Developer, I want to deploy updates to the AI service layer without redeplo
 - What happens when the LLM backend returns rate limit errors? The system implements exponential backoff retry (up to 5 attempts) before marking the applicant as failed and continuing.
 - How does the system handle concurrent analysis requests for the same job listing? The system prevents duplicate concurrent jobs and queues additional requests.
 - What happens when Redis is unavailable during analysis? The system cannot track progress or support cancellation; analysis fails gracefully with an error message.
-- How does the system handle webhook delivery failures from AI service to Django? The AI service retries webhook delivery up to 5 times with exponential backoff before logging a persistent failure.
+- How does the system handle webhook delivery failures from AI service to Django? The AI service retries webhook delivery up to 5 times with exponential backoff; if all retries fail, the delivery is dropped with an error log for investigation.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST separate AI analysis services (supervisor/worker graphs, LLM orchestration, progress tracking, cancellation) into an independently deployable component
-- **FR-002**: System MUST provide a REST API for communication between the main application and the AI service layer
+- **FR-002**: System MUST provide a REST API with URL-based versioning (e.g., `/api/v1/analyze`) for communication between the main application and the AI service layer
 - **FR-003**: System MUST authenticate service-to-service requests using API key authentication
 - **FR-004**: System MUST implement a client component in the main application for calling AI services with circuit breaker and retry logic
 - **FR-005**: System MUST support hybrid progress monitoring with real-time push as primary channel and HTTP polling API as fallback
@@ -172,7 +182,7 @@ As a Developer, I want to deploy updates to the AI service layer without redeplo
 - **FR-013**: System MUST prevent duplicate concurrent analysis jobs for the same job listing
 - **FR-014**: System MUST display user-friendly error messages when AI service is unavailable instead of technical errors
 - **FR-015**: System MUST maintain backward compatibility with existing frontend UI - no UI changes required
-- **FR-016**: System MUST not break existing analysis functionality during transition from monolithic to distributed architecture
+- **FR-016**: System MUST support a feature flag to switch between monolithic and distributed service paths, with ability to disable the old path after migration
 - **FR-017**: System MUST support the configured LLM backend
 - **FR-018**: System MUST use a shared caching/message broker service for progress tracking and distributed locking
 - **FR-019**: System MUST move resume parsing service to the application layer
@@ -185,8 +195,8 @@ As a Developer, I want to deploy updates to the AI service layer without redeplo
 
 ### Key Entities *(include if feature involves data)*
 
-- **Analysis Job**: Represents a single AI analysis request for a job listing. Contains job ID, job listing reference, status (queued, processing, completed, cancelled, failed, partially_complete), progress metrics (applicants processed, total applicants, percentage complete), start time, completion time, and error messages if applicable.
-- **Candidate Result**: Represents the analysis output for a single applicant within an analysis job. Contains applicant reference, score (0-100), category (e.g., "Strong Match", "Potential Match", "Not a Match"), AI-generated justification text, processing status (success, error, skipped), and timestamp.
+- **Analysis Job**: Represents a single AI analysis request for a job listing. Contains job ID, job listing reference, status (queued, processing, completed, cancelled, failed, partially_complete), progress metrics (applicants processed, total applicants, percentage complete), start time, completion time, and error messages if applicable. State transitions are tracked in memory using a simple lifecycle model: queued → processing → done/failed, with cancellation allowed during processing.
+- **Candidate Result**: Represents the analysis output for a single applicant within an analysis job. Contains applicant reference, job listing reference, individual metric scores (education_score, skills_score, experience_score, supplemental_score), overall_score (0-100, weighted formula), category (Best Match/Good Match/Partial Match/Mismatched/Unprocessed), justifications for each score, status (Analyzed/Unprocessed/Pending), and error messages if applicable.
 - **Service Health Status**: Represents the current operational state of the AI service and its dependencies. Contains service name, status (healthy, degraded, unhealthy), dependency statuses (Redis, LLM backend), last checked timestamp, and error details if applicable.
 - **Circuit Breaker State**: Tracks the health of the connection to the AI service. Contains current state (closed, open, half-open), failure count, last failure timestamp, and time until next retry attempt.
 
@@ -197,7 +207,7 @@ As a Developer, I want to deploy updates to the AI service layer without redeplo
 - **ASSUMPTION-003**: Platform users have appropriate permissions to initiate analysis on job listings they own or manage
 - **ASSUMPTION-004**: Caching/message broker instance is shared between main application and AI service for progress tracking
 - **ASSUMPTION-005**: The LLM backend is already configured and accessible from the AI service
-- **ASSUMPTION-006**: API keys for service authentication are managed through environment variables or secure secret management
+- **ASSUMPTION-006**: API keys for service authentication are managed through an external secret manager with automatic rotation and access auditing
 - **ASSUMPTION-007**: Existing analysis results and data models remain compatible with the new service architecture
 - **ASSUMPTION-008**: Network latency between main application and AI service is acceptable for the use case (same region or low-latency connection)
 
@@ -225,4 +235,4 @@ As a Developer, I want to deploy updates to the AI service layer without redeplo
 - **SC-008**: Partial analysis results are preserved in 100% of cancelled or failed jobs, allowing users to see work completed up to the point of interruption
 - **SC-009**: Analysis latency per applicant remains consistent with current implementation (no more than 10% degradation due to network overhead)
 - **SC-010**: System supports the same concurrent analysis job capacity as the current implementation (no regression in throughput)
-- **SC-011**: Migration to distributed architecture completes with zero data loss and zero downtime for end users
+- **SC-011**: Migration to distributed architecture completes with zero data loss by using feature flag to switch paths and verify functionality before disabling old path
