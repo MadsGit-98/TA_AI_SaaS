@@ -1,7 +1,8 @@
 """
-Duplication Service for Application Submissions
+Duplication Detection Service for Application Submissions
 
-Per Constitution §4: Decoupled services located in project root services/ directory.
+Moved from services/duplication_service.py as part of Feature 013
+(Service Layer Separation). Non-AI service moved to application layer.
 
 Handles:
 - Resume file validation (format, size, magic bytes)
@@ -11,7 +12,7 @@ Handles:
 
 import logging
 import os
-from services.resume_parsing_service import ResumeParserService
+from apps.applications.services.resume_parser import ResumeParserService
 from apps.applications.models import Applicant
 from apps.applications.utils.file_validation import (
     validate_resume_file as validate_file_util,

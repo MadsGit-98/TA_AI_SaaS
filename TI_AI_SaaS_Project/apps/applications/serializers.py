@@ -7,7 +7,7 @@ from apps.jobs.models import ScreeningQuestion, JobListing
 from apps.applications.utils.file_validation import validate_resume_file
 from apps.applications.utils.email_validation import validate_email
 from apps.applications.utils.phone_validation import validate_phone
-from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+from apps.applications.services.resume_parser import ResumeParserService, ConfidentialInfoFilter
 
 
 class ScreeningQuestionSerializer(serializers.ModelSerializer):

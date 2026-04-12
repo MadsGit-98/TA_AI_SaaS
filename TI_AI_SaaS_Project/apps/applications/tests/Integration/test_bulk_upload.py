@@ -18,7 +18,7 @@ from django.urls import reverse
 from apps.jobs.models import JobListing
 from apps.applications.models import UploadBatch, Applicant
 from apps.accounts.models import UserProfile
-from services.resume_parsing_service import ResumeParserService
+from apps.applications.services.resume_parser import ResumeParserService
 from apps.applications.tasks import finalize_bulk_upload_batch
 from datetime import timedelta
 from django.utils import timezone

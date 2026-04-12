@@ -26,12 +26,12 @@
 
 **Purpose**: Move non-AI services to application layer, extract shared utilities, prepare services directory for standalone deployment
 
-- [ ] T001 Move `services/resume_parsing_service.py` → `TI_AI_SaaS_Project/apps/applications/resume_parser.py` and update all imports
-- [ ] T002 [P] Move `services/duplication_service.py` → `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py` and update all imports
-- [ ] T003 Update all import statements across Django apps that reference moved services (44 import statements per plan)
-- [ ] T004 Extract `apps/accounts/redis_utils.py` → `services/shared/redis_utils.py` (copy, don't move yet)
-- [ ] T005 [P] Create `services/config/settings.py` for AI service environment variable management
-- [ ] T006 [P] Create `services/config/__init__.py` and `services/config/urls.py` for lightweight Django project structure
+- [x] T001 Move `services/resume_parsing_service.py` → `TI_AI_SaaS_Project/apps/applications/services/resume_parser.py` and update all imports
+- [x] T002 [P] Move `services/duplication_service.py` → `TI_AI_SaaS_Project/apps/applications/services/duplication_service.py` and update all imports
+- [x] T003 Update all import statements across Django apps that reference moved services (10 import statements updated)
+- [x] T004 Extract `apps/accounts/redis_utils.py` → `services/shared/redis_utils.py` (copy, don't move yet)
+- [x] T005 [P] Create `services/config/settings.py` for AI service environment variable management
+- [x] T006 [P] Create `services/config/__init__.py` and `services/config/urls.py` for lightweight Django project structure
 
 ---
 

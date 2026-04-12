@@ -5,7 +5,7 @@ Tests for confidential information filtering patterns.
 """
 
 from django.test import SimpleTestCase
-from services.resume_parsing_service import ResumeParserService, ConfidentialInfoFilter
+from apps.applications.services.resume_parser import ResumeParserService, ConfidentialInfoFilter
 from io import BytesIO
 from docx import Document
 from docx.shared import Inches

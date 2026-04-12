@@ -8,7 +8,7 @@ from django.test import TestCase
 from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.accounts.models import CustomUser, UserProfile
-from services.duplication_service import DuplicationService
+from apps.applications.services.duplication_service import DuplicationService
 from datetime import timedelta
 from django.utils import timezone
 

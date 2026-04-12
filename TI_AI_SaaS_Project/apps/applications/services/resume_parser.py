@@ -1,7 +1,8 @@
 """
-Resume Parsing Service
+Resume Parser
 
-Per Constitution §4: Decoupled services located in project root services/ directory.
+Moved from services/resume_parsing_service.py as part of Feature 013
+(Service Layer Separation). Non-AI service moved to application layer.
 
 This service handles:
 1. PDF text extraction using PyPDF2

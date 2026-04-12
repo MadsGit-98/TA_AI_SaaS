@@ -40,9 +40,9 @@ from apps.applications.serializers import (
     BulkUploadDecisionSerializer,
 )
 from apps.accounts.permissions import IsTAS
-from services.duplication_service import DuplicationService
+from apps.applications.services.duplication_service import DuplicationService
 from apps.applications.tasks import send_application_confirmation_email, process_bulk_upload_batch
-from services.resume_parsing_service import ResumeParserService
+from apps.applications.services.resume_parser import ResumeParserService
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
