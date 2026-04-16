@@ -1,10 +1,17 @@
 """
-Redis utilities for the accounts app
+Redis utilities for the AI service layer.
+
+Provides:
+- get_redis_client(): Connection with retry/backoff and timeouts
+- Analysis job state management (lock, store, retrieve, cancel)
+- DummyRedisClient for fallback when Redis is unavailable
 """
 
 import logging
 import time
 import random
+from datetime import datetime, timezone
+from typing import Optional
 from django.conf import settings
 import redis
 
@@ -64,3 +71,68 @@ def get_redis_client():
     error_msg = "All Redis connection attempts failed. Cannot proceed without Redis."
     logger.error(error_msg)
     raise RedisConnectionError(error_msg)
+
+
+# ============================================================
+# Analysis Job State Management
+# ============================================================
+
+ANALYSIS_LOCK_PREFIX = 'analysis_lock:'
+ANALYSIS_STATE_PREFIX = 'analysis_state:'
+ANALYSIS_LOCK_TTL = 300  # 5 minutes
+ANALYSIS_STATE_TTL = 3600  # 1 hour
+
+
+def check_job_running(job_id: str, redis_client) -> bool:
+    """Check if a job is already running by looking for a lock key."""
+    lock_key = f'{ANALYSIS_LOCK_PREFIX}{job_id}'
+    return redis_client.exists(lock_key) > 0
+
+
+def store_job_state(job_id: str, run_id: str, total: int, redis_client,
+                    status: str = 'queued'):
+    """Store initial job state in Redis."""
+    state_key = f'{ANALYSIS_STATE_PREFIX}{job_id}'
+    redis_client.hset(state_key, mapping={
+        'run_id': run_id,
+        'job_id': job_id,
+        'status': status,
+        'total_count': str(total),
+        'processed_count': '0',
+        'started_at': datetime.now(timezone.utc).isoformat(),
+    })
+    redis_client.expire(state_key, ANALYSIS_STATE_TTL)
+
+
+def get_job_state(job_id: str, redis_client) -> Optional[dict]:
+    """Retrieve job state from Redis. Returns None if not found."""
+    state_key = f'{ANALYSIS_STATE_PREFIX}{job_id}'
+    return redis_client.hgetall(state_key) or None
+
+
+def set_cancellation_flag(job_id: str, redis_client):
+    """Set the cancellation flag for a running job."""
+    state_key = f'{ANALYSIS_STATE_PREFIX}{job_id}'
+    redis_client.hset(state_key, 'cancelled', 'true')
+
+
+def acquire_job_lock(job_id: str, run_id: str, redis_client):
+    """Acquire the analysis lock for a job."""
+    lock_key = f'{ANALYSIS_LOCK_PREFIX}{job_id}'
+    redis_client.setex(lock_key, ANALYSIS_LOCK_TTL, run_id)
+
+
+def release_job_lock(job_id: str, redis_client):
+    """Release the analysis lock for a job."""
+    lock_key = f'{ANALYSIS_LOCK_PREFIX}{job_id}'
+    redis_client.delete(lock_key)
+
+
+def update_job_status(job_id: str, status: str, redis_client,
+                      processed_count: Optional[int] = None):
+    """Update job status and optionally processed count."""
+    state_key = f'{ANALYSIS_STATE_PREFIX}{job_id}'
+    updates = {'status': status}
+    if processed_count is not None:
+        updates['processed_count'] = str(processed_count)
+    redis_client.hset(state_key, mapping=updates)

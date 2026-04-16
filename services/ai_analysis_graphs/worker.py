@@ -29,6 +29,13 @@ from services.ai_analysis_graphs.types import WorkerState
 logger = logging.getLogger(__name__)
 
 
+def _safe_get(obj, attr_name: str, default=None):
+    """Get attribute from model instance or key from dict."""
+    if isinstance(obj, dict):
+        return obj.get(attr_name, default)
+    return getattr(obj, attr_name, default)
+
+
 def create_worker_graph(
     cancellation_checker: ICancellationChecker,
     llm_provider: ILLMProvider,
@@ -197,7 +204,7 @@ def retrieval_node(state: WorkerState) -> dict:
         }
 
     # Get resume parsed text
-    resume_text = applicant.resume_parsed_text or ''
+    resume_text = _safe_get(applicant, 'resume_parsed_text', '') or ''
     logger.info(f"[Retrieval] Resume text length: {len(resume_text)} chars for applicant {applicant_id}")
 
     if not resume_text:
@@ -208,11 +215,11 @@ def retrieval_node(state: WorkerState) -> dict:
         }
 
     job_requirements = {
-        'title': job_listing.title,
-        'description': job_listing.description,
-        'required_skills': job_listing.required_skills or [],
-        'required_experience': job_listing.required_experience or 0,
-        'job_level': job_listing.job_level,
+        'title': _safe_get(job_listing, 'title', 'Unknown'),
+        'description': _safe_get(job_listing, 'description', ''),
+        'required_skills': _safe_get(job_listing, 'required_skills', []) or [],
+        'required_experience': _safe_get(job_listing, 'required_experience', 0) or 0,
+        'job_level': _safe_get(job_listing, 'job_level', ''),
     }
     logger.info(f"[Retrieval] Job requirements extracted: title={job_requirements['title']}, skills={len(job_requirements['required_skills'])}")
     logger.info(f"[Retrieval] Returning state update with resume_text ({len(resume_text)} chars) and job_requirements (keys: {list(job_requirements.keys())})")
