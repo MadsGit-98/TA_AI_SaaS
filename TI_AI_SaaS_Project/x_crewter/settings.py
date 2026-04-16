@@ -512,10 +512,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ==========================================
 # AI Service Layer Configuration (Feature 013)
 # ==========================================
-# Feature flag: Switch between direct imports (False) and HTTP client (True)
-USE_AI_SERVICE_HTTP = env.bool('USE_AI_SERVICE_HTTP', default=False)
-
-# AI Service base URL (when USE_AI_SERVICE_HTTP is True)
+# AI Service base URL for HTTP client communication
 AI_SERVICE_BASE_URL = env('AI_SERVICE_BASE_URL', default='http://localhost:9000/api/v1')
 
 # AI Service API key for authentication

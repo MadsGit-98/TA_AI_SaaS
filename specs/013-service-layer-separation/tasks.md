@@ -84,25 +84,31 @@
 
 ### Tests for User Story 1
 
-- [ ] T026 [P] [US1] Contract test for `POST /api/v1/analysis/initiate/` in `TI_AI_SaaS_Project/services/tests/unit/test_initiate_endpoint.py`
-- [ ] T027 [P] [US1] Integration test for analysis initiation flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us1_initiate.py`
-- [ ] T028 [P] [US1] Unit test for `AIServiceClient.initiate_analysis()` in `TI_AI_SaaS_Project/apps/core/tests/unit/test_client_initiate.py`
+- [x] T026 [P] [US1] Contract test for `POST /api/v1/analysis/initiate/` in `TI_AI_SaaS_Project/services/tests/unit/test_initiate_endpoint.py`
+- [x] T027 [P] [US1] Integration test for analysis initiation flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us1_initiate.py`
+- [x] T028 [P] [US1] Unit test for `AIServiceClient.initiate_analysis()` in `TI_AI_SaaS_Project/apps/core/tests/unit/test_client_initiate.py`
 
 ### Implementation for User Story 1
 
-- [ ] T029 [US1] Implement `POST /api/v1/analysis/initiate/` endpoint view in `TI_AI_SaaS_Project/services/api/views.py` (validates request, constructs AnalysisState, starts analysis thread)
-- [ ] T030 [US1] Add duplicate job detection logic to initiate endpoint (check for existing queued/processing jobs)
-- [ ] T031 [US1] Add request validation for initiate endpoint (job_id UUID, non-empty applicants, valid experience_level)
-- [ ] T032 [US1] Update Django analysis initiation view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use `AIServiceClient.initiate_analysis()` (guarded by feature flag)
-- [ ] T033 [US1] Add error handling for service unavailability (return 503 with user-friendly message per FR-014)
-- [ ] T034 [US1] Add validation to prevent initiation when job listing has no applicants
-- [ ] T035 [US1] Implement `POST /api/v1/analysis/rerun/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (validates confirm flag, deletes previous results, starts analysis)
-- [ ] T036 [US1] Add `rerun_analysis()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
-- [ ] T037 [US1] Update Django rerun view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use client (guarded by feature flag, requires confirm=true)
-- [ ] T038 [P] [US1] Contract test for `POST /api/v1/analysis/rerun/` in `TI_AI_SaaS_Project/services/tests/unit/test_rerun_endpoint.py`
-- [ ] T039 [P] [US1] Integration test for rerun analysis flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us1_rerun.py`
+- [x] T029 [US1] Implement `POST /api/v1/analysis/initiate/` endpoint view in `TI_AI_SaaS_Project/services/api/views.py` (validates request, calls run_analysis() orchestrator with service-layer adapters)
+- [x] T030 [US1] Add duplicate job detection logic to initiate endpoint (check for existing queued/processing jobs)
+- [x] T031 [US1] Add request validation for initiate endpoint (job_id UUID, non-empty applicants, valid experience_level)
+- [x] T032 [US1] Update Django analysis initiation view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use `AIServiceClient.initiate_analysis()` (guarded by feature flag)
+- [x] T033 [US1] Add error handling for service unavailability (return 503 with user-friendly message per FR-014)
+- [x] T034 [US1] Add validation to prevent initiation when job listing has no applicants
+- [x] T035 [US1] Implement `POST /api/v1/analysis/rerun/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (validates confirm flag, deletes previous results, starts analysis)
+- [x] T036 [US1] Add `rerun_analysis()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
+- [x] T037 [US1] Update Django rerun view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use client (guarded by feature flag, requires confirm=true)
+- [x] T038 [P] [US1] Contract test for `POST /api/v1/analysis/rerun/` in `TI_AI_SaaS_Project/services/tests/unit/test_rerun_endpoint.py`
+- [x] T039 [P] [US1] Integration test for rerun analysis flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us1_rerun.py`
 
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently - users can initiate analysis via HTTP service
+### Service Layer Adapters (new)
+
+- [x] T040 [US1] Create `services/ai_service_adapters.py` with 5 interface implementations (ServiceAnalysisResultRepository, ServiceNotificationService, ServiceProgressTracker, ServiceCancellationChecker, ServiceLLMProvider)
+- [x] T041 [US1] Create `services/webhook_sender.py` utility for signed webhook POSTs to Django
+- [x] T042 [US1] Wire `services/api/views.py` to call `run_analysis()` from orchestrator with service-layer adapters (replaces threading/simulation)
+
+**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently - users can initiate real AI analysis via HTTP service
 
 ---
 
@@ -114,16 +120,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T040 [P] [US2] Contract test for progress webhook payload in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_progress.py`
-- [ ] T041 [P] [US2] Integration test for WebSocket progress updates in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us2_websocket_progress.py`
+- [ ] T043 [P] [US2] Contract test for progress webhook payload in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_progress.py`
+- [ ] T044 [P] [US2] Integration test for WebSocket progress updates in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us2_websocket_progress.py`
 
 ### Implementation for User Story 2
 
-- [ ] T042 [US2] Implement progress webhook handler in `TI_AI_SaaS_Project/apps/analysis/api.py` to receive `event: "progress"` from AI service
-- [ ] T043 [US2] Update `AnalysisNotificationConsumer` in `TI_AI_SaaS_Project/apps/analysis/consumers.py` to broadcast progress messages (reuses existing infrastructure)
-- [ ] T044 [US2] Implement AI service-side webhook sender with retry logic (5 retries, exponential backoff) in `TI_AI_SaaS_Project/services/ai_analysis_service.py`
-- [ ] T045 [US2] Add milestone notification logic (25%, 50%, 75%, 90%) to supervisor graph using `sent_milestones` set
-- [ ] T046 [US2] Verify category_distribution uses correct values: `Best Match`, `Good Match`, `Partial Match`, `Mismatched`
+- [ ] T045 [US2] Implement progress webhook handler in `TI_AI_SaaS_Project/apps/analysis/api.py` to receive `event: "progress"` from AI service
+- [ ] T046 [US2] Update `AnalysisNotificationConsumer` in `TI_AI_SaaS_Project/apps/analysis/consumers.py` to broadcast progress messages (reuses existing infrastructure)
+- [ ] T047 [US2] Implement AI service-side webhook sender with retry logic (5 retries, exponential backoff) in `TI_AI_SaaS_Project/services/ai_analysis_service.py`
+- [ ] T048 [US2] Add milestone notification logic (25%, 50%, 75%, 90%) to supervisor graph using `sent_milestones` set
+- [ ] T049 [US2] Verify category_distribution uses correct values: `Best Match`, `Good Match`, `Partial Match`, `Mismatched`
 
 **Checkpoint**: User Story 2 complete - real-time progress monitoring works via WebSocket + webhook
 
@@ -137,16 +143,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T047 [P] [US3] Contract test for `GET /api/v1/analysis/{job_id}/status/` in `TI_AI_SaaS_Project/services/tests/unit/test_status_endpoint.py`
-- [ ] T048 [P] [US3] Integration test for polling fallback in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us3_polling_fallback.py`
+- [ ] T050 [P] [US3] Contract test for `GET /api/v1/analysis/{job_id}/status/` in `TI_AI_SaaS_Project/services/tests/unit/test_status_endpoint.py`
+- [ ] T051 [P] [US3] Integration test for polling fallback in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us3_polling_fallback.py`
 
 ### Implementation for User Story 3
 
-- [ ] T049 [US3] Implement `GET /api/v1/analysis/{job_id}/status/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (reads from Redis)
-- [ ] T050 [US3] Add `get_analysis_status()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
-- [ ] T051 [US3] Enhance Django status endpoint in `TI_AI_SaaS_Project/apps/analysis/api.py` to call AI service and cache response in Redis for 5 seconds
-- [ ] T052 [US3] Add polling support to existing analysis status view (returns status, processed_count, total_count, progress_percentage, category_distribution, estimated_completion)
-- [ ] T053 [US3] Update frontend JavaScript to implement adaptive strategy: try WebSocket first, fallback to polling every 3s on failure (in `apps/analysis/static/js/`)
+- [ ] T052 [US3] Implement `GET /api/v1/analysis/{job_id}/status/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (reads from Redis)
+- [ ] T053 [US3] Add `get_analysis_status()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
+- [ ] T054 [US3] Enhance Django status endpoint in `TI_AI_SaaS_Project/apps/analysis/api.py` to call AI service and cache response in Redis for 5 seconds
+- [ ] T055 [US3] Add polling support to existing analysis status view (returns status, processed_count, total_count, progress_percentage, category_distribution, estimated_completion)
+- [ ] T056 [US3] Update frontend JavaScript to implement adaptive strategy: try WebSocket first, fallback to polling every 3s on failure (in `apps/analysis/static/js/`)
 
 **Checkpoint**: User Story 3 complete - polling fallback works when WebSocket unavailable
 
@@ -160,17 +166,17 @@
 
 ### Tests for User Story 4
 
-- [ ] T054 [P] [US4] Contract test for `POST /api/v1/analysis/{job_id}/cancel/` in `TI_AI_SaaS_Project/services/tests/unit/test_cancel_endpoint.py`
-- [ ] T055 [P] [US4] Integration test for cancellation flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us4_cancellation.py`
+- [ ] T057 [P] [US4] Contract test for `POST /api/v1/analysis/{job_id}/cancel/` in `TI_AI_SaaS_Project/services/tests/unit/test_cancel_endpoint.py`
+- [ ] T058 [P] [US4] Integration test for cancellation flow in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us4_cancellation.py`
 
 ### Implementation for User Story 4
 
-- [ ] T056 [US4] Implement `POST /api/v1/analysis/{job_id}/cancel/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (sets Redis cancellation flag)
-- [ ] T057 [US4] Add `cancel_analysis()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
-- [ ] T058 [US4] Update Django cancel view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use client (guarded by feature flag)
-- [ ] T059 [US4] Add cancellation check in supervisor graph node (checks `cancelled` flag in AnalysisState)
-- [ ] T060 [US4] Ensure partial results are preserved on cancellation (mark job as `cancelled` with `partially_complete` if applicable)
-- [ ] T061 [US4] Disable cancel button for completed/failed jobs in frontend
+- [ ] T059 [US4] Implement `POST /api/v1/analysis/{job_id}/cancel/` endpoint in AI service `TI_AI_SaaS_Project/services/api/views.py` (sets Redis cancellation flag)
+- [ ] T060 [US4] Add `cancel_analysis()` method to `AIServiceClient` in `TI_AI_SaaS_Project/apps/core/ai_service_client.py`
+- [ ] T061 [US4] Update Django cancel view in `TI_AI_SaaS_Project/apps/analysis/api.py` to use client (guarded by feature flag)
+- [ ] T062 [US4] Add cancellation check in supervisor graph node (checks `cancelled` flag in AnalysisState)
+- [ ] T063 [US4] Ensure partial results are preserved on cancellation (mark job as `cancelled` with `partially_complete` if applicable)
+- [ ] T064 [US4] Disable cancel button for completed/failed jobs in frontend
 
 **Checkpoint**: User Story 4 complete - users can cancel running analyses
 
@@ -184,19 +190,19 @@
 
 ### Tests for User Story 5
 
-- [ ] T062 [P] [US5] Contract test for completion webhook payload in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_completion.py`
-- [ ] T063 [P] [US5] Integration test for result persistence in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us5_results.py`
-- [ ] T064 [P] [US5] Unit test for `AIAnalysisResult` field mapping in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_result_mapping.py`
+- [ ] T065 [P] [US5] Contract test for completion webhook payload in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_webhook_completion.py`
+- [ ] T066 [P] [US5] Integration test for result persistence in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us5_results.py`
+- [ ] T067 [P] [US5] Unit test for `AIAnalysisResult` field mapping in `TI_AI_SaaS_Project/apps/analysis/tests/unit/test_result_mapping.py`
 
 ### Implementation for User Story 5
 
-- [ ] T065 [US5] Implement completion webhook handler in `TI_AI_SaaS_Project/apps/analysis/api.py` to receive `event: "completed"` with results array
-- [ ] T066 [US5] Update `DjangoAnalysisResultRepository.bulk_save_results()` in `TI_AI_SaaS_Project/apps/analysis/adapters.py` to map `AnalysisResultDTO` fields to `AIAnalysisResult` model (exact field match per data-model.md)
-- [ ] T067 [US5] Verify all Candidate Result fields are persisted correctly: education_score, skills_score, experience_score, supplemental_score, overall_score, category, all justifications, status
-- [ ] T068 [US5] Add AI disclaimer display to results page template (per FR-025)
-- [ ] T069 [US5] Ensure results are sorted by overall_score descending
-- [ ] T070 [US5] Add validation that category matches overall_score ranges (Best Match 90-100, Good Match 70-89, etc.)
-- [ ] T071 [US5] Handle `Unprocessed` status results (show error_message, category = "Unprocessed")
+- [ ] T068 [US5] Implement completion webhook handler in `TI_AI_SaaS_Project/apps/analysis/api.py` to receive `event: "completed"` with results array
+- [ ] T069 [US5] Update `DjangoAnalysisResultRepository.bulk_save_results()` in `TI_AI_SaaS_Project/apps/analysis/adapters.py` to map `AnalysisResultDTO` fields to `AIAnalysisResult` model (exact field match per data-model.md)
+- [ ] T070 [US5] Verify all Candidate Result fields are persisted correctly: education_score, skills_score, experience_score, supplemental_score, overall_score, category, all justifications, status
+- [ ] T071 [US5] Add AI disclaimer display to results page template (per FR-025)
+- [ ] T072 [US5] Ensure results are sorted by overall_score descending
+- [ ] T073 [US5] Add validation that category matches overall_score ranges (Best Match 90-100, Good Match 70-89, etc.)
+- [ ] T074 [US5] Handle `Unprocessed` status results (show error_message, category = "Unprocessed")
 
 **Checkpoint**: User Story 5 complete - users can view complete analysis results with all detail fields
 
@@ -210,15 +216,15 @@
 
 ### Tests for User Story 6
 
-- [ ] T072 [P] [US6] Unit test for health endpoint in `TI_AI_SaaS_Project/services/tests/unit/test_health_endpoint.py`
-- [ ] T073 [P] [US6] Unit test for readiness endpoint in `TI_AI_SaaS_Project/services/tests/unit/test_ready_endpoint.py`
+- [ ] T075 [P] [US6] Unit test for health endpoint in `TI_AI_SaaS_Project/services/tests/unit/test_health_endpoint.py`
+- [ ] T076 [P] [US6] Unit test for readiness endpoint in `TI_AI_SaaS_Project/services/tests/unit/test_ready_endpoint.py`
 
 ### Implementation for User Story 6
 
-- [ ] T074 [US6] Implement `GET /health` endpoint in `TI_AI_SaaS_Project/services/api/views.py` (checks Redis, Ollama connectivity)
-- [ ] T075 [US6] Implement `GET /ready` endpoint in `TI_AI_SaaS_Project/services/api/views.py` (no auth required, checks dependencies)
-- [ ] T076 [US6] Add health check response format: service name, status, version, dependencies with status/message/response_time_ms
-- [ ] T077 [US6] Add degraded state handling (one dependency down but service still operates)
+- [ ] T077 [US6] Implement `GET /health` endpoint in `TI_AI_SaaS_Project/services/api/views.py` (checks Redis, Ollama connectivity)
+- [ ] T078 [US6] Implement `GET /ready` endpoint in `TI_AI_SaaS_Project/services/api/views.py` (no auth required, checks dependencies)
+- [ ] T079 [US6] Add health check response format: service name, status, version, dependencies with status/message/response_time_ms
+- [ ] T080 [US6] Add degraded state handling (one dependency down but service still operates)
 
 **Checkpoint**: User Story 6 complete - administrators can monitor service health
 
@@ -232,16 +238,16 @@
 
 ### Tests for User Story 7
 
-- [ ] T078 [P] [US7] Unit test for circuit breaker state transitions in `TI_AI_SaaS_Project/apps/core/tests/unit/test_circuit_breaker_states.py`
-- [ ] T079 [P] [US7] Integration test for service failure recovery in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us7_fault_tolerance.py`
+- [ ] T081 [P] [US7] Unit test for circuit breaker state transitions in `TI_AI_SaaS_Project/apps/core/tests/unit/test_circuit_breaker_states.py`
+- [ ] T082 [P] [US7] Integration test for service failure recovery in `TI_AI_SaaS_Project/apps/analysis/tests/integration/test_us7_fault_tolerance.py`
 
 ### Implementation for User Story 7
 
-- [ ] T080 [US7] Wire circuit breaker into all `AIServiceClient` methods (initiate, status, cancel)
-- [ ] T081 [US7] Add user-friendly error messages for circuit breaker tripped state (per FR-014)
-- [ ] T082 [US7] Add logging for circuit breaker state transitions (closed → open → half-open)
-- [ ] T083 [US7] Test circuit breaker with 5 consecutive failures → trips open → waits 30s → half-open retry
-- [ ] T084 [US7] Verify no cascading failures when AI service is down (Django continues to operate)
+- [ ] T083 [US7] Wire circuit breaker into all `AIServiceClient` methods (initiate, status, cancel)
+- [ ] T084 [US7] Add user-friendly error messages for circuit breaker tripped state (per FR-014)
+- [ ] T085 [US7] Add logging for circuit breaker state transitions (closed → open → half-open)
+- [ ] T086 [US7] Test circuit breaker with 5 consecutive failures → trips open → waits 30s → half-open retry
+- [ ] T087 [US7] Verify no cascading failures when AI service is down (Django continues to operate)
 
 **Checkpoint**: User Story 7 complete - system gracefully handles service failures
 
@@ -255,18 +261,18 @@
 
 ### Tests for User Story 8
 
-- [ ] T085 [P] [US8] Deployment test for AI service Dockerfile in `deploy/ai-service/test_deployment.py`
-- [ ] T086 [P] [US8] Integration test for service version compatibility in `TI_AI_SaaS_Project/services/tests/integration/test_versioning.py`
+- [ ] T088 [P] [US8] Deployment test for AI service Dockerfile in `deploy/ai-service/test_deployment.py`
+- [ ] T089 [P] [US8] Integration test for service version compatibility in `TI_AI_SaaS_Project/services/tests/integration/test_versioning.py`
 
 ### Implementation for User Story 8
 
-- [ ] T087 [US8] Create `deploy/ai-service/Dockerfile` (base: python:3.11-slim, install requirements, copy services/, CMD: gunicorn)
-- [ ] T088 [US8] Create `deploy/ai-service/docker-compose.staging.yml` (ai-service, ollama with GPU support, redis)
-- [ ] T089 [US8] Create `deploy/django/Dockerfile` for Django application
-- [ ] T090 [US8] Create `deploy/django/docker-compose.staging.yml`
-- [ ] T091 [US8] Add `GET /api/v1/version/` endpoint to AI service for version identification
-- [ ] T092 [US8] Create `.env.example` files for both layers in `deploy/`
-- [ ] T093 [US8] Add health check configuration for container orchestration
+- [ ] T090 [US8] Create `deploy/ai-service/Dockerfile` (base: python:3.11-slim, install requirements, copy services/, CMD: gunicorn)
+- [ ] T091 [US8] Create `deploy/ai-service/docker-compose.staging.yml` (ai-service, ollama with GPU support, redis)
+- [ ] T092 [US8] Create `deploy/django/Dockerfile` for Django application
+- [ ] T093 [US8] Create `deploy/django/docker-compose.staging.yml`
+- [ ] T094 [US8] Add `GET /api/v1/version/` endpoint to AI service for version identification
+- [ ] T095 [US8] Create `.env.example` files for both layers in `deploy/`
+- [ ] T096 [US8] Add health check configuration for container orchestration
 
 **Checkpoint**: User Story 8 complete - both services can be deployed independently
 
@@ -276,14 +282,14 @@
 
 **Purpose**: Enable safe transition from direct imports to HTTP client with rollback capability
 
-- [ ] T094 Add `USE_AI_SERVICE_HTTP` feature flag to Django settings (default: False)
-- [ ] T095 Update `apps/analysis/api.py` to conditionally use `AIServiceClient` or direct imports based on feature flag
-- [ ] T096 Update `apps/analysis/views.py` to use feature flag for service path selection
-- [ ] T097 Update `apps/jobs/views.py` to use feature flag if analysis calls exist there
-- [ ] T098 Test both paths in parallel (feature flag False = direct imports, True = HTTP client)
-- [ ] T099 Create migration checklist document for cutover process
-- [ ] T100 After validation period, update feature flag default to True
-- [ ] T101 Remove direct import code path after 1-week validation period
+- [ ] T097 Add `USE_AI_SERVICE_HTTP` feature flag to Django settings (default: False)
+- [ ] T098 Update `apps/analysis/api.py` to conditionally use `AIServiceClient` or direct imports based on feature flag
+- [ ] T099 Update `apps/analysis/views.py` to use feature flag for service path selection
+- [ ] T100 Update `apps/jobs/views.py` to use feature flag if analysis calls exist there
+- [ ] T101 Test both paths in parallel (feature flag False = direct imports, True = HTTP client)
+- [ ] T102 Create migration checklist document for cutover process
+- [ ] T103 After validation period, update feature flag default to True
+- [ ] T104 Remove direct import code path after 1-week validation period
 
 ---
 
@@ -291,19 +297,19 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T102 [P] Create `manage_services.py` management command for service lifecycle operations
-- [ ] T103 [P] Update `QWEN.md` with new architecture documentation
-- [ ] T104 [P] Create deployment runbooks in `deploy/README.md`
-- [ ] T105 Achieve minimum 90% unit test coverage across all new code using Python unittest module
-- [ ] T106 Run full test suite to verify no regressions: `python manage.py test`
-- [ ] T107 Verify all API contracts match implementation (review contracts/api-contract.md)
-- [ ] T108 Verify AI disclaimer is displayed on all results pages (per Constitution §1)
-- [ ] T109 Verify applicant state is persisted immediately upon submission (Constitution §1)
-- [ ] T110 Performance testing: measure analysis latency, WebSocket vs polling latency
-- [ ] T111 Security review: verify API key authentication, HMAC signatures, SSL configuration
-- [ ] T112 Run quickstart.md validation to ensure developer setup works
-- [ ] T113 Verify error_message truncation to 1000 characters on `AIAnalysisResult` model
-- [ ] T114 Verify category consistency: Best Match/Good Match/Partial Match/Mismatched/Unprocessed across all code
+- [ ] T105 [P] Create `manage_services.py` management command for service lifecycle operations
+- [ ] T106 [P] Update `QWEN.md` with new architecture documentation
+- [ ] T107 [P] Create deployment runbooks in `deploy/README.md`
+- [ ] T108 Achieve minimum 90% unit test coverage across all new code using Python unittest module
+- [ ] T109 Run full test suite to verify no regressions: `python manage.py test`
+- [ ] T110 Verify all API contracts match implementation (review contracts/api-contract.md)
+- [ ] T111 Verify AI disclaimer is displayed on all results pages (per Constitution §1)
+- [ ] T112 Verify applicant state is persisted immediately upon submission (Constitution §1)
+- [ ] T113 Performance testing: measure analysis latency, WebSocket vs polling latency
+- [ ] T114 Security review: verify API key authentication, HMAC signatures, SSL configuration
+- [ ] T115 Run quickstart.md validation to ensure developer setup works
+- [ ] T116 Verify error_message truncation to 1000 characters on `AIAnalysisResult` model
+- [ ] T117 Verify category consistency: Best Match/Good Match/Partial Match/Mismatched/Unprocessed across all code
 
 ---
 
@@ -351,15 +357,15 @@ Phase 1 (Setup) ──→ Phase 2 (Foundational)
 
 - **Phase 1**: T002, T005, T006 can run in parallel
 - **Phase 2**: T008, T009 (middleware); T021, T022, T023, T024 (tests)
-- **Phase 3**: T026, T027, T028, T038, T039 (all US1 tests in parallel)
-- **Phase 4**: T040, T041 (US2 tests)
-- **Phase 5**: T047, T048 (US3 tests)
-- **Phase 6**: T054, T055 (US4 tests)
-- **Phase 7**: T062, T063, T064 (US5 tests)
-- **Phase 8**: T072, T073 (US6 tests)
-- **Phase 9**: T078, T079 (US7 tests)
-- **Phase 10**: T085, T086 (US8 tests)
-- **Phase 12**: T102, T103, T104 can run in parallel
+- **Phase 3**: T026, T027, T028, T038, T039, T040, T041 (all US1 tests + adapters in parallel)
+- **Phase 4**: T043, T044 (US2 tests)
+- **Phase 5**: T050, T051 (US3 tests)
+- **Phase 6**: T057, T058 (US4 tests)
+- **Phase 7**: T065, T066, T067 (US5 tests)
+- **Phase 8**: T075, T076 (US6 tests)
+- **Phase 9**: T081, T082 (US7 tests)
+- **Phase 10**: T088, T089 (US8 tests)
+- **Phase 12**: T105, T106, T107 can run in parallel
 
 ---
 
@@ -422,7 +428,7 @@ With multiple developers:
 |-------|-------------|------------|
 | Phase 1 | Setup | 6 |
 | Phase 2 | Foundational | 19 |
-| Phase 3 | US1 - Initiate + Rerun Analysis | 14 |
+| Phase 3 | US1 - Initiate + Rerun Analysis | 17 |
 | Phase 4 | US2 - Progress Real-Time | 7 |
 | Phase 5 | US3 - Progress Fallback | 7 |
 | Phase 6 | US4 - Cancel | 8 |
@@ -432,7 +438,7 @@ With multiple developers:
 | Phase 10 | US8 - Independent Deployment | 9 |
 | Phase 11 | Migration & Feature Flag | 8 |
 | Phase 12 | Polish & Cross-Cutting | 13 |
-| **Total** | | **114** |
+| **Total** | | **117** |
 
 **Tests included**: 24 test tasks across all user stories
 **Parallel opportunities**: 17+ parallelizable task groups identified

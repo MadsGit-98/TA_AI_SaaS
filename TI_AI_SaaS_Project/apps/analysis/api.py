@@ -17,7 +17,6 @@ This module contains:
 import logging
 import os
 import mimetypes
-import threading
 import uuid
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
@@ -28,20 +27,14 @@ from rest_framework.exceptions import PermissionDenied, ParseError
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from django.db import close_old_connections
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 from apps.applications.models import ApplicationAnswer, Applicant
-from apps.analysis.orchestrator import DjangoAnalysisOrchestrator
 from django.db.models import Avg, Count
+from apps.core.ai_service_client import AIServiceClient, AIServiceError
 from services.ai_analysis_service import (
-    acquire_analysis_lock,
-    release_analysis_lock,
-    set_cancellation_flag,
     get_analysis_progress,
     check_cancellation_flag,
-    update_analysis_progress,
-    persist_analysis_run_id,
     resolve_job_from_analysis_run_id,
     get_current_analysis_run_id,
 )
@@ -125,113 +118,7 @@ def initiate_analysis(request, job_id):
     are applicants to analyze.
     """
     try:
-        # Validate content type - only accept JSON
-        content_type = request.content_type or ''
-        if 'application/json' not in content_type.lower():
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'UNSUPPORTED_MEDIA_TYPE',
-                    'message': 'Content-Type must be application/json'
-                }
-            }, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-
-        # Get job listing
-        job = get_object_or_404(JobListing, id=job_id)
-
-        # Authorization check: only owner or staff can initiate analysis
-        if job.created_by != request.user and not request.user.is_staff:
-            raise PermissionDenied("You do not have permission to initiate analysis for this job.")
-
-        # Check for applicants
-        applicant_count = job.applicants.count()
-
-        if applicant_count == 0:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'NO_APPLICANTS',
-                    'message': 'Cannot initiate analysis: job listing has no applicants'
-                }
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Try to acquire lock
-        lock_owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
-        if not lock_owner_id:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'ANALYSIS_ALREADY_RUNNING',
-                    'message': 'Analysis is already in progress for this job listing'
-                }
-            }, status=status.HTTP_409_CONFLICT)
-
-        # Set analysis_in_progress flag BEFORE dispatching
-        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
-
-        # Generate a unique ID for this analysis run (replaces Celery task_id)
-        analysis_run_id = str(uuid.uuid4())
-
-        # Persist analysis_run_id in Redis for tracking/cancellation BEFORE starting work
-        if not persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600):
-            logger.error(f"Failed to persist analysis_run_id for job {job_id}")
-            # Rollback the flag since we're aborting
-            JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
-            try:
-                release_analysis_lock(str(job_id), lock_owner_id)
-            except Exception:
-                pass
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'INTERNAL_ERROR',
-                    'message': 'Failed to initialize analysis tracking'
-                }
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Capture requester ID for notifications (before thread spawns)
-        requester_id = str(request.user.id)
-
-        # Start analysis in background thread (non-daemon for observable failures)
-        def run_analysis_thread():
-            """Background thread to run AI analysis with guaranteed cleanup."""
-            try:
-                orchestrator = DjangoAnalysisOrchestrator(
-                    str(job_id), lock_owner_id=lock_owner_id, requester_id=requester_id
-                )
-                result = orchestrator.run()
-                logger.info(f"Analysis completed for job {job_id}: {result['status']}")
-            except Exception as e:
-                logger.error(f"Analysis thread failed for job {job_id}: {e}", exc_info=True)
-            finally:
-                # Guarantee lock release even if thread crashes before orchestrator.run()
-                try:
-                    release_analysis_lock(str(job_id), lock_owner_id)
-                    logger.info(f"Released analysis lock for job {job_id}")
-                except Exception as e:
-                    logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
-                finally:
-                    # Close DB connections to prevent connection leaks in background threads
-                    close_old_connections()
-
-        thread = threading.Thread(target=run_analysis_thread, daemon=False)
-        thread.start()
-
-        # Calculate estimated duration (6 seconds per applicant = 10 resumes/min)
-        estimated_duration = applicant_count * 6
-
-        return Response({
-            'success': True,
-            'data': {
-                'task_id': analysis_run_id,
-                'status': 'started',
-                'job_id': str(job_id),
-                'applicant_count': applicant_count,
-                'estimated_duration_seconds': estimated_duration,
-                'message': 'Analysis is running in background. Monitor progress via WebSocket.',
-            }
-        }, status=status.HTTP_202_ACCEPTED)
-
+        return initiate_analysis_http(request, job_id)
     except Http404:
         return Response({
             'success': False,
@@ -240,7 +127,6 @@ def initiate_analysis(request, job_id):
                 'message': 'Job listing not found'
             }
         }, status=status.HTTP_404_NOT_FOUND)
-
     except PermissionDenied as e:
         return Response({
             'success': False,
@@ -249,7 +135,6 @@ def initiate_analysis(request, job_id):
                 'message': str(e)
             }
         }, status=status.HTTP_403_FORBIDDEN)
-
     except Exception as e:
         logger.error(f"Error initiating analysis for job {job_id}: {e}", exc_info=True)
         return Response({
@@ -259,6 +144,81 @@ def initiate_analysis(request, job_id):
                 'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def initiate_analysis_http(request, job_id):
+    """Initiate analysis via HTTP client to AI service layer."""
+    client = AIServiceClient()
+    try:
+        job = get_object_or_404(JobListing, id=job_id)
+        if job.created_by != request.user and not request.user.is_staff:
+            raise PermissionDenied("You do not have permission to initiate analysis for this job.")
+
+        applicants = list(job.applicants.all())
+        if not applicants:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'NO_APPLICANTS',
+                    'message': 'Cannot initiate analysis: job listing has no applicants'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        job_data = {
+            'job_id': str(job_id),
+            'job_title': job.title,
+            'job_skills': [s.lower() for s in (job.required_skills or [])],
+            'job_experience_level': job.job_level or 'mid',
+            'applicants': [
+                {
+                    'applicant_id': str(a.id),
+                    'resume_text': a.resume_parsed_text or '',
+                    'name': f'{a.first_name} {a.last_name}'.strip(),
+                    'email': a.email or '',
+                }
+                for a in applicants
+            ],
+        }
+
+        result = client.initiate_analysis(job_data)
+        return Response({
+            'success': True,
+            'data': {
+                'task_id': result.get('analysis_run_id'),
+                'status': 'started',
+                'job_id': str(job_id),
+                'applicant_count': result.get('applicants_total', len(applicants)),
+                'message': 'Analysis is running in background. Monitor progress via WebSocket.',
+            }
+        }, status=status.HTTP_202_ACCEPTED)
+
+    except AIServiceError as e:
+        if e.code == 'duplicate_analysis':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ANALYSIS_ALREADY_RUNNING',
+                    'message': 'Analysis is already in progress for this job listing'
+                }
+            }, status=status.HTTP_409_CONFLICT)
+        if e.code == 'service_unavailable':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'SERVICE_UNAVAILABLE',
+                    'message': 'AI analysis service is currently unavailable. Please try again in a few minutes.'
+                }
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.error(f"AI service error initiating analysis: {str(e)}")
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': 'An internal server error occurred'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    finally:
+        client.close()
 
 
 @api_view(['GET'])
@@ -794,18 +754,18 @@ def cancel_analysis(request, job_id):
         if job.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to cancel analysis for this job.")
 
-        # Set cancellation flag (5 minute TTL to ensure it persists through page reload)
-        set_cancellation_flag(str(job_id))
+        # Call AI service to cancel analysis via HTTP
+        client = AIServiceClient()
+        try:
+            client.cancel_analysis(str(job_id))
+        finally:
+            client.close()
 
-        # Count preserved results
+        # Count preserved results after cancellation
         preserved_count = AIAnalysisResult.objects.filter(
             job_listing=job,
             status='Analyzed'
         ).count()
-
-        # Set cancellation flag - the Celery task will detect it and stop
-        # DO NOT release locks here - the task will release them when it detects cancellation
-        # We only set the flag, we don't clear anything
 
         return Response({
             'success': True,
@@ -815,7 +775,41 @@ def cancel_analysis(request, job_id):
                 'preserved_count': preserved_count,
                 'message': f'Analysis cancelled. Results for {preserved_count} applicants have been preserved.'
             }
-        })
+        }, status=status.HTTP_200_OK)
+
+    except AIServiceError as e:
+        if e.code == 'not_found':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'NOT_FOUND',
+                    'message': 'Analysis job not found'
+                }
+            }, status=status.HTTP_404_NOT_FOUND)
+        if e.code == 'already_complete':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ANALYSIS_ALREADY_COMPLETE',
+                    'message': 'Analysis is already complete or not running'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        if e.code == 'service_unavailable':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'SERVICE_UNAVAILABLE',
+                    'message': 'AI analysis service is currently unavailable'
+                }
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.error(f"AI service error cancelling analysis: {str(e)}")
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': 'An internal server error occurred'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     except Http404:
         return Response({
@@ -858,40 +852,35 @@ def rerun_analysis(request, job_id):
     Deletes previous results and starts fresh analysis.
     Requires confirmation to prevent accidental data loss.
     """
+    return rerun_analysis_http(request, job_id)
+
+
+def rerun_analysis_http(request, job_id):
+    """Re-run analysis via HTTP client to AI service layer."""
+    client = AIServiceClient()
     try:
-        # Check confirmation - validate request body is a dict
-        if not isinstance(request.data, dict):
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'INVALID_REQUEST',
-                    'message': 'Request body must be a JSON object'
-                }
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        confirm = request.data.get('confirm', False)
-
-        if not confirm:
+        result = client.rerun_analysis(str(job_id))
+        return Response({
+            'success': True,
+            'data': {
+                'task_id': result.get('analysis_run_id'),
+                'status': 'started',
+                'job_id': str(job_id),
+                'previous_results_deleted': result.get('previous_results_deleted', 0),
+                'applicant_count': result.get('applicants_total', 0),
+                'message': 'Re-run analysis is running in background.',
+            }
+        }, status=status.HTTP_202_ACCEPTED)
+    except AIServiceError as e:
+        if e.code == 'confirmation_required':
             return Response({
                 'success': False,
                 'error': {
                     'code': 'CONFIRMATION_REQUIRED',
-                    'message': "Must set 'confirm': true to re-run analysis (this will delete previous results)"
+                    'message': "Must set 'confirm': true to re-run analysis"
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
-
-        job = get_object_or_404(JobListing, id=job_id)
-
-        # Authorization check: only owner or staff can re-run analysis
-        if job.created_by != request.user and not request.user.is_staff:
-            raise PermissionDenied("You do not have permission to re-run analysis for this job.")
-
-        # Get applicant count
-        applicant_count = job.applicants.count()
-
-        # Try to acquire lock BEFORE starting analysis
-        lock_owner_id = acquire_analysis_lock(str(job_id), ttl_seconds=300)
-        if not lock_owner_id:
+        if e.code == 'duplicate_analysis':
             return Response({
                 'success': False,
                 'error': {
@@ -899,110 +888,7 @@ def rerun_analysis(request, job_id):
                     'message': 'Analysis is already in progress for this job listing'
                 }
             }, status=status.HTTP_409_CONFLICT)
-
-        # Set analysis_in_progress flag
-        JobListing.objects.filter(id=job_id).update(analysis_in_progress=True)
-
-        # Count previous results for response (actual deletion happens before thread)
-        previous_results_count = AIAnalysisResult.objects.filter(job_listing=job).count()
-
-        # Delete previous results BEFORE starting background work
-        AIAnalysisResult.objects.filter(job_listing=job).delete()
-
-        # Initialize Redis progress tracking BEFORE starting background work
-        update_analysis_progress(str(job_id), 0, applicant_count)
-
-        # Generate a unique ID for this analysis run (replaces task_id)
-        analysis_run_id = str(uuid.uuid4())
-
-        # Capture requester ID for notifications (before thread spawns)
-        requester_id = str(request.user.id)
-
-        # Persist analysis_run_id in Redis for tracking/cancellation BEFORE starting work
-        if not persist_analysis_run_id(analysis_run_id, str(job_id), ttl_seconds=600):
-            logger.error(f"Failed to persist analysis_run_id for job {job_id}")
-            # Rollback the flag since we're aborting
-            JobListing.objects.filter(id=job_id).update(analysis_in_progress=False)
-            try:
-                release_analysis_lock(str(job_id), lock_owner_id)
-            except Exception:
-                pass
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'INTERNAL_ERROR',
-                    'message': 'Failed to initialize analysis tracking'
-                }
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Start analysis in background thread (non-daemon for observable failures)
-        def run_analysis_thread():
-            """Background thread to run AI analysis with guaranteed cleanup."""
-            try:
-                # Run orchestrator with guaranteed cleanup
-                orchestrator = DjangoAnalysisOrchestrator(
-                    str(job_id), lock_owner_id=lock_owner_id, requester_id=requester_id
-                )
-                result = orchestrator.run()
-                logger.info(f"Re-run analysis completed for job {job_id}: {result['status']}")
-            except Exception as e:
-                logger.error(f"Re-run analysis thread failed for job {job_id}: {e}", exc_info=True)
-            finally:
-                # Guarantee lock release even if thread crashes before orchestrator.run()
-                try:
-                    release_analysis_lock(str(job_id), lock_owner_id)
-                    logger.info(f"Released analysis lock for job {job_id}")
-                except Exception as e:
-                    logger.error(f"Failed to release analysis lock for job {job_id}: {e}")
-                finally:
-                    # Close DB connections to prevent connection leaks in background threads
-                    close_old_connections()
-
-        # Use non-daemon thread so failures can be observed and cleanup runs
-        thread = threading.Thread(target=run_analysis_thread, daemon=False)
-        thread.start()
-
-        return Response({
-            'success': True,
-            'data': {
-                'task_id': analysis_run_id,
-                'status': 'started',
-                'job_id': str(job_id),
-                'previous_results_deleted': previous_results_count,
-                'applicant_count': applicant_count,
-                'message': f'Previous analysis will be deleted. New analysis started for {applicant_count} applicants.'
-            }
-        }, status=status.HTTP_202_ACCEPTED)
-
-    except Http404:
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'NOT_FOUND',
-                'message': 'Job listing not found'
-            }
-        }, status=status.HTTP_404_NOT_FOUND)
-
-    except PermissionDenied as e:
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'PERMISSION_DENIED',
-                'message': str(e)
-            }
-        }, status=status.HTTP_403_FORBIDDEN)
-
-    except ParseError as e:
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'INVALID_JSON',
-                'message': f'Request body must be valid JSON: {str(e)}'
-            }
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    except Exception as e:
-        logger.error(f"Error re-running analysis for job {job_id}: {e}", exc_info=True)
+        logger.error(f"AI service error re-running analysis: {str(e)}")
         return Response({
             'success': False,
             'error': {
@@ -1010,6 +896,8 @@ def rerun_analysis(request, job_id):
                 'message': 'An internal server error occurred'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    finally:
+        client.close()
 
 
 @api_view(['GET'])
