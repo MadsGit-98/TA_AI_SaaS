@@ -22,7 +22,11 @@ if not SECRET_KEY:
         raise ValueError("AI_SERVICE_SECRET_KEY must be set in production")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('AI_SERVICE_DEBUG', 'False').lower() == 'true'
+# Default to True so ``python services/manage.py runserver`` is usable
+# out-of-box for local development and integration testing, matching
+# ``x_crewter.settings.DEBUG``'s default. Production MUST set
+# ``AI_SERVICE_DEBUG=False``.
+DEBUG = os.environ.get('AI_SERVICE_DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get(
     'AI_SERVICE_ALLOWED_HOSTS',
@@ -46,8 +50,23 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'services.config.urls'
 
-# No database - AI service uses Redis only
-DATABASES = {}
+# No database - AI service uses Redis only.
+#
+# Django still requires a 'default' DATABASES entry for ``TestCase``
+# teardown to run cleanly (the flush command introspects it). We use
+# an ephemeral SQLite file so no external infrastructure is needed.
+# At runtime no app actually queries the ORM; this is test-only.
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    },
+}
+
+# Custom test runner: skips creating/migrating the 'default' database
+# because the service has no ORM models of its own (see
+# services/config/test_runner.py).
+TEST_RUNNER = 'services.config.test_runner.NoDatabaseTestRunner'
 
 # Redis configuration
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
@@ -56,11 +75,35 @@ REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
 OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'phi4-mini')
 
-# API Keys (comma-separated, stripped of empty entries)
-API_KEYS = [k.strip() for k in os.environ.get('API_KEYS', '').split(',') if k.strip()]
+# API Keys (comma-separated, stripped of empty entries).
+#
+# In DEBUG mode we fall back to the same dev key the Django project
+# uses by default (``dev-key-change-me``) so local integration tests
+# work without requiring matching env vars on both sides. Production
+# must override via ``API_KEYS`` and rotate to a real secret.
+_API_KEYS_DEV_DEFAULT = 'dev-key-change-me' if DEBUG else ''
+API_KEYS = [
+    k.strip()
+    for k in os.environ.get('API_KEYS', _API_KEYS_DEV_DEFAULT).split(',')
+    if k.strip()
+]
 
 # API Key authentication exempt paths (no auth required)
 API_KEY_EXEMPT_PATHS = ['/ready', '/health']
+
+# Background dispatcher configuration
+# Bounds the number of concurrent LangGraph runs handled by a single
+# service process; see services/dispatcher.py.
+try:
+    AI_SERVICE_MAX_WORKERS = int(os.environ.get('AI_SERVICE_MAX_WORKERS', '4'))
+except ValueError:
+    raise ImproperlyConfigured(
+        "AI_SERVICE_MAX_WORKERS must be a positive integer"
+    )
+if AI_SERVICE_MAX_WORKERS < 1:
+    raise ImproperlyConfigured(
+        "AI_SERVICE_MAX_WORKERS must be >= 1"
+    )
 
 # Webhook configuration
 DJANGO_WEBHOOK_URL = os.environ.get('DJANGO_WEBHOOK_URL', '')
