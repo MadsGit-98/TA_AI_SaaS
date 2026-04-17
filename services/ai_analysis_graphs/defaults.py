@@ -138,8 +138,19 @@ class StubResultRepository(IAnalysisResultRepository):
     def __init__(self):
         self._results = []
     
-    def bulk_save_results(self, results: List[AnalysisResultDTO]) -> None:
-        """Store results in memory (stub implementation)."""
+    def bulk_save_results(
+        self,
+        results: List[AnalysisResultDTO],
+        job_instance=None,
+        applicants_map=None,
+    ) -> None:
+        """Store results in memory (stub implementation).
+
+        ``job_instance`` and ``applicants_map`` are accepted to match the
+        ``IAnalysisResultRepository`` protocol and the production
+        ``ServiceAnalysisResultRepository``. The stub ignores them
+        because it does not persist relational context.
+        """
         self._results.extend(results)
         logger.info(f"Stub repository stored {len(results)} results")
     

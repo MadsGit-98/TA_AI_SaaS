@@ -90,21 +90,22 @@ class RerunAnalysisIntegrationTest(TransactionTestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
 
-        # Send rerun request with confirmation
         response = self.client.post(
             url,
             data=json.dumps({'confirm': True}),
             content_type='application/json'
         )
 
-        # The request will attempt to reach the AI service via HTTP
-        # Since the service may or may not be running, we test the routing behavior
-        # If service is unavailable, we expect 500 or 503
-        self.assertIn(response.status_code, [202, 500, 503])
+        # With the AI service running (required for integration tests),
+        # a confirmed rerun must be accepted.
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['status'], 'started')
+        self.assertEqual(response.data['data']['job_id'], str(self.job.id))
+        self.assertEqual(response.data['data']['applicant_count'], 1)
 
     def test_rerun_analysis_confirmation_required(self):
-        """Test that confirmation parameter is sent with request."""
-        # Create an applicant
+        """Test that rerun requires explicit confirmation (short-circuits before the service)."""
         Applicant.objects.create(
             id=uuid.uuid4(),
             job_listing=self.job,
@@ -119,18 +120,17 @@ class RerunAnalysisIntegrationTest(TransactionTestCase):
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
 
-        # Send rerun request WITHOUT confirmation
-        # Note: The HTTP path sends everything to AI service which validates confirm
-        # Since AI service is down, this returns 500 instead of 400
         response = self.client.post(
             url,
             data=json.dumps({}),
             content_type='application/json'
         )
 
-        # When AI service is unavailable, returns 500
-        # (The confirm validation happens in the AI service)
-        self.assertIn(response.status_code, [400, 500, 503])
+        # Confirmation is validated in the Django view before any service call,
+        # so the response is deterministic regardless of service availability.
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'CONFIRMATION_REQUIRED')
 
     def test_rerun_analysis_unauthenticated(self):
         """Test that unauthenticated users cannot rerun analysis."""
@@ -189,9 +189,11 @@ class RerunAnalysisIntegrationTest(TransactionTestCase):
             content_type='application/json'
         )
 
-        # When AI service is unavailable, authorization check happens first,
-        # then the HTTP call fails. Returns 500 when service is down.
-        self.assertIn(response.status_code, [403, 500])
+        # Authorization check runs in the Django view before the service call,
+        # so non-owners always get 403 regardless of service availability.
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'PERMISSION_DENIED')
 
     def test_rerun_analysis_job_not_found(self):
         """Test that non-existent job returns 404."""
@@ -203,6 +205,8 @@ class RerunAnalysisIntegrationTest(TransactionTestCase):
             content_type='application/json'
         )
 
-        # Job lookup happens before AI service call
-        # Returns 404 if job not found, 500 if service is down
-        self.assertIn(response.status_code, [404, 500])
+        # Job lookup runs in the Django view before the service call, so the
+        # response is deterministic.
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'NOT_FOUND')

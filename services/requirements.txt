@@ -1,0 +1,21 @@
+# Runtime dependencies for the standalone AI service layer.
+# Install with:
+#   pip install -r services/requirements.txt
+#
+# This is a slim subset of the root requirements.txt. It intentionally
+# excludes Django-app-only deps (channels, celery, djoser, social-auth,
+# django-storages, selenium, pypdf, python-docx, etc.) so the service
+# can run on a GPU host without the full web stack.
+
+Django==5.2.9
+djangorestframework==3.15.2
+redis==7.1.0
+requests>=2.31.0
+
+# LangGraph / LangChain / Ollama
+langchain>=1.2.0,<2.0.0
+langgraph>=1.0.8,<2.0.0
+langchain-ollama>=0.2.0
+
+# Production WSGI server (used by `gunicorn services.config.wsgi:application`)
+gunicorn>=21.2.0

@@ -514,8 +514,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # AI Service base URL for HTTP client communication
 AI_SERVICE_BASE_URL = env('AI_SERVICE_BASE_URL', default='http://localhost:9000/api/v1')
 
-# AI Service API key for authentication
-AI_SERVICE_API_KEY = env('AI_SERVICE_API_KEY', default='')
+# AI Service API key for authentication.
+#
+# In DEBUG mode we fall back to the dev key also used as the default in
+# services/.env.example (``dev-key-change-me``) so ``python manage.py
+# test`` works out-of-box against a locally-started service without
+# requiring two matching env vars to be set by hand. Production must
+# override via the ``AI_SERVICE_API_KEY`` environment variable; this
+# value never matches a key that would be configured on a real service.
+_AI_SERVICE_API_KEY_DEV_DEFAULT = 'dev-key-change-me' if DEBUG else ''
+AI_SERVICE_API_KEY = env(
+    'AI_SERVICE_API_KEY',
+    default=_AI_SERVICE_API_KEY_DEV_DEFAULT,
+)
 
 # AI Service request timeout (seconds)
 AI_SERVICE_TIMEOUT = env.int('AI_SERVICE_TIMEOUT', default=30)

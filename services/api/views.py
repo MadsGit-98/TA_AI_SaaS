@@ -27,15 +27,8 @@ from services.api.serializers import (
     HealthResponseSerializer,
     ReadyResponseSerializer,
 )
-from services.ai_analysis_graphs.types import AnalysisState, AnalysisJobContext
-from services.ai_analysis_graphs.orchestrator import run_analysis
-from services.ai_service_adapters import (
-    ServiceAnalysisResultRepository,
-    ServiceNotificationService,
-    ServiceProgressTracker,
-    ServiceCancellationChecker,
-    ServiceLLMProvider,
-)
+from services.ai_analysis_graphs.types import AnalysisJobContext
+from services.dispatcher import submit_analysis
 from services.shared.redis_utils import (
     get_redis_client,
     check_job_running,
@@ -43,7 +36,6 @@ from services.shared.redis_utils import (
     get_job_state,
     set_cancellation_flag,
     acquire_job_lock,
-    release_job_lock,
     update_job_status,
     RedisConnectionError,
 )
@@ -91,30 +83,12 @@ class InitiateAnalysisView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Generate run ID
         run_id = str(uuid.uuid4())
 
-        # Store job state
         store_job_state(job_id, run_id, len(applicants), r)
-
-        # Build AnalysisState for the graph
-        analysis_state: AnalysisState = {
-            'job_id': job_id,
-            'applicants': applicants,
-            'results': [],
-            'processed_count': 0,
-            'total_count': len(applicants),
-            'cancelled': False,
-            'current_index': 0,
-            'sent_milestones': set(),
-            'owner_id': run_id,
-        }
-
-        # Acquire lock and update state to processing
         acquire_job_lock(job_id, run_id, r)
         update_job_status(job_id, 'processing', r)
 
-        # Build job context for orchestrator
         job_context = AnalysisJobContext(
             id=job_id,
             title=serializer.validated_data.get('job_title', ''),
@@ -126,44 +100,31 @@ class InitiateAnalysisView(APIView):
             owner_id=run_id,
         )
 
-        # Create service-layer adapters
-        webhook_url = getattr(settings, 'DJANGO_WEBHOOK_URL', '')
-        webhook_secret = getattr(settings, 'WEBHOOK_SECRET', '')
-
-        result_repo = ServiceAnalysisResultRepository(r, job_id, webhook_url, webhook_secret)
-        notification_service = ServiceNotificationService(webhook_url, webhook_secret)
-        progress_tracker = ServiceProgressTracker(r)
-        cancellation_checker = ServiceCancellationChecker(r)
-        llm_provider = ServiceLLMProvider()
-
+        # Dispatch the orchestrator to the background worker pool.
+        # The worker owns Redis final-status updates, lock release, and
+        # webhook notifications, so this handler can return 202 immediately.
         try:
-            # Run the full analysis via LangGraph orchestrator
-            summary = run_analysis(
+            submit_analysis(
                 job_id=job_id,
+                run_id=run_id,
                 job_context=job_context,
                 applicants=serializer.validated_data['applicants'],
-                result_repo=result_repo,
-                notification_service=notification_service,
-                progress_tracker=progress_tracker,
-                cancellation_checker=cancellation_checker,
-                llm_provider=llm_provider,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to enqueue analysis for job {job_id}: {str(e)}",
+                exc_info=True,
+            )
+            update_job_status(job_id, 'failed', r)
+            return Response(
+                {
+                    'error': 'service_unavailable',
+                    'message': 'AI analysis worker is unavailable. Please try again.',
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-            # Update final state in Redis
-            update_job_status(job_id, summary.status, r, processed_count=summary.processed_count)
-
-        except Exception as e:
-            logger.error(f"Analysis failed for job {job_id}: {str(e)}", exc_info=True)
-            update_job_status(job_id, 'failed', r)
-
-        finally:
-            # Release lock
-            try:
-                release_job_lock(job_id, r)
-            except Exception:
-                pass
-
-        # Calculate estimated duration (6 seconds per applicant)
+        # Estimated 6 seconds per applicant is used for client progress hints.
         estimated_duration = len(applicants) * 6
         estimated_completion = datetime.now(timezone.utc).replace(
             second=0, microsecond=0
@@ -217,14 +178,20 @@ class RerunAnalysisView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Delete previous results (in production, this would call Django webhook or DB)
-        previous_results_deleted = 0  # Placeholder - Django handles actual deletion
+        # Previous-result deletion is owned by Django (results live in its DB).
+        # The service simply reports ``0`` here; the client overrides with its
+        # own local delete count in the 202 payload surfaced to callers.
+        previous_results_deleted = 0
 
-        # Generate new run ID
         run_id = str(uuid.uuid4())
 
-        # Store job state
-        store_job_state(job_id, run_id, 0, r)  # Total will be set when Django sends data
+        # Acquire the lock in addition to storing state, mirroring
+        # ``InitiateAnalysisView``. Without the lock, a rapid second rerun
+        # would incorrectly slip past ``check_job_running`` and both
+        # requests would be accepted (breaking the duplicate-analysis
+        # contract surfaced to Django as 409).
+        store_job_state(job_id, run_id, 0, r)
+        acquire_job_lock(job_id, run_id, r)
 
         response_serializer = RerunAnalysisResponseSerializer({
             'analysis_run_id': run_id,

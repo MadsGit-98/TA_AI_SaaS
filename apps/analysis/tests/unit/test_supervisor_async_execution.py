@@ -259,19 +259,22 @@ class AsyncExecutionTest(TestCase):
         """
         Verify ThreadPoolExecutor is configured with correct max_workers.
         """
-        # Track executor configuration
+        # Track executor configuration by wrapping the ThreadPoolExecutor
+        # symbol inside the supervisor module. Patching __new__ on the real
+        # class (via patch.object) leaks on Python >= 3.14 because restoring
+        # object.__new__ as an attribute on the class makes it strictly
+        # reject extra args passed by __init__, breaking later tests that
+        # rely on ThreadPoolExecutor (notably asgiref.sync used by Channels
+        # WebsocketCommunicator in test_consumer_group_name).
         executor_configs = []
-        original_executor_new = ThreadPoolExecutor.__new__
 
-        def mock_executor_new(cls, *args, **kwargs):
-            """Capture executor configuration during creation."""
-            # Store config before creating instance
+        def recording_executor(*args, **kwargs):
             max_workers = kwargs.get('max_workers')
             if args:
                 max_workers = max_workers or args[0]
             if max_workers is not None:
                 executor_configs.append({'max_workers': max_workers})
-            return original_executor_new(cls)
+            return ThreadPoolExecutor(*args, **kwargs)
 
         # Prepare state with batch of 5 applicants
         state = {
@@ -285,9 +288,10 @@ class AsyncExecutionTest(TestCase):
             'current_index': 0,
         }
 
-        with patch.object(
-            ThreadPoolExecutor, '__new__', side_effect=mock_executor_new
-        ) as mock_new:
+        with patch(
+            'services.ai_analysis_graphs.supervisor.ThreadPoolExecutor',
+            side_effect=recording_executor,
+        ):
             with patch(
                 'services.ai_analysis_graphs.supervisor.process_single_applicant',
                 return_value={

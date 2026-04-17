@@ -27,6 +27,9 @@ import json
 import uuid
 import threading
 import time
+from unittest.mock import patch
+
+from apps.core.ai_service_client import AIServiceError
 
 User = get_user_model()
 
@@ -280,15 +283,28 @@ class DataIntegritySecurityTest(TestCase):
     # =========================================================================
 
     def test_concurrent_analysis_initiation_prevented(self):
-        """Test that concurrent analysis initiation is prevented by locks."""
-        # This test verifies the distributed lock mechanism
-        # The actual lock is tested in test_redis_security.py
-        # Here we verify the API behavior
+        """Test that concurrent analysis initiation is prevented by the distributed lock.
 
+        Production contract: while one analysis is still holding the
+        ``analysis_lock:{job_id}`` Redis key, a second ``initiate`` on the
+        same job must be rejected with ``409 Conflict`` /
+        ``ANALYSIS_ALREADY_RUNNING`` — never silently accepted as a
+        separate run (which would cause duplicate billing, duplicate
+        webhook fanout, and racing DB writes).
+
+        Integration tests cannot reliably reproduce the *live* race
+        because the background worker in the service releases the lock
+        in its ``finally`` block, which can fire before the second HTTP
+        request arrives (the worker's fast-fail path in a dev env
+        completes in <50ms). We therefore mock the service client to
+        raise ``duplicate_analysis`` on the second call, which is
+        exactly the error the service emits when ``check_job_running``
+        sees the lock still held in production. The Django view's 409
+        mapping is the integrity control under test here.
+        """
         if not self._login_as_user('data_int_user1', 'testpass123'):
             self.fail("Login failed")
 
-        # Create applicants
         for i in range(3):
             Applicant.objects.create(
                 job_listing=self.job1,
@@ -303,25 +319,26 @@ class DataIntegritySecurityTest(TestCase):
 
         url = f'/api/analysis/jobs/{self.job1.id}/analysis/initiate/'
 
-        # First request should succeed (or fail with no celery, but not lock conflict)
+        # First call hits the real service path and succeeds.
         response1 = self.client.post(url, content_type='application/json')
+        self.assertEqual(response1.status_code, 202)
+        self.assertTrue(response1.data['success'])
 
-        # Second immediate request should fail with lock conflict
-        response2 = self.client.post(url, content_type='application/json')
+        # Second call — simulate the service seeing an active lock.
+        with patch(
+            'apps.analysis.api.AIServiceClient.initiate_analysis',
+            side_effect=AIServiceError(
+                'Analysis already running',
+                code='duplicate_analysis',
+            ),
+        ):
+            response2 = self.client.post(url, content_type='application/json')
 
-        # At least one should indicate lock conflict or task dispatch issue
-        # In test environment without Celery, behavior may vary
-        # Key is that both shouldn't successfully start separate analyses
-        lock_conflict_codes = [409]  # Conflict
-        success_codes = [200, 202]
-
-        # If both succeeded, they should return same task_id
-        if response1.status_code in success_codes and response2.status_code in success_codes:
-            if 'data' in response1.data and 'data' in response2.data:
-                task_id1 = response1.data['data'].get('task_id')
-                task_id2 = response2.data['data'].get('task_id')
-                # Same task should be returned (lock prevented duplicate)
-                self.assertEqual(task_id1, task_id2)
+        self.assertEqual(response2.status_code, 409)
+        self.assertFalse(response2.data['success'])
+        self.assertEqual(
+            response2.data['error']['code'], 'ANALYSIS_ALREADY_RUNNING'
+        )
 
     def test_rerun_during_analysis_prevented(self):
         """Test that re-run during active analysis is prevented."""
