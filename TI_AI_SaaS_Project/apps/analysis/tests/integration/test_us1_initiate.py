@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.core.cache import cache
 from datetime import timedelta
+from unittest.mock import patch
 import uuid
 import json
 
@@ -105,10 +106,12 @@ class InitiateAnalysisIntegrationTest(TransactionTestCase):
 
         response = self.client.post(url, content_type='application/json')
 
-        # The request will attempt to reach the AI service via HTTP
-        # Since the service may or may not be running, we test the routing behavior
-        # If service is unavailable, we expect 503 or connection error handling
-        self.assertIn(response.status_code, [202, 500, 503])
+        # With the AI service running (required for integration tests),
+        # initiation must be accepted.
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['status'], 'started')
+        self.assertEqual(response.data['data']['applicant_count'], 1)
 
     def test_initiate_analysis_http_multiple_applicants(self):
         """Test HTTP initiation with multiple applicants."""
@@ -139,12 +142,24 @@ class InitiateAnalysisIntegrationTest(TransactionTestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
-        # Test that the routing works and attempts the HTTP call
-        self.assertIn(response.status_code, [202, 500, 503])
+        # With the AI service running, multiple-applicant initiation is
+        # accepted with a deterministic count.
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['applicant_count'], 2)
 
     def test_initiate_analysis_http_service_unavailable(self):
-        """Test handling when AI service is not reachable."""
-        # Create an applicant with unique file hash
+        """Test handling when AI service is not reachable.
+
+        The AI service layer normally runs on a separate host; when it is
+        unreachable (network partition, process down, etc.) the Django
+        client exhausts its retries and raises a plain ``AIServiceError``
+        without the ``service_unavailable`` code. The view maps that to
+        HTTP 500 with ``error.code == 'INTERNAL_ERROR'``.
+
+        We patch ``AIServiceClient.initiate_analysis`` to raise directly so
+        the test is deterministic and fast (no real retry/backoff).
+        """
         Applicant.objects.create(
             id=uuid.uuid4(),
             job_listing=self.job,
@@ -158,15 +173,31 @@ class InitiateAnalysisIntegrationTest(TransactionTestCase):
         )
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
-        response = self.client.post(url, content_type='application/json')
 
-        # When service is unreachable, should handle gracefully
-        # The actual status code depends on error handling implementation
-        self.assertIn(response.status_code, [500, 503])
+        with patch(
+            'apps.analysis.api.AIServiceClient.initiate_analysis',
+            side_effect=AIServiceError(
+                'AI service call failed after 4 attempts: Connection refused'
+            ),
+        ):
+            response = self.client.post(url, content_type='application/json')
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'INTERNAL_ERROR')
 
     def test_initiate_analysis_http_duplicate_analysis(self):
-        """Test handling of duplicate analysis request."""
-        # Create an applicant with unique file hash
+        """Test that a duplicate-analysis service response maps to 409.
+
+        In production the AI service returns ``409`` with
+        ``error='duplicate_analysis'`` when a second initiate arrives while
+        a run is still holding the Redis lock. We assert Django's view
+        maps that to ``409 Conflict`` / ``ANALYSIS_ALREADY_RUNNING``
+        deterministically by mocking the client — integration tests cannot
+        reliably reproduce the race (the worker releases the lock in its
+        ``finally`` block, potentially before the second HTTP request
+        arrives, depending on LLM backend speed).
+        """
         Applicant.objects.create(
             id=uuid.uuid4(),
             job_listing=self.job,
@@ -180,10 +211,19 @@ class InitiateAnalysisIntegrationTest(TransactionTestCase):
         )
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
-        response = self.client.post(url, content_type='application/json')
 
-        # Test the routing and error handling
-        self.assertIn(response.status_code, [202, 409, 500, 503])
+        with patch(
+            'apps.analysis.api.AIServiceClient.initiate_analysis',
+            side_effect=AIServiceError(
+                'Analysis already running',
+                code='duplicate_analysis',
+            ),
+        ):
+            response = self.client.post(url, content_type='application/json')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'ANALYSIS_ALREADY_RUNNING')
 
     def test_initiate_analysis_unauthenticated(self):
         """Test that unauthenticated users cannot initiate analysis."""

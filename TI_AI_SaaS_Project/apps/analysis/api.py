@@ -36,6 +36,26 @@ from services.ai_analysis_service import (
 logger = logging.getLogger(__name__)
 
 
+# The AI service accepts a restricted, lowercase set of experience levels:
+# ``entry``, ``mid``, ``senior``, ``lead``. The Django ``JobListing`` model
+# uses titlecase values (``Intern``, ``Entry``, ``Junior``, ``Senior``) — see
+# ``JobListing.JOB_LEVEL_CHOICES``. This map bridges the two; unknown values
+# fall back to ``mid``.
+_JOB_LEVEL_TO_SERVICE = {
+    'Intern': 'entry',
+    'Entry': 'entry',
+    'Junior': 'mid',
+    'Senior': 'senior',
+}
+
+
+def _map_job_level_for_service(job_level):
+    """Translate a ``JobListing.job_level`` value to the AI service vocab."""
+    if not job_level:
+        return 'mid'
+    return _JOB_LEVEL_TO_SERVICE.get(job_level, 'mid')
+
+
 class AnalysisThrottle(SimpleRateThrottle):
     """
     Custom throttle for analysis API endpoints to prevent abuse
@@ -143,7 +163,7 @@ def initiate_analysis_http(request, job_id):
             'job_id': str(job_id),
             'job_title': job.title,
             'job_skills': [s.lower() for s in (job.required_skills or [])],
-            'job_experience_level': job.job_level or 'mid',
+            'job_experience_level': _map_job_level_for_service(job.job_level),
             'applicants': [
                 {
                     'applicant_id': str(a.id),
@@ -156,13 +176,19 @@ def initiate_analysis_http(request, job_id):
         }
 
         result = client.initiate_analysis(job_data)
+        applicant_count = result.get('applicants_total', len(applicants))
+        # Estimated duration mirrors the service's own heuristic (6s/applicant)
+        # and is surfaced here so the UI can show a deterministic ETA without
+        # parsing the service's ISO-8601 ``estimated_completion`` timestamp.
+        estimated_duration_seconds = applicant_count * 6
         return Response({
             'success': True,
             'data': {
                 'task_id': result.get('analysis_run_id'),
                 'status': 'started',
                 'job_id': str(job_id),
-                'applicant_count': result.get('applicants_total', len(applicants)),
+                'applicant_count': applicant_count,
+                'estimated_duration_seconds': estimated_duration_seconds,
                 'message': 'Analysis is running in background. Monitor progress via WebSocket.',
             }
         }, status=status.HTTP_202_ACCEPTED)
@@ -537,10 +563,23 @@ def cancel_analysis(request, job_id):
         if job.created_by != request.user and not request.user.is_staff:
             raise PermissionDenied("You do not have permission to cancel analysis for this job.")
 
-        # Call AI service to cancel analysis via HTTP
+        # Call AI service to cancel analysis via HTTP.
+        #
+        # When the AI service reports ``not_found`` (no active Redis state),
+        # the job listing exists locally but the service never saw—or has
+        # already evicted—state for this job. From the user's perspective
+        # this is semantically "there is nothing to cancel, so cancellation
+        # succeeded as a no-op"; any already-``Analyzed`` results must be
+        # preserved. We therefore treat service-side ``not_found`` as a
+        # success path here; ``JobListing.DoesNotExist`` still yields 404
+        # upstream via ``get_object_or_404``.
         client = AIServiceClient()
         try:
-            client.cancel_analysis(str(job_id))
+            try:
+                client.cancel_analysis(str(job_id))
+            except AIServiceError as service_error:
+                if service_error.code != 'not_found':
+                    raise
         finally:
             client.close()
 
@@ -550,25 +589,25 @@ def cancel_analysis(request, job_id):
             status='Analyzed'
         ).count()
 
+        # Unified message regardless of whether a live service run was
+        # cancelled or the call was a no-op (no active Redis state); both
+        # are observationally "cancelled" from the client's perspective.
+        message = (
+            f'Analysis cancelled. Results for {preserved_count} '
+            f'applicants have been preserved.'
+        )
+
         return Response({
             'success': True,
             'data': {
                 'status': 'cancelled',
                 'job_id': str(job_id),
                 'preserved_count': preserved_count,
-                'message': f'Analysis cancelled. Results for {preserved_count} applicants have been preserved.'
+                'message': message,
             }
         }, status=status.HTTP_200_OK)
 
     except AIServiceError as e:
-        if e.code == 'not_found':
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'NOT_FOUND',
-                    'message': 'Analysis job not found'
-                }
-            }, status=status.HTTP_404_NOT_FOUND)
         if e.code == 'already_complete':
             return Response({
                 'success': False,
@@ -635,27 +674,96 @@ def rerun_analysis(request, job_id):
     Deletes previous results and starts fresh analysis.
     Requires confirmation to prevent accidental data loss.
     """
-    return rerun_analysis_http(request, job_id)
+    try:
+        return rerun_analysis_http(request, job_id)
+    except Http404:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NOT_FOUND',
+                'message': 'Job listing not found'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+    except PermissionDenied as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'PERMISSION_DENIED',
+                'message': str(e)
+            }
+        }, status=status.HTTP_403_FORBIDDEN)
+    except Exception as e:
+        logger.error(f"Error re-running analysis for job {job_id}: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'INTERNAL_ERROR',
+                'message': 'An internal server error occurred'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def rerun_analysis_http(request, job_id):
-    """Re-run analysis via HTTP client to AI service layer."""
+    """Re-run analysis via HTTP client to AI service layer.
+
+    Flow:
+    1. Validate ``confirm`` is truthy (short-circuits to 400 so we never hit
+       the service for unconfirmed requests).
+    2. Load the ``JobListing`` locally (404 if missing).
+    3. Authorize: only the owner or a staff user may re-run.
+    4. Delete existing ``AIAnalysisResult`` rows for the job — results are
+       the canonical copy and live in Django's DB, so deletion must happen
+       here, not on the service side.
+    5. Delegate to :class:`AIServiceClient` to kick off the new run, feeding
+       it the same ``job_data`` payload as ``initiate_analysis_http``.
+    6. Report the *local* ``previous_results_deleted`` and ``applicant_count``
+       (the service returns zeros here because it's a stateless signal).
+    """
+    # Step 1: confirmation guard (before any DB or network I/O).
+    if not bool(request.data.get('confirm') if hasattr(request, 'data') else False):
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'CONFIRMATION_REQUIRED',
+                'message': "Must set 'confirm': true to re-run analysis"
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Steps 2 & 3: job lookup + ownership/staff check.
+    job = get_object_or_404(JobListing, id=job_id)
+    if job.created_by != request.user and not request.user.is_staff:
+        raise PermissionDenied("You do not have permission to re-run analysis for this job.")
+
+    applicants = list(job.applicants.all())
+
+    # Step 4: delete previous results locally. The AI service's rerun
+    # endpoint is a stateless signal that always reports
+    # ``previous_results_deleted=0`` because Django owns result storage.
+    previous_results_deleted, _ = AIAnalysisResult.objects.filter(
+        job_listing=job
+    ).delete()
+
+    # Step 5: kick off the new run on the service.
     client = AIServiceClient()
     try:
         result = client.rerun_analysis(str(job_id))
+
+        # Step 6: prefer locally computed counts; service returns zeros.
         return Response({
             'success': True,
             'data': {
                 'task_id': result.get('analysis_run_id'),
                 'status': 'started',
                 'job_id': str(job_id),
-                'previous_results_deleted': result.get('previous_results_deleted', 0),
-                'applicant_count': result.get('applicants_total', 0),
+                'previous_results_deleted': previous_results_deleted,
+                'applicant_count': len(applicants),
                 'message': 'Re-run analysis is running in background.',
             }
         }, status=status.HTTP_202_ACCEPTED)
     except AIServiceError as e:
         if e.code == 'confirmation_required':
+            # Defensive: service shouldn't reach this branch because we gate
+            # on ``confirm`` above, but keep the mapping for completeness.
             return Response({
                 'success': False,
                 'error': {
