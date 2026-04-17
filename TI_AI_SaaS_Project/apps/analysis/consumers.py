@@ -8,8 +8,6 @@ real-time analysis status updates to connected clients.
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
     - Analysis cancellation
     - Analysis failure
     
-    Group naming convention: analysis_{job_id}_{user_id}
+    Group naming convention: analysis_{job_id}
     """
     
     async def connect(self):
@@ -104,7 +102,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         if not hasattr(self, 'subscribed_groups'):
             self.subscribed_groups = set()
 
-        group_name = f"analysis_{job_id}_{self.user_id}"
+        group_name = f"analysis_{job_id}"
 
         if group_name not in self.subscribed_groups:
             await self.channel_layer.group_add(
@@ -123,7 +121,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         Args:
             job_id: UUID string of the job listing
         """
-        group_name = f"analysis_{job_id}_{self.user_id}"
+        group_name = f"analysis_{job_id}"
 
         if hasattr(self, 'subscribed_groups') and group_name in self.subscribed_groups:
             await self.channel_layer.group_discard(
@@ -245,149 +243,3 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         }
         """
         await self.send(text_data=json.dumps(event))
-    
-    # Class methods for server-initiated notifications
-    
-    @classmethod
-    def notify_progress(cls, job_id, user_id, data):
-        """
-        Send progress update notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with progress data (progress_percentage, processed_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping progress notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_progress',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'processing',
-                        **data
-                    }
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to send progress notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_completed(cls, job_id, user_id, data):
-        """
-        Send completion notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with completion data (analyzed_count, unprocessed_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping completion notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_completed',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'completed',
-                        **data
-                    }
-                }
-            )
-            logger.info(f"Sent completion notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send completion notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_cancelled(cls, job_id, user_id, data):
-        """
-        Send cancellation notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with cancellation data (processed_count, preserved_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping cancellation notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_cancelled',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'cancelled',
-                        **data
-                    }
-                }
-            )
-            logger.info(f"Sent cancellation notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send cancellation notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_failed(cls, job_id, user_id, error_code, error_message, processed_count=0, total_count=0):
-        """
-        Send failure notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            error_code: Machine-readable error code (e.g., 'TASK_TIMEOUT')
-            error_message: Human-readable error description
-            processed_count: Number of applicants processed before failure
-            total_count: Total applicants to process
-        """
-        from datetime import datetime, timezone
-        
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping failure notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_failed',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'failed',
-                        'error_code': error_code,
-                        'error_message': error_message,
-                        'processed_count': processed_count,
-                        'total_count': total_count,
-                        'timestamp': datetime.now(timezone.utc).isoformat()
-                    }
-                }
-            )
-            logger.info(f"Sent failure notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send failure notification to {group_name}: {e}")

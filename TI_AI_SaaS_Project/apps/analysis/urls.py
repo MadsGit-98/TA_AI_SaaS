@@ -2,7 +2,6 @@ from django.urls import path
 from . import views
 from .api import (
     initiate_analysis,
-    analysis_status,
     analysis_results,
     analysis_result_detail,
     cancel_analysis,
@@ -21,7 +20,6 @@ urlpatterns = [
 
     # API Endpoints (relative to /api/analysis/ prefix from main urls.py)
     path('jobs/<uuid:job_id>/analysis/initiate/', initiate_analysis, name='api-initiate-analysis'),
-    path('jobs/<uuid:job_id>/analysis/status/', analysis_status, name='api-analysis-status'),
     path('jobs/<uuid:job_id>/analysis/results/', analysis_results, name='api-analysis-results'),
     path('results/<uuid:result_id>/', analysis_result_detail, name='api-analysis-result-detail'),
     path('jobs/<uuid:job_id>/analysis/cancel/', cancel_analysis, name='api-cancel-analysis'),

@@ -215,3 +215,5 @@ package-lock.json
 yarn.lock
 
 media/
+
+.cursor

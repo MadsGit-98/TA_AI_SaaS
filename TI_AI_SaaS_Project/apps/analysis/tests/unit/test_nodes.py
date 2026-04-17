@@ -42,11 +42,110 @@ from services.ai_analysis_graphs.worker import (
 )
 from django.contrib.auth import get_user_model
 from services.ai_analysis_service import assign_category, calculate_overall_score
-from apps.analysis.adapters import DjangoAnalysisResultRepository
+from uuid import UUID
+from apps.analysis.models import AIAnalysisResult
+from services.ai_analysis_graphs.interfaces import IAnalysisResultRepository
 from services.ai_analysis_graphs.defaults import (
     DefaultCancellationChecker,
     DefaultProgressTracker,
 )
+
+
+class _DbPersistingResultRepository(IAnalysisResultRepository):
+    """Test-local repository that persists results via AIAnalysisResult.
+
+    Mirrors the essential create/update contract previously provided by the
+    retired DjangoAnalysisResultRepository. Scope is limited to what the
+    node-level tests exercise (bulk_create with upsert semantics).
+    """
+
+    _UPDATE_FIELDS = [
+        'education_score', 'skills_score', 'experience_score',
+        'supplemental_score', 'overall_score', 'category', 'status',
+        'education_justification', 'skills_justification',
+        'experience_justification', 'supplemental_justification',
+        'overall_justification', 'error_message',
+    ]
+
+    @staticmethod
+    def _build_payload(data):
+        return {
+            'education_score': data.get('education_score', 0),
+            'skills_score': data.get('skills_score', 0),
+            'experience_score': data.get('experience_score', 0),
+            'supplemental_score': data.get('supplemental_score', 0),
+            'overall_score': data.get('overall_score', 0),
+            'category': data.get('category', 'Unprocessed'),
+            'status': data.get('status', 'Unprocessed'),
+            'education_justification': data.get('education_justification', ''),
+            'skills_justification': data.get('skills_justification', ''),
+            'experience_justification': data.get('experience_justification', ''),
+            'supplemental_justification': data.get('supplemental_justification', ''),
+            'overall_justification': data.get('overall_justification', ''),
+            'error_message': data.get('error_message', ''),
+        }
+
+    def bulk_save_results(self, results, job_instance=None, applicants_map=None):
+        if not results:
+            return
+
+        applicant_ids = {r['applicant_id'] for r in results}
+        job_ids = {r['job_listing_id'] for r in results}
+
+        existing = {
+            (str(r.applicant_id), str(r.job_listing_id)): r
+            for r in AIAnalysisResult.objects.filter(
+                applicant_id__in=[UUID(a) for a in applicant_ids],
+                job_listing_id__in=[UUID(j) for j in job_ids],
+            )
+        }
+
+        to_create = []
+        to_update = []
+        for data in results:
+            key = (data['applicant_id'], data['job_listing_id'])
+            payload = self._build_payload(data)
+
+            if key in existing:
+                row = existing[key]
+                for field, value in payload.items():
+                    setattr(row, field, value)
+                to_update.append(row)
+            else:
+                to_create.append(AIAnalysisResult(
+                    applicant_id=UUID(data['applicant_id']),
+                    job_listing_id=UUID(data['job_listing_id']),
+                    **payload,
+                ))
+
+        if to_create:
+            AIAnalysisResult.objects.bulk_create(to_create, batch_size=50)
+        if to_update:
+            AIAnalysisResult.objects.bulk_update(
+                to_update, fields=self._UPDATE_FIELDS, batch_size=50,
+            )
+
+    def get_results_for_job(self, job_id):
+        return [
+            {
+                'applicant_id': str(r.applicant_id),
+                'job_listing_id': str(r.job_listing_id),
+                'education_score': r.education_score,
+                'skills_score': r.skills_score,
+                'experience_score': r.experience_score,
+                'supplemental_score': r.supplemental_score,
+                'overall_score': r.overall_score,
+                'category': r.category,
+                'education_justification': r.education_justification or '',
+                'skills_justification': r.skills_justification or '',
+                'experience_justification': r.experience_justification or '',
+                'supplemental_justification': r.supplemental_justification or '',
+                'overall_justification': r.overall_justification or '',
+                'status': r.status,
+                'error_message': r.error_message or '',
+            }
+            for r in AIAnalysisResult.objects.filter(job_listing_id=UUID(job_id))
+        ]
 
 
 User = get_user_model()
@@ -285,7 +384,7 @@ class BulkPersistNodeTest(TestCase):
         }
 
         # Execute bulk persistence
-        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_result_repo = _DbPersistingResultRepository()
 
         mock_cancellation_checker = DefaultCancellationChecker()
 
@@ -322,7 +421,7 @@ class BulkPersistNodeTest(TestCase):
         }
 
         # Execute bulk persistence with empty results
-        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_result_repo = _DbPersistingResultRepository()
         mock_cancellation_checker = DefaultCancellationChecker()
         mock_progress_tracker = DefaultProgressTracker()
         result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
@@ -373,7 +472,7 @@ class BulkPersistNodeTest(TestCase):
         }
 
         # Execute bulk persistence - this should "conquer" by aggregating all results
-        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_result_repo = _DbPersistingResultRepository()
         mock_cancellation_checker = DefaultCancellationChecker()
         mock_progress_tracker = DefaultProgressTracker()
         result = bulk_persistence_node(state, mock_result_repo, mock_cancellation_checker, mock_progress_tracker)
@@ -443,7 +542,7 @@ class BulkPersistNodeTest(TestCase):
         }
 
          
-        mock_result_repo = DjangoAnalysisResultRepository()
+        mock_result_repo = _DbPersistingResultRepository()
 
 
          

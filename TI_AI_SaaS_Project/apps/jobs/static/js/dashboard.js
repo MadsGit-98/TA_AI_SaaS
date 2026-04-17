@@ -701,33 +701,6 @@ function viewAnalysis(jobId) {
     window.location.href = `/analysis/reporting/${jobId}/`;
 }
 
-/**
- * Check analysis status for a job (DEPRECATED - WebSocket handles this automatically)
- * @deprecated Use analysis-websocket.js instead
- * @param {string} jobId - The job ID to check
- * @returns {Promise<Object|null>} Status data or null
- */
-async function checkAnalysisStatus(jobId) {
-    console.warn('DEPRECATED: checkAnalysisStatus() is deprecated. Use analysis-websocket.js instead.');
-    try {
-        const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
-            method: 'GET',
-            credentials: 'include'
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                return data.data;
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error('Error checking analysis status:', error);
-        return null;
-    }
-}
-
 // =============================================================================
 // WebSocket-based Progress Tracking Functions (replaces polling)
 // =============================================================================
@@ -751,11 +724,8 @@ function startProgressTracking(jobId) {
 
     console.log('Starting WebSocket progress tracking for job', jobId);
 
-    // Defensive check: ensure AnalysisWebSocket class is available
     if (typeof window.AnalysisWebSocket !== 'function') {
-        console.warn('AnalysisWebSocket class not found - falling back to polling for job', jobId);
-        // Fallback to polling if WebSocket class is not available
-        startFallbackPolling(jobId);
+        console.error('AnalysisWebSocket class not found - cannot track job', jobId);
         return;
     }
 
@@ -800,27 +770,8 @@ function startProgressTracking(jobId) {
     
     ws.onStateChanged(function(state) {
         console.log('WebSocket state changed for job', jobId, ':', state);
-
-        // Handle fallback mode
-        if (state === 'fallback_mode') {
-            console.log('WebSocket unavailable, using fallback polling');
-            // Close the WebSocket before starting fallback polling to prevent resource leak
-            if (ws && typeof ws.close === 'function') {
-                try {
-                    ws.close();
-                } catch (closeError) {
-                    // Ignore errors if already closed
-                    console.log('WebSocket already closed for job', jobId);
-                }
-            }
-            // Remove from analyzingJobs to prevent duplicate tracking
-            analyzingJobs.delete(jobId);
-            // Start fallback polling
-            startFallbackPolling(jobId);
-        }
     });
-    
-    // Connect to WebSocket
+
     ws.connect(jobId);
     
     // Store WebSocket instance
@@ -828,64 +779,15 @@ function startProgressTracking(jobId) {
 }
 
 /**
- * Fallback polling when WebSocket is unavailable
- * @param {string} jobId - The job ID to track
- */
-function startFallbackPolling(jobId) {
-    const intervalId = setInterval(async () => {
-        try {
-            const status = await checkAnalysisStatus(jobId);
-
-            const cancellingInfo = cancellingJobs.get(jobId);
-
-            if (cancellingInfo) {
-                // Job is in cancellation state
-                if (status && status.status === 'cancelled') {
-                    // Cancellation confirmed - stop polling and reload
-                    console.log('Job', jobId, 'cancellation confirmed, reloading...');
-                    cancellingJobs.delete(jobId);
-                    stopProgressTracking(jobId);
-                    clearInterval(intervalId);
-                    window.location.reload();
-                    return;
-                } else {
-                    // Still waiting for cancellation to complete
-                    console.log('Job', jobId, 'still cancelling...');
-                }
-            } else {
-                // Not cancelling - normal progress tracking
-                if (status && status.status === 'processing') {
-                    const percentage = status.progress_percentage || 0;
-                    updateJobProgress(jobId, percentage);
-                } else if (status && (status.status === 'completed' || status.status === 'failed')) {
-                    stopProgressTracking(jobId);
-                    clearInterval(intervalId);
-                    window.location.reload();
-                }
-            }
-        } catch (error) {
-            console.error('Error in fallback polling for job', jobId, error);
-        }
-    }, 5000); // Poll every 5 seconds in fallback mode
-
-    analyzingJobs.set(jobId, { intervalId: intervalId, isFallback: true });
-}
-
-/**
  * Stop progress tracking for a job
  * @param {string} jobId - The job ID to stop tracking
  */
 function stopProgressTracking(jobId) {
-    const wsOrInterval = analyzingJobs.get(jobId);
-    if (wsOrInterval) {
-        if (wsOrInterval.close) {
-            // It's a WebSocket instance
-            wsOrInterval.close();
+    const ws = analyzingJobs.get(jobId);
+    if (ws) {
+        if (ws.close) {
+            ws.close();
             console.log('Stopped WebSocket tracking for job', jobId);
-        } else if (wsOrInterval.intervalId) {
-            // It's a fallback polling interval
-            clearInterval(wsOrInterval.intervalId);
-            console.log('Stopped fallback polling for job', jobId);
         }
         analyzingJobs.delete(jobId);
     }
