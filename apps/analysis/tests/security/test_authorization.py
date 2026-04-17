@@ -136,18 +136,6 @@ class AuthorizationSecurityTest(TestCase):
         """Helper to get access token from cookies."""
         return self.client.cookies.get('access_token').value if 'access_token' in self.client.cookies else None
 
-    def test_user_cannot_access_another_users_job_status(self):
-        """Test horizontal privilege escalation: user cannot view analysis status for another user's job."""
-        # Login as other user (not job owner)
-        if not self._login_as_user('auth_other_user', 'testpass123'):
-            self.fail("Login as other user failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-        response = self.client.get(url)
-
-        # Should return 403 Forbidden (or 500 if exception handling issue)
-        self.assertIn(response.status_code, [403, 500])
-
     def test_user_cannot_access_another_users_job_results(self):
         """Test horizontal privilege escalation: user cannot view analysis results for another user's job."""
         # Login as other user (not job owner)
@@ -159,6 +147,29 @@ class AuthorizationSecurityTest(TestCase):
 
         # Should return 403 Forbidden
         self.assertEqual(response.status_code, 403)
+
+    def test_job_listing_authorization_checked_before_analysis_access(self):
+        """Test that job listing authorization is checked before allowing analysis access."""
+        if not self._login_as_user('auth_other_user', 'testpass123'):
+            self.fail("Login as other user failed")
+
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
+        response = self.client.get(url)
+
+        self.assertIn(response.status_code, [403, 404, 500])
+
+    def test_non_staff_cannot_bypass_authorization_via_parameters(self):
+        """Test that non-staff users cannot bypass authorization via parameter manipulation."""
+        if not self._login_as_user('auth_other_user', 'testpass123'):
+            self.fail("Login as other user failed")
+
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
+
+        response = self.client.get(url + '?staff=true')
+        self.assertIn(response.status_code, [403, 500])
+
+        response = self.client.get(url + '?user_id=' + str(self.user.id))
+        self.assertIn(response.status_code, [403, 500])
 
     def test_user_cannot_access_another_users_analysis_result_detail(self):
         """Test horizontal privilege escalation: user cannot view specific analysis result for another user's job."""
@@ -224,18 +235,6 @@ class AuthorizationSecurityTest(TestCase):
         # Should return 403 Forbidden (or 500 if exception handling issue)
         self.assertIn(response.status_code, [403, 500])
 
-    def test_staff_user_can_access_any_job_status(self):
-        """Test vertical privilege: staff user can view analysis status for any job."""
-        # Login as staff user
-        if not self._login_as_user('auth_staff_user', 'testpass123'):
-            self.fail("Login as staff user failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-        response = self.client.get(url)
-
-        # Staff should have access (200 OK, not 403)
-        self.assertEqual(response.status_code, 200)
-
     def test_staff_user_can_access_any_job_results(self):
         """Test vertical privilege: staff user can view analysis results for any job."""
         # Login as staff user
@@ -267,7 +266,6 @@ class AuthorizationSecurityTest(TestCase):
             self.fail("Login as owner failed")
 
         endpoints = [
-            ('GET', f'/api/analysis/jobs/{self.job.id}/analysis/status/'),
             ('GET', f'/api/analysis/jobs/{self.job.id}/analysis/results/'),
             ('GET', f'/api/analysis/results/{self.analysis_result.id}/'),
             ('GET', f'/api/analysis/jobs/{self.job.id}/analysis/statistics/'),
@@ -292,19 +290,6 @@ class AuthorizationSecurityTest(TestCase):
         # Should return 404 (not found) or 403 (forbidden), not 200
         self.assertIn(response.status_code, [403, 404], "Should not expose data via UUID enumeration")
 
-    def test_job_listing_authorization_checked_before_analysis_access(self):
-        """Test that job listing authorization is checked before allowing analysis access."""
-        # Login as other user
-        if not self._login_as_user('auth_other_user', 'testpass123'):
-            self.fail("Login as other user failed")
-
-        # Try to access analysis status - should check job ownership first
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-        response = self.client.get(url)
-
-        # Should be forbidden or error (not 200 OK)
-        self.assertIn(response.status_code, [403, 404, 500])
-
     def test_analysis_result_ownership_verified_via_job_listing(self):
         """Test that analysis result access is verified through job listing ownership."""
         # Login as other user
@@ -317,23 +302,6 @@ class AuthorizationSecurityTest(TestCase):
 
         # Should check if user owns the job associated with the result
         self.assertEqual(response.status_code, 403)
-
-    def test_non_staff_cannot_bypass_authorization_via_parameters(self):
-        """Test that non-staff users cannot bypass authorization via parameter manipulation."""
-        # Login as other user
-        if not self._login_as_user('auth_other_user', 'testpass123'):
-            self.fail("Login as other user failed")
-
-        # Try various parameter manipulation attempts
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-
-        # Add fake staff parameter
-        response = self.client.get(url + '?staff=true')
-        self.assertIn(response.status_code, [403, 500])
-
-        # Add fake user_id parameter
-        response = self.client.get(url + '?user_id=' + str(self.user.id))
-        self.assertIn(response.status_code, [403, 500])
 
     def test_inactive_user_cannot_access_analysis(self):
         """Test that deactivated/inactive users cannot access analysis endpoints."""
@@ -386,7 +354,7 @@ class AuthorizationSecurityTest(TestCase):
 
         # Login may succeed but RBAC middleware should block access
         if login_response.status_code == 200:
-            url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+            url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
             response = client.get(url)
             # Should be blocked by RBAC middleware
             self.assertIn(response.status_code, [401, 403])

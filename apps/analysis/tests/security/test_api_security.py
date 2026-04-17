@@ -117,7 +117,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         # Check for common security headers
@@ -136,7 +136,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         # These headers should NOT be present (would leak sensitive info)
@@ -156,7 +156,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         # Content-Type should be application/json
@@ -171,7 +171,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
         # Make request with Origin header (simulating cross-origin request)
         response = self.client.get(url, HTTP_ORIGIN='https://evil.com')
@@ -189,7 +189,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
         # Make request with malicious origin
         response = self.client.get(url, HTTP_ORIGIN='https://malicious.com')
@@ -208,7 +208,7 @@ class APISecurityTest(TestCase):
         """Test that stack traces are not exposed in error responses."""
         # Test unauthenticated access (should return clean 401 error)
         client = Client()
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = client.get(url)
 
         self.assertEqual(response.status_code, 401)
@@ -237,7 +237,7 @@ class APISecurityTest(TestCase):
         client = Client()
 
         # Try to access with invalid UUID (may trigger database error)
-        url = '/api/analysis/jobs/invalid-uuid/analysis/status/'
+        url = '/api/analysis/jobs/invalid-uuid/analysis/results/'
         response = client.get(url)
 
         response_text = response.content.decode('utf-8')
@@ -296,7 +296,7 @@ class APISecurityTest(TestCase):
 
         # This test verifies error handling structure
         # We check that errors have a consistent, non-revealing format
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         # Successful response should have structured format
@@ -314,7 +314,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         response_text = response.content.decode('utf-8').lower()
@@ -377,7 +377,7 @@ class APISecurityTest(TestCase):
             self.fail("Login failed")
 
         endpoints = [
-            f'/api/analysis/jobs/{self.job.id}/analysis/status/',
+            f'/api/analysis/jobs/{self.job.id}/analysis/results/',
             f'/api/analysis/jobs/{self.job.id}/analysis/results/',
             f'/api/analysis/results/{self.analysis_result.id}/',
             f'/api/analysis/jobs/{self.job.id}/analysis/statistics/',
@@ -447,7 +447,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
 
         # DRF throttling may include these headers
@@ -471,7 +471,7 @@ class APISecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
         # Request JSON explicitly
         response = self.client.get(url, HTTP_ACCEPT='application/json')

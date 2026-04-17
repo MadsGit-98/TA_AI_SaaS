@@ -16,7 +16,37 @@ from django.views.decorators.http import require_POST
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
+from apps.accounts.models import Notification
+from apps.jobs.models import JobListing
+
 logger = logging.getLogger(__name__)
+
+
+def _create_in_app_notification(job_id: str, title: str, message: str) -> None:
+    """Persist an in-app notification for the job owner.
+
+    Failures are logged and swallowed so webhook delivery is not impacted
+    by transient DB errors or missing records.
+    """
+    try:
+        job = JobListing.objects.select_related('created_by').only(
+            'id', 'created_by'
+        ).get(id=job_id)
+        Notification.objects.create(
+            user=job.created_by,
+            title=title,
+            message=message,
+        )
+        logger.info(f"Created in-app notification for job {job_id}: {title}")
+    except JobListing.DoesNotExist:
+        logger.error(
+            f"JobListing {job_id} not found; skipping in-app notification"
+        )
+    except Exception as exc:
+        logger.error(
+            f"Failed to create in-app notification for job {job_id}: {exc}",
+            exc_info=True,
+        )
 
 
 def verify_webhook_signature(request_body: bytes, signature_header: str) -> bool:
@@ -140,25 +170,49 @@ def analysis_webhook(request):
         })
 
     elif event_type == 'completed':
+        analyzed_count = payload.get('applicants_processed', 0)
         broadcast_to_websocket(group_name, 'analysis_completed', {
             'job_id': job_id,
-            'applicants_processed': payload.get('applicants_processed', 0),
+            'applicants_processed': analyzed_count,
             'applicants_total': payload.get('applicants_total', 0),
             'progress_percentage': 100,
         })
+        _create_in_app_notification(
+            job_id,
+            title='AI Analysis Completed',
+            message=(
+                f'AI analysis completed! {analyzed_count} applicants '
+                f'analyzed successfully.'
+            ),
+        )
 
     elif event_type == 'cancelled':
+        analyzed_count = payload.get('applicants_processed', 0)
         broadcast_to_websocket(group_name, 'analysis_cancelled', {
             'job_id': job_id,
-            'applicants_processed': payload.get('applicants_processed', 0),
+            'applicants_processed': analyzed_count,
             'applicants_total': payload.get('applicants_total', 0),
         })
+        _create_in_app_notification(
+            job_id,
+            title='Analysis Cancelled',
+            message=(
+                f'Analysis cancelled. {analyzed_count} applicants were '
+                f'analyzed before cancellation.'
+            ),
+        )
 
     elif event_type == 'failed':
+        error_message = payload.get('error_message', 'Unknown error')
         broadcast_to_websocket(group_name, 'analysis_failed', {
             'job_id': job_id,
-            'error_message': payload.get('error_message', 'Unknown error'),
+            'error_message': error_message,
         })
+        _create_in_app_notification(
+            job_id,
+            title='AI Analysis Failed',
+            message=f'AI analysis failed: {error_message}',
+        )
 
     else:
         logger.warning(f"Unknown webhook event: {event_type}")

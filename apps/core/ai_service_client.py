@@ -263,31 +263,6 @@ class AIServiceClient:
         response.raise_for_status()
         return response.json()
 
-    def get_analysis_status(self, job_id: str) -> Dict[str, Any]:
-        """
-        Get analysis progress status.
-
-        Args:
-            job_id: Job listing UUID
-
-        Returns:
-            Analysis status response dict
-
-        Raises:
-            AIServiceError: If service unavailable
-        """
-        response = self._make_request('get', f'/analysis/{job_id}/status/')
-
-        if response.status_code == 404:
-            raise AIServiceError(
-                "Analysis job not found",
-                code='not_found',
-                details=self._safe_json(response),
-            )
-
-        response.raise_for_status()
-        return response.json()
-
     def cancel_analysis(self, job_id: str) -> Dict[str, Any]:
         """
         Cancel a running analysis job.

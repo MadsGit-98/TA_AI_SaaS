@@ -95,37 +95,31 @@ class AuthenticationSecurityTest(TestCase):
 
     def test_missing_jwt_token_rejected(self):
         """Test that requests without JWT tokens return 401 Unauthorized."""
-        # Create unauthenticated client
         unauthenticated_client = Client()
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = unauthenticated_client.get(url)
 
-        # Should return 401 Unauthorized
         self.assertEqual(response.status_code, 401)
 
     def test_invalid_jwt_token_format_rejected(self):
         """Test that malformed JWT tokens are rejected."""
-        # Create client with invalid token
         invalid_client = Client()
         invalid_client.cookies['access_token'] = 'invalid.token.here'
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = invalid_client.get(url)
 
-        # Should return 401 Unauthorized
         self.assertEqual(response.status_code, 401)
 
     def test_empty_jwt_token_rejected(self):
         """Test that empty JWT tokens are rejected."""
-        # Create client with empty token
         empty_client = Client()
         empty_client.cookies['access_token'] = ''
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = empty_client.get(url)
 
-        # Should return 401 Unauthorized
         self.assertEqual(response.status_code, 401)
 
     def test_jwt_cookie_httponly_flag_set(self):
@@ -166,44 +160,30 @@ class AuthenticationSecurityTest(TestCase):
 
     def test_tampered_jwt_payload_rejected(self):
         """Test that JWT tokens with tampered payloads are rejected."""
-        # First login to get a valid token
         if not self._login():
             self.fail("Login failed")
 
         original_token = self._get_access_token()
         self.assertIsNotNone(original_token)
 
-        # Decode the token to get the payload
         try:
-            # Get the secret key
-            secret_key = settings.SECRET_KEY
-            
-            # Decode without verification to get payload
             payload = jwt.decode(original_token, options={"verify_signature": False})
-            
-            # Tamper with the payload
             payload['user_id'] = 'tampered_user_id'
-            
-            # Re-sign with wrong secret (simulating tampering)
             tampered_token = jwt.encode(payload, 'wrong_secret_key', algorithm='HS256')
         except Exception:
-            # If we can't tamper, skip this test
             self.skipTest("Unable to create tampered token for testing")
             return
 
-        # Create client with tampered token
         tampered_client = Client()
         tampered_client.cookies['access_token'] = tampered_token
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = tampered_client.get(url)
 
-        # Should return 401 Unauthorized (invalid signature)
         self.assertEqual(response.status_code, 401)
 
     def test_expired_jwt_token_rejected(self):
         """Test that expired JWT tokens are rejected."""
-        # First login to get a valid token
         if not self._login():
             self.fail("Login failed")
 
@@ -211,32 +191,24 @@ class AuthenticationSecurityTest(TestCase):
         self.assertIsNotNone(original_token)
 
         try:
-            # Decode without verification to get payload
             payload = jwt.decode(original_token, options={"verify_signature": False})
-            
-            # Set expiration to past
-            payload['exp'] = datetime.utcnow().timestamp() - 3600  # 1 hour ago
-            
-            # Re-sign with correct secret (but expired)
+            payload['exp'] = datetime.utcnow().timestamp() - 3600
             secret_key = settings.SECRET_KEY
             expired_token = jwt.encode(payload, secret_key, algorithm='HS256')
         except Exception:
             self.skipTest("Unable to create expired token for testing")
             return
 
-        # Create client with expired token
         expired_client = Client()
         expired_client.cookies['access_token'] = expired_token
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = expired_client.get(url)
 
-        # Should return 401 Unauthorized (token expired)
         self.assertEqual(response.status_code, 401)
 
     def test_wrong_algorithm_jwt_token_rejected(self):
         """Test that JWT tokens using wrong algorithm are rejected."""
-        # First login to get a valid token
         if not self._login():
             self.fail("Login failed")
 
@@ -244,23 +216,18 @@ class AuthenticationSecurityTest(TestCase):
         self.assertIsNotNone(original_token)
 
         try:
-            # Decode without verification to get payload
             payload = jwt.decode(original_token, options={"verify_signature": False})
-            
-            # Re-sign with none algorithm (algorithm confusion attack)
             none_token = jwt.encode(payload, '', algorithm='none')
         except Exception:
             self.skipTest("Unable to create none-algorithm token for testing")
             return
 
-        # Create client with none-algorithm token
         none_client = Client()
         none_client.cookies['access_token'] = none_token
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = none_client.get(url)
 
-        # Should return 401 Unauthorized (algorithm not allowed)
         self.assertEqual(response.status_code, 401)
 
     def test_authentication_required_for_all_analysis_endpoints(self):
@@ -269,7 +236,6 @@ class AuthenticationSecurityTest(TestCase):
 
         endpoints = [
             ('POST', f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'),
-            ('GET', f'/api/analysis/jobs/{self.job.id}/analysis/status/'),
             ('GET', f'/api/analysis/jobs/{self.job.id}/analysis/results/'),
             ('GET', f'/api/analysis/results/{self.applicant.ai_analysis_results.first().id if self.applicant.ai_analysis_results.exists() else "00000000-0000-0000-0000-000000000000"}/'),
             ('POST', f'/api/analysis/jobs/{self.job.id}/analysis/cancel/'),
@@ -315,37 +281,27 @@ class AuthenticationSecurityTest(TestCase):
 
     def test_multiple_concurrent_sessions_allowed(self):
         """Test that users can have multiple concurrent sessions."""
-        # Login first time
         if not self._login():
             self.fail("First login failed")
 
         first_token = self._get_access_token()
         self.assertIsNotNone(first_token)
 
-        # Note: JWT tokens in cookies are session-based
-        # Multiple logins from same browser replace the cookie
-        # This test verifies the token mechanism works correctly
-        
-        # Verify first session works
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         response = self.client.get(url)
         self.assertNotEqual(response.status_code, 401, "First session should be valid")
 
     def test_logout_invalidates_session(self):
         """Test that logout invalidates the session."""
-        # Login first
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
-        # Verify logged in
         response = self.client.get(url)
         self.assertNotEqual(response.status_code, 401)
 
-        # Logout
         self.client.logout()
 
-        # Verify logged out
         response = self.client.get(url)
         self.assertEqual(response.status_code, 401)

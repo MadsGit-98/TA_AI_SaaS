@@ -5,7 +5,8 @@ These are default implementations that wrap the existing service layer functions
 They provide backward compatibility during the transition period and can be used
 when you don't need custom implementations.
 
-For production Django deployment, use the Django adapters in apps/analysis/adapters.py.
+For production deployment, use the service-layer adapters in
+services/ai_service_adapters.py.
 """
 
 import logging
@@ -93,8 +94,8 @@ class DefaultNotificationService(INotificationService):
     """
     Default notification service.
     
-    NOTE: This is a stub implementation. For Django deployment,
-    use DjangoNotificationService from apps/analysis/adapters.py.
+    NOTE: This is a stub implementation. For production deployment,
+    use ServiceNotificationService from services/ai_service_adapters.py.
     """
     
     def notify_progress(self, job_id: str, user_id: str, data: Dict[str, Any]) -> None:
@@ -130,8 +131,8 @@ class StubResultRepository(IAnalysisResultRepository):
     """
     Stub repository implementation for testing.
     
-    NOTE: This does NOT persist results. Use DjangoAnalysisResultRepository
-    from apps/analysis/adapters.py for production use.
+    NOTE: This does NOT persist results. Use ServiceAnalysisResultRepository
+    from services/ai_service_adapters.py for production use.
     """
     
     def __init__(self):

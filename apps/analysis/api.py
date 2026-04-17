@@ -5,7 +5,6 @@ Per Constitution §5: RBAC implementation required for all authenticated endpoin
 
 This module contains:
 - initiate_analysis: Start bulk AI analysis
-- analysis_status: Get analysis progress
 - analysis_results: Get all results for a job
 - analysis_result_detail: Get detailed result for specific applicant
 - get_applicant_resume: Get applicant's resume file info
@@ -17,7 +16,6 @@ This module contains:
 import logging
 import os
 import mimetypes
-import uuid
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -26,17 +24,13 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.exceptions import PermissionDenied, ParseError
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.conf import settings
 from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 from apps.applications.models import ApplicationAnswer, Applicant
 from django.db.models import Avg, Count
 from apps.core.ai_service_client import AIServiceClient, AIServiceError
 from services.ai_analysis_service import (
-    get_analysis_progress,
-    check_cancellation_flag,
     resolve_job_from_analysis_run_id,
-    get_current_analysis_run_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,25 +72,6 @@ class AnalysisResultDetailThrottle(SimpleRateThrottle):
             return f'analysis_result_detail_scope:unknown_ip:useragent:{user_agent_fragment}'
 
         return f'analysis_result_detail_scope:{client_ip}'
-
-
-class AnalysisStatusThrottle(SimpleRateThrottle):
-    """
-    Custom throttle for analysis status endpoint
-    Higher limit to allow frequent polling during analysis progress
-    """
-    scope = 'analysis_status'
-
-    def get_cache_key(self, request, view):
-        # Use DRF's get_ident to safely get client IP, handling trusted proxies
-        client_ip = self.get_ident(request)
-
-        if not client_ip:
-            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
-            user_agent_fragment = user_agent[:32] if user_agent != 'unknown' else 'unknown'
-            return f'analysis_status_scope:unknown_ip:useragent:{user_agent_fragment}'
-
-        return f'analysis_status_scope:{client_ip}'
 
 
 @api_view(['POST'])
@@ -219,198 +194,6 @@ def initiate_analysis_http(request, job_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     finally:
         client.close()
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-@throttle_classes([AnalysisStatusThrottle])
-def analysis_status(request, job_id):
-    """
-    API endpoint to get analysis progress status.
-
-    GET /api/jobs/{job_id}/analysis/status/
-    GET /api/jobs/{job_id}/analysis/status/?analysis_run_id=<run_id>
-
-    Query Parameters:
-    - analysis_run_id: Optional analysis run ID to track (resolved to job_id internally)
-
-    Returns current progress including:
-    - Status (not_started, pending, processing, completed, failed, cancelled)
-    - Progress percentage
-    - Processed count
-    - Total count
-    - Started/completed timestamps
-    - analysis_run_id: The current analysis run ID for tracking
-
-    Note: Checks database first for completed analyses to avoid stale Redis data.
-
-    DEPRECATED: This endpoint is deprecated in favor of WebSocket-based real-time updates.
-    The endpoint remains available for backward compatibility and fallback polling scenarios.
-    New implementations should use the WebSocket endpoint at /ws/analysis-notifications/
-    """
-    try:
-        # Optionally resolve job_id from analysis_run_id if provided
-        analysis_run_id_param = request.query_params.get('analysis_run_id')
-        if analysis_run_id_param:
-            resolved_job_id = resolve_job_from_analysis_run_id(analysis_run_id_param)
-            if resolved_job_id:
-                # Use the resolved job_id but keep original for authorization check
-                job = get_object_or_404(JobListing, id=resolved_job_id)
-                job_id = resolved_job_id
-            else:
-                return Response({
-                    'success': False,
-                    'error': {
-                        'code': 'INVALID_ANALYSIS_RUN_ID',
-                        'message': 'Invalid or expired analysis_run_id'
-                    }
-                }, status=status.HTTP_404_NOT_FOUND)
-        else:
-            job = get_object_or_404(JobListing, id=job_id)
-
-        # Authorization check: only owner or staff can view analysis status
-        if job.created_by != request.user and not request.user.is_staff:
-            raise PermissionDenied("You do not have permission to view analysis status for this job.")
-
-        # FIRST: Check database for completed analysis results
-        # This takes precedence over Redis to avoid stale data issues
-        results = AIAnalysisResult.objects.filter(job_listing=job)
-        db_result_count = results.count()
-
-        # Get applicant count for total
-        total_applicants = job.applicants.count()
-
-        # If we have results for all applicants in DB, analysis is complete
-        if db_result_count > 0 and db_result_count >= total_applicants:
-            analyzed_count = results.filter(status='Analyzed').count()
-            unprocessed_count = results.filter(status='Unprocessed').count()
-
-            # Get current analysis_run_id if available
-            current_run_id = get_current_analysis_run_id(str(job_id))
-
-            return Response({
-                'success': True,
-                'data': {
-                    'job_id': str(job_id),
-                    'analysis_run_id': current_run_id,
-                    'status': 'completed',
-                    'progress_percentage': 100,
-                    'processed_count': db_result_count,
-                    'total_count': total_applicants,
-                    'results_summary': {
-                        'analyzed_count': analyzed_count,
-                        'unprocessed_count': unprocessed_count,
-                        'best_match_count': results.filter(category='Best Match').count(),
-                        'good_match_count': results.filter(category='Good Match').count(),
-                        'partial_match_count': results.filter(category='Partial Match').count(),
-                        'mismatched_count': results.filter(category='Mismatched').count(),
-                    },
-                }
-            })
-
-        # SECOND: Check Redis for in-progress analysis
-        progress = get_analysis_progress(str(job_id))
-        processed_count = progress.get('processed', 0)
-        total_count = progress.get('total', 0)
-
-        # Check cancellation flag BEFORE determining status from Redis data
-        if check_cancellation_flag(str(job_id)):
-            # Cancellation was requested - return cancelled status
-            # DO NOT clear the flag here - the Celery task needs it to detect cancellation
-            # The flag will be cleared by the task when it finishes
-
-            # Get current analysis_run_id if available
-            current_run_id = get_current_analysis_run_id(str(job_id))
-
-            progress_percentage = int((processed_count / total_count) * 100) if (processed_count > 0 and total_count > 0) else 0
-            return Response({
-                'success': True,
-                'data': {
-                    'job_id': str(job_id),
-                    'analysis_run_id': current_run_id,
-                    'status': 'cancelled',
-                    'progress_percentage': progress_percentage,
-                    'processed_count': processed_count,
-                    'total_count': total_count,
-                    'results_summary': None,
-                }
-            })
-
-        # Determine status from Redis data
-        if total_count == 0:
-            # No Redis data and no DB results
-            if db_result_count > 0:
-                # Partial results exist
-                status_text = 'processing'
-                progress_percentage = int((db_result_count / total_applicants) * 100) if total_applicants > 0 else 0
-            else:
-                status_text = 'not_started'
-                progress_percentage = 0
-            processed_count = db_result_count
-            total_count = total_applicants
-        elif processed_count >= total_count:
-            status_text = 'completed'
-            progress_percentage = 100
-        else:
-            status_text = 'processing'
-            progress_percentage = int((processed_count / total_count) * 100) if total_count > 0 else 0
-
-        # Get summary if completed
-        results_summary = None
-        if status_text == 'completed':
-            results_summary = {
-                'analyzed_count': results.filter(status='Analyzed').count(),
-                'unprocessed_count': results.filter(status='Unprocessed').count(),
-                'best_match_count': results.filter(category='Best Match').count(),
-                'good_match_count': results.filter(category='Good Match').count(),
-                'partial_match_count': results.filter(category='Partial Match').count(),
-                'mismatched_count': results.filter(category='Mismatched').count(),
-            }
-
-        # Get current analysis_run_id if available
-        current_run_id = get_current_analysis_run_id(str(job_id))
-
-        return Response({
-            'success': True,
-            'data': {
-                'job_id': str(job_id),
-                'analysis_run_id': current_run_id,
-                'status': status_text,
-                'progress_percentage': progress_percentage,
-                'processed_count': processed_count,
-                'total_count': total_count,
-                'results_summary': results_summary,
-            }
-        })
-
-    except Http404:
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'NOT_FOUND',
-                'message': 'Job listing not found'
-            }
-        }, status=status.HTTP_404_NOT_FOUND)
-
-    except PermissionDenied as e:
-        logger.error(f"Permission denied getting analysis status for job {job_id}: {e}", exc_info=True)
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'PERMISSION_DENIED',
-                'message': str(e)
-            }
-        }, status=status.HTTP_403_FORBIDDEN)
-
-    except Exception as e:
-        logger.error(f"Error getting analysis status for job {job_id}: {e}", exc_info=True)
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'INTERNAL_ERROR',
-                'message': 'An internal server error occurred'
-            }
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])

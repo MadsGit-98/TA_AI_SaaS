@@ -129,7 +129,7 @@ class InputValidationSecurityTest(TestCase):
         ]
 
         for payload in sql_injection_payloads:
-            url = f'/api/analysis/jobs/{payload}/analysis/status/'
+            url = f'/api/analysis/jobs/{payload}/analysis/results/'
             response = self.client.get(url)
 
             # Should return 404 (not found) or 400 (bad request), not 500
@@ -309,7 +309,7 @@ class InputValidationSecurityTest(TestCase):
         ]
 
         for invalid_uuid in invalid_uuids:
-            url = f'/api/analysis/jobs/{invalid_uuid}/analysis/status/'
+            url = f'/api/analysis/jobs/{invalid_uuid}/analysis/results/'
             response = self.client.get(url)
 
             # Should return 404 (not found) or 400 (bad request), not 500
@@ -426,7 +426,7 @@ class InputValidationSecurityTest(TestCase):
         ]
 
         for payload in traversal_payloads:
-            url = f'/api/analysis/jobs/{payload}/analysis/status/'
+            url = f'/api/analysis/jobs/{payload}/analysis/results/'
             response = self.client.get(url)
 
             # Should return 400 or 404, not 500
@@ -544,7 +544,7 @@ class InputValidationSecurityTest(TestCase):
             self.fail("Login failed")
 
         get_only_endpoints = [
-            f'/api/analysis/jobs/{self.job.id}/analysis/status/',
+            f'/api/analysis/jobs/{self.job.id}/analysis/results/',
             f'/api/analysis/jobs/{self.job.id}/analysis/results/',
             f'/api/analysis/jobs/{self.job.id}/analysis/statistics/',
         ]
@@ -563,7 +563,7 @@ class InputValidationSecurityTest(TestCase):
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
         # Test DELETE
         response = self.client.delete(url)
