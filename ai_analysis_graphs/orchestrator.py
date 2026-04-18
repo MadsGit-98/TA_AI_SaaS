@@ -28,6 +28,28 @@ from services.ai_analysis_graphs.interfaces import (
 logger = logging.getLogger(__name__)
 
 
+def _job_dto_from_analysis_context(
+    job_context: AnalysisJobContext,
+    job_id: str,
+) -> dict:
+    """
+    Build a job-listing-shaped dict for the worker graph.
+
+    ``POST /api/v1/analysis/initiate/`` passes a flat :class:`AnalysisJobContext`
+    (title, skills, …) but does not set ``job_instance`` / ``job`` / ``job_dto``.
+    Without this, ``state['job']`` stays ``None`` and the retrieval node has no
+    job requirements.
+    """
+    return {
+        'id': str(job_context.get('id') or job_id),
+        'title': job_context.get('title') or '',
+        'description': job_context.get('description') or '',
+        'required_skills': list(job_context.get('required_skills') or []),
+        'required_experience': int(job_context.get('required_experience') or 0),
+        'job_level': job_context.get('job_level') or '',
+    }
+
+
 def run_analysis(
     job_id: str,
     job_context: AnalysisJobContext,
@@ -134,6 +156,9 @@ def run_analysis(
         elif 'job_dto' in job_context:
             # Alternate key for DTO-based callers
             initial_state['job'] = job_context['job_dto']
+
+        if initial_state['job'] is None:
+            initial_state['job'] = _job_dto_from_analysis_context(job_context, job_id)
         
         # Run the supervisor graph
         logger.info(f"Invoking supervisor graph for job {job_id}")
