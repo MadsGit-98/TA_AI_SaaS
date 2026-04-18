@@ -410,7 +410,7 @@ class HealthView(APIView):
 
         # Check Redis
         try:
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/1')
+            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
             r = redis.from_url(redis_url, socket_timeout=2, socket_connect_timeout=2)
             start = time.time()
             r.ping()
@@ -456,7 +456,7 @@ class ReadyView(APIView):
 
         # Check Redis
         try:
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/1')
+            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
             r = redis.from_url(redis_url, socket_timeout=2, socket_connect_timeout=2)
             r.ping()
             checks['redis'] = True

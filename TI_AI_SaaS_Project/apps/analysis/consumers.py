@@ -76,6 +76,19 @@ def _sanitize_payload_for_log(payload):
     return safe
 
 
+def _client_data_from_channel_event(event: dict) -> dict:
+    """Build the ``data`` object for the browser from a channel-layer event.
+
+    ``apps.analysis.webhook.broadcast_to_websocket`` sends a flat payload
+    (``type`` plus job fields). Older tests send a nested ``data`` dict.
+    The static JS client always expects ``{type, data}`` on the wire.
+    """
+    nested = event.get('data')
+    if isinstance(nested, dict):
+        return nested
+    return {k: v for k, v in event.items() if k != 'type'}
+
+
 class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
     """
     WebSocket consumer for broadcasting AI analysis status updates.
@@ -278,7 +291,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_progress',
+            'data': data,
+        }))
     
     async def analysis_completed(self, event):
         """
@@ -298,7 +315,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_completed',
+            'data': data,
+        }))
     
     async def analysis_cancelled(self, event):
         """
@@ -317,7 +338,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_cancelled',
+            'data': data,
+        }))
     
     async def analysis_failed(self, event):
         """
@@ -337,4 +362,8 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_failed',
+            'data': data,
+        }))

@@ -30,6 +30,10 @@ from services.ai_analysis_graphs.interfaces import (
     ICancellationChecker,
     ILLMProvider,
 )
+from services.ai_analysis_graphs.applicant_access import (
+    resolve_applicant_id,
+    resolve_resume_text,
+)
 from services.ai_analysis_graphs.worker import create_worker_graph
 
 logger = logging.getLogger(__name__)
@@ -216,7 +220,7 @@ def map_workers_node(
         for future in as_completed(future_to_applicant):
             applicant = future_to_applicant[future]
             results_collected += 1
-            logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {_safe_get(applicant, 'id', 'unknown')}")
+            logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {resolve_applicant_id(applicant) or 'unknown'}")
 
             # Check cancellation during batch processing
             if cancellation_checker.check_cancellation_flag(job_id):
@@ -235,11 +239,11 @@ def map_workers_node(
 
             try:
                 result = future.result()
-                logger.info(f"[MapWorkers] Result received for applicant {_safe_get(applicant, 'id', 'unknown')}: status={result.get('status', 'Unknown')}, category={result.get('category', 'Unknown')}")
+                logger.info(f"[MapWorkers] Result received for applicant {resolve_applicant_id(applicant) or 'unknown'}: status={result.get('status', 'Unknown')}, category={result.get('category', 'Unknown')}")
 
                 # Check if this applicant was cancelled
                 if result.get('cancelled', False):
-                    logger.info(f"Applicant {_safe_get(applicant, 'id', 'unknown')} processing cancelled")
+                    logger.info(f"Applicant {resolve_applicant_id(applicant) or 'unknown'} processing cancelled")
                     # Cancel pending futures and avoid blocking on exit
                     for fut in future_to_applicant:
                         fut.cancel()
@@ -281,9 +285,9 @@ def map_workers_node(
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
-                logger.warning(f"Worker failed for applicant {_safe_get(applicant, 'id', 'unknown')}: {e}", exc_info=True)
+                logger.warning(f"Worker failed for applicant {resolve_applicant_id(applicant) or 'unknown'}: {e}", exc_info=True)
                 new_results.append({
-                    'applicant_id': str(_safe_get(applicant, 'id', '')),
+                    'applicant_id': resolve_applicant_id(applicant),
                     'job_listing_id': str(_safe_get(job, 'id', '')),
                     'status': 'Unprocessed',
                     'category': 'Unprocessed',
@@ -323,7 +327,7 @@ def process_single_applicant(
     Returns:
         Analysis result dict
     """
-    applicant_id = _safe_get(applicant, 'id', 'unknown')
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
     logger.info(f"[ProcessSingle] Starting processing for applicant {applicant_id}")
 
     try:
@@ -331,7 +335,7 @@ def process_single_applicant(
         if cancellation_checker.check_cancellation_flag(job_id):
             logger.info(f"[ProcessSingle] Cancelled before processing for applicant {applicant_id}")
             return {
-                'applicant_id': str(_safe_get(applicant, 'id', '')),
+                'applicant_id': resolve_applicant_id(applicant),
                 'job_listing_id': str(_safe_get(job, 'id', '')),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
@@ -339,15 +343,15 @@ def process_single_applicant(
             }
 
         # Check if resume text is available
-        resume_text = _safe_get(applicant, 'resume_parsed_text', '') or ''
+        resume_text = resolve_resume_text(applicant)
         if not resume_text:
             logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
             return {
-                'applicant_id': str(_safe_get(applicant, 'id', '')),
+                'applicant_id': resolve_applicant_id(applicant),
                 'job_listing_id': str(_safe_get(job, 'id', '')),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
-                'error_message': 'No parsed resume text available',
+                'error_message': 'No resume text available',
             }
 
         # Execute worker graph
@@ -369,7 +373,7 @@ def process_single_applicant(
 
         # Build result dict
         result = {
-            'applicant_id': str(_safe_get(applicant, 'id', '')),
+            'applicant_id': resolve_applicant_id(applicant),
             'job_listing_id': str(_safe_get(job, 'id', '')),
             'education_score': final_state.get('scores', {}).get('education', 0),
             'skills_score': final_state.get('scores', {}).get('skills', 0),
@@ -391,7 +395,7 @@ def process_single_applicant(
     except Exception as e:
         logger.warning(f"Error processing applicant {applicant_id}: {e}", exc_info=True)
         return {
-            'applicant_id': str(_safe_get(applicant, 'id', '')),
+            'applicant_id': resolve_applicant_id(applicant),
             'job_listing_id': str(_safe_get(job, 'id', '')),
             'status': 'Unprocessed',
             'category': 'Unprocessed',
@@ -429,7 +433,11 @@ def bulk_persistence_node(
     # Build applicants_map from state for repository
     applicants_map = None
     if applicants:
-        applicants_map = {str(a.id): a for a in applicants}
+        applicants_map = {}
+        for a in applicants:
+            aid = resolve_applicant_id(a)
+            if aid:
+                applicants_map[aid] = a
 
     if not results:
         logger.info(f"No results to persist for job {job_id}")

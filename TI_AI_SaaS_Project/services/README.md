@@ -146,9 +146,12 @@ When moving to staging / production:
 - Deploy `services/` on the GPU host; leave `apps/` + `x_crewter/` on
   the web host.
 - Update only the following env vars:
-  - Django side: `AI_SERVICE_URL` &rarr; the GPU host's public URL.
-  - Service side: `DJANGO_WEBHOOK_URL` &rarr; the web host's public
-    webhook URL (HTTPS).
-- Rotate `API_KEYS` and `WEBHOOK_SECRET` to production values.
+  - Django side: `AI_SERVICE_BASE_URL` &rarr; the GPU host's public URL.
+  - Django side: `AI_SERVICE_WEBHOOK_SECRET` must match the service's
+    `WEBHOOK_SECRET`.
+  - Service side: `DJANGO_WEBHOOK_URL` &rarr; the web host's
+    `https://…/api/analysis/internal/analysis/webhook/` (HTTPS).
+- Rotate `API_KEYS`, `WEBHOOK_SECRET`, and `AI_SERVICE_WEBHOOK_SECRET` to
+  production values.
 
 No code changes are required to make the separation work.
