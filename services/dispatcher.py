@@ -116,66 +116,117 @@ def _run_analysis_worker(
     Runs inside the executor thread. All failure modes are logged and
     surfaced via Redis state + webhook notifications so the Django side
     is always informed; this function itself never raises.
-    """
-    try:
-        r = get_redis_client()
-    except Exception as exc:
-        logger.error(
-            "Dispatcher could not reach Redis for job %s: %s",
-            job_id,
-            exc,
-            exc_info=True,
-        )
-        return None
 
+    **Redis-unavailable cleanup contract.** By the time this worker
+    starts, the view layer has already stored state, acquired the
+    analysis lock, and marked the job as ``processing``. If we bail out
+    here without notifying Django, the UI will spin forever and future
+    reruns will collide with the lock. So even when ``get_redis_client``
+    fails, we still:
+
+    * Fire a ``failed`` webhook to Django (the webhook path has no
+      Redis dependency), so the front-end surfaces the error and the
+      app-level notification pipeline runs.
+    * Lean on the lock's built-in TTL (``ANALYSIS_LOCK_TTL`` via
+      ``setex``) for eventual self-healing when the Redis client
+      really can't be obtained.
+
+    When the client *is* obtained we do explicit cleanup — release the
+    lock and flip status to ``failed`` — in a ``finally`` block so no
+    code path can skip it.
+    """
     webhook_url = getattr(settings, 'DJANGO_WEBHOOK_URL', '')
     webhook_secret = getattr(settings, 'WEBHOOK_SECRET', '')
-
-    result_repo = ServiceAnalysisResultRepository(
-        r, job_id, webhook_url, webhook_secret
-    )
+    # The notification service has no Redis dependency, so we can always
+    # notify Django even when Redis is down — that's the whole point of
+    # constructing it before the try/finally.
     notification_service = ServiceNotificationService(
         webhook_url, webhook_secret
     )
-    progress_tracker = ServiceProgressTracker(r)
-    cancellation_checker = ServiceCancellationChecker(r)
-    llm_provider = ServiceLLMProvider()
 
+    r = None
     summary = None
+    total_count = len(applicants)
     try:
-        summary = run_analysis(
-            job_id=job_id,
-            job_context=job_context,
-            applicants=applicants,
-            result_repo=result_repo,
-            notification_service=notification_service,
-            progress_tracker=progress_tracker,
-            cancellation_checker=cancellation_checker,
-            llm_provider=llm_provider,
-        )
-        update_job_status(
-            job_id,
-            summary.status,
-            r,
-            processed_count=summary.processed_count,
-        )
-    except Exception as exc:
-        logger.error(
-            "Analysis worker failed for job %s: %s",
-            job_id,
-            exc,
-            exc_info=True,
-        )
         try:
-            update_job_status(job_id, 'failed', r)
-        except Exception:
-            logger.exception(
-                "Failed to set failed status for job %s", job_id
+            r = get_redis_client()
+        except Exception as exc:
+            logger.error(
+                "Dispatcher could not reach Redis for job %s: %s. "
+                "Notifying Django via webhook; relying on lock TTL for cleanup.",
+                job_id,
+                exc,
+                exc_info=True,
+            )
+            # Surface the failure to Django even without Redis. Errors
+            # from the notification service itself are swallowed inside
+            # ``_send_webhook_event``, so this call never raises.
+            notification_service.notify_failed(
+                job_id=job_id,
+                user_id=job_context.created_by_id if hasattr(job_context, 'created_by_id') else '',
+                error_code='redis_unavailable',
+                error_message='AI analysis service lost its Redis connection before the run started.',
+                processed_count=0,
+                total_count=total_count,
+            )
+            return None
+
+        result_repo = ServiceAnalysisResultRepository(
+            r, job_id, webhook_url, webhook_secret
+        )
+        progress_tracker = ServiceProgressTracker(r)
+        cancellation_checker = ServiceCancellationChecker(r)
+        llm_provider = ServiceLLMProvider()
+
+        try:
+            summary = run_analysis(
+                job_id=job_id,
+                job_context=job_context,
+                applicants=applicants,
+                result_repo=result_repo,
+                notification_service=notification_service,
+                progress_tracker=progress_tracker,
+                cancellation_checker=cancellation_checker,
+                llm_provider=llm_provider,
+            )
+            update_job_status(
+                job_id,
+                summary.status,
+                r,
+                processed_count=summary.processed_count,
+            )
+        except Exception as exc:
+            logger.error(
+                "Analysis worker failed for job %s: %s",
+                job_id,
+                exc,
+                exc_info=True,
+            )
+            # Mark Redis state as failed so the service's own
+            # ``/status/`` endpoint reflects reality for operators.
+            try:
+                update_job_status(job_id, 'failed', r)
+            except Exception:
+                logger.exception(
+                    "Failed to set failed status for job %s", job_id
+                )
+            # And notify Django so the UI can stop spinning. Redis's
+            # own orchestrator usually fires this inside ``run_analysis``
+            # on handled failures, but an unhandled exception here
+            # means we must do it ourselves.
+            notification_service.notify_failed(
+                job_id=job_id,
+                user_id=job_context.created_by_id if hasattr(job_context, 'created_by_id') else '',
+                error_code='internal_error',
+                error_message=f'Analysis worker crashed: {type(exc).__name__}',
+                processed_count=0,
+                total_count=total_count,
             )
     finally:
-        try:
-            release_job_lock(job_id, r)
-        except Exception:
-            logger.exception("Failed to release lock for job %s", job_id)
+        if r is not None:
+            try:
+                release_job_lock(job_id, r)
+            except Exception:
+                logger.exception("Failed to release lock for job %s", job_id)
 
     return summary

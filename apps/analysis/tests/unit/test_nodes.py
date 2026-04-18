@@ -43,7 +43,6 @@ from services.ai_analysis_graphs.worker import (
 from django.contrib.auth import get_user_model
 from services.ai_analysis_service import assign_category, calculate_overall_score
 from uuid import UUID
-from apps.analysis.models import AIAnalysisResult
 from services.ai_analysis_graphs.interfaces import IAnalysisResultRepository
 from services.ai_analysis_graphs.defaults import (
     DefaultCancellationChecker,

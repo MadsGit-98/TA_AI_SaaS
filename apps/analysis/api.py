@@ -56,6 +56,39 @@ def _map_job_level_for_service(job_level):
     return _JOB_LEVEL_TO_SERVICE.get(job_level, 'mid')
 
 
+# The analysis POST endpoints (``initiate_analysis``, ``rerun_analysis``,
+# ``cancel_analysis``) build their service payloads from DB state rather than
+# the request body, so DRF's lazy parser-negotiation (which only fires on
+# ``request.data`` access) never runs and unsupported media types slip
+# through silently. We enforce the contract explicitly here: only JSON (or
+# an empty body) is accepted. Anything else — XML, octet-stream, whatever —
+# is rejected with 415 before any DB or network I/O.
+_ALLOWED_POST_CONTENT_TYPES = ('application/json',)
+
+
+def _reject_unsupported_media_type(request):
+    """Return a 415 ``Response`` if the request's content-type isn't JSON.
+
+    Returns ``None`` when the request is acceptable (JSON or empty body), so
+    callers can write ``rejection = _reject_unsupported_media_type(request);
+    if rejection: return rejection``.
+    """
+    content_type = (request.META.get('CONTENT_TYPE') or '').split(';', 1)[0].strip().lower()
+    # An empty body with no content-type is fine — DRF's test client and
+    # many real clients send this for no-payload POSTs (e.g. ``cancel``).
+    if not content_type:
+        return None
+    if content_type in _ALLOWED_POST_CONTENT_TYPES:
+        return None
+    return Response({
+        'success': False,
+        'error': {
+            'code': 'UNSUPPORTED_MEDIA_TYPE',
+            'message': f"Unsupported media type '{content_type}'. Expected 'application/json'."
+        }
+    }, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+
 class AnalysisThrottle(SimpleRateThrottle):
     """
     Custom throttle for analysis API endpoints to prevent abuse
@@ -112,6 +145,9 @@ def initiate_analysis(request, job_id):
     not to block analysis. Analysis can be initiated at any time as long as there
     are applicants to analyze.
     """
+    rejection = _reject_unsupported_media_type(request)
+    if rejection is not None:
+        return rejection
     try:
         return initiate_analysis_http(request, job_id)
     except Http404:
@@ -539,6 +575,9 @@ def cancel_analysis(request, job_id):
 
     Preserves results for already-processed applicants.
     """
+    rejection = _reject_unsupported_media_type(request)
+    if rejection is not None:
+        return rejection
     try:
         # Optionally resolve job_id from analysis_run_id if provided
         analysis_run_id_param = request.query_params.get('analysis_run_id')
@@ -674,6 +713,9 @@ def rerun_analysis(request, job_id):
     Deletes previous results and starts fresh analysis.
     Requires confirmation to prevent accidental data loss.
     """
+    rejection = _reject_unsupported_media_type(request)
+    if rejection is not None:
+        return rejection
     try:
         return rerun_analysis_http(request, job_id)
     except Http404:
@@ -714,10 +756,16 @@ def rerun_analysis_http(request, job_id):
     4. Delete existing ``AIAnalysisResult`` rows for the job — results are
        the canonical copy and live in Django's DB, so deletion must happen
        here, not on the service side.
-    5. Delegate to :class:`AIServiceClient` to kick off the new run, feeding
-       it the same ``job_data`` payload as ``initiate_analysis_http``.
+    5. Delegate to :class:`AIServiceClient` by forwarding the same
+       ``job_data`` payload used by ``initiate_analysis_http`` (job title,
+       skills, level, and full applicant list). The service's rerun
+       endpoint dispatches real work through the same background worker
+       pool as initiate, so developers can exercise the end-to-end rerun
+       path (progress webhooks, lock release, final status) during
+       development and integration testing.
     6. Report the *local* ``previous_results_deleted`` and ``applicant_count``
-       (the service returns zeros here because it's a stateless signal).
+       (the service returns zeros for the former because Django owns result
+       storage).
     """
     # Step 1: confirmation guard (before any DB or network I/O).
     if not bool(request.data.get('confirm') if hasattr(request, 'data') else False):
@@ -735,20 +783,49 @@ def rerun_analysis_http(request, job_id):
         raise PermissionDenied("You do not have permission to re-run analysis for this job.")
 
     applicants = list(job.applicants.all())
+    if not applicants:
+        # Mirror initiate's guard: rerun with no applicants would hit the
+        # service's 400 (``no_applicants``), so fail fast here with a
+        # clean, client-friendly error instead of round-tripping.
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'NO_APPLICANTS',
+                'message': 'Cannot re-run analysis: job listing has no applicants'
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    # Step 4: delete previous results locally. The AI service's rerun
-    # endpoint is a stateless signal that always reports
+    # Step 4: delete previous results locally. The AI service always reports
     # ``previous_results_deleted=0`` because Django owns result storage.
     previous_results_deleted, _ = AIAnalysisResult.objects.filter(
         job_listing=job
     ).delete()
 
-    # Step 5: kick off the new run on the service.
+    # Step 5: build the same payload as initiate and kick off the new run.
+    job_data = {
+        'job_id': str(job_id),
+        'job_title': job.title,
+        'job_skills': [s.lower() for s in (job.required_skills or [])],
+        'job_experience_level': _map_job_level_for_service(job.job_level),
+        'applicants': [
+            {
+                'applicant_id': str(a.id),
+                'resume_text': a.resume_parsed_text or '',
+                'name': f'{a.first_name} {a.last_name}'.strip(),
+                'email': a.email or '',
+            }
+            for a in applicants
+        ],
+    }
+
     client = AIServiceClient()
     try:
-        result = client.rerun_analysis(str(job_id))
+        result = client.rerun_analysis(str(job_id), job_data=job_data)
 
-        # Step 6: prefer locally computed counts; service returns zeros.
+        # Step 6: prefer locally computed counts; service returns zeros
+        # for ``previous_results_deleted`` and now mirrors our applicant
+        # count in ``applicants_total`` (we still source it locally so
+        # the response is consistent with initiate's contract).
         return Response({
             'success': True,
             'data': {
@@ -757,7 +834,7 @@ def rerun_analysis_http(request, job_id):
                 'job_id': str(job_id),
                 'previous_results_deleted': previous_results_deleted,
                 'applicant_count': len(applicants),
-                'message': 'Re-run analysis is running in background.',
+                'message': 'Re-run analysis is running in background. Monitor progress via WebSocket.',
             }
         }, status=status.HTTP_202_ACCEPTED)
     except AIServiceError as e:
@@ -771,6 +848,18 @@ def rerun_analysis_http(request, job_id):
                     'message': "Must set 'confirm': true to re-run analysis"
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
+        if e.code == 'no_applicants':
+            # Defensive: we already check for empty applicants above, but
+            # mirror initiate's mapping so a race (e.g. applicants deleted
+            # between our ORM read and the service call) still surfaces a
+            # clean 400 instead of a 500.
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'NO_APPLICANTS',
+                    'message': 'Cannot re-run analysis: job listing has no applicants'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         if e.code == 'duplicate_analysis':
             return Response({
                 'success': False,
@@ -779,6 +868,14 @@ def rerun_analysis_http(request, job_id):
                     'message': 'Analysis is already in progress for this job listing'
                 }
             }, status=status.HTTP_409_CONFLICT)
+        if e.code == 'service_unavailable':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'SERVICE_UNAVAILABLE',
+                    'message': 'AI analysis service is currently unavailable. Please try again in a few minutes.'
+                }
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         logger.error(f"AI service error re-running analysis: {str(e)}")
         return Response({
             'success': False,

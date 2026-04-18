@@ -84,8 +84,27 @@ class DuplicateAnalysisResponseSerializer(serializers.Serializer):
 
 
 class RerunAnalysisRequestSerializer(serializers.Serializer):
-    """Request body for POST /api/v1/analysis/{job_id}/rerun/"""
+    """Request body for POST /api/v1/analysis/{job_id}/rerun/.
+
+    Accepts the same ``job_data`` fields as
+    :class:`InitiateAnalysisRequestSerializer` so the view can dispatch
+    a fresh analysis run through the background worker pool — mirroring
+    the initiate flow. ``confirm`` is still required to guard against
+    accidental re-runs.
+    """
     confirm = serializers.BooleanField(required=True)
+    job_id = serializers.UUIDField(required=False)
+    job_title = serializers.CharField(min_length=1, max_length=200, required=False, allow_blank=True)
+    job_skills = serializers.ListField(
+        child=serializers.CharField(min_length=1),
+        required=False,
+        default=list,
+    )
+    job_experience_level = serializers.ChoiceField(
+        choices=['entry', 'mid', 'senior', 'lead'],
+        required=False,
+    )
+    applicants = ApplicantSerializer(many=True, required=False, min_length=1, max_length=100)
 
 
 class RerunAnalysisResponseSerializer(serializers.Serializer):

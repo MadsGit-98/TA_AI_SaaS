@@ -238,9 +238,12 @@
             })
             .then(function(data) {
                 if (data.success) {
-                    // Stop progress tracking
-                    stopProgressTracking(jobId);
-
+                    // Progress tracking is owned by the WebSocket consumer
+                    // (see analysis-websocket.js / reporting_progress.js); the
+                    // page reload below tears down this page's listeners, and
+                    // the reloaded page re-subscribes based on the job's new
+                    // ``analysis_status``. No explicit stop call is needed.
+                    //
                     // Wait a moment to ensure cancellation flag is set in Redis
                     // Then reload to get fresh data from server
                     setTimeout(() => {
