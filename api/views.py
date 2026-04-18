@@ -430,7 +430,8 @@ class HealthView(APIView):
             dependencies['ollama'] = {'status': 'ok', 'message': f'Model {model} available', 'response_time_ms': response_time}
         except Exception as e:
             dependencies['ollama'] = {'status': 'error', 'message': str(e), 'response_time_ms': None}
-            overall_status = 'degraded' if overall_status != 'unhealthy' else 'unhealthy'
+            # One dependency already failed → unhealthy; otherwise first failure → degraded.
+            overall_status = 'unhealthy' if overall_status == 'degraded' else 'degraded'
 
         response_serializer = HealthResponseSerializer({
             'service': 'ai-analysis-service',

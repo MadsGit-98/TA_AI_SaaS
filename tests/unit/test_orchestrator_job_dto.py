@@ -27,3 +27,23 @@ class JobDtoFromContextTest(TestCase):
         ctx = {'title': 'Only Title', 'required_skills': [], 'job_level': 'entry'}
         dto = _job_dto_from_analysis_context(ctx, 'fallback-id')
         self.assertEqual(dto['id'], 'fallback-id')
+
+    def test_required_experience_non_numeric_string_defaults_to_zero(self):
+        ctx = {
+            'title': 'T',
+            'required_skills': [],
+            'job_level': 'entry',
+            'required_experience': 'not-a-number',
+        }
+        dto = _job_dto_from_analysis_context(ctx, 'jid')
+        self.assertEqual(dto['required_experience'], 0)
+
+    def test_required_experience_numeric_string_coerces(self):
+        ctx = {
+            'title': 'T',
+            'required_skills': [],
+            'job_level': 'entry',
+            'required_experience': '5',
+        }
+        dto = _job_dto_from_analysis_context(ctx, 'jid')
+        self.assertEqual(dto['required_experience'], 5)

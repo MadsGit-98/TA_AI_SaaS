@@ -28,6 +28,14 @@ from services.ai_analysis_graphs.interfaces import (
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Coerce value to int; return default on invalid input."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _job_dto_from_analysis_context(
     job_context: AnalysisJobContext,
     job_id: str,
@@ -45,7 +53,7 @@ def _job_dto_from_analysis_context(
         'title': job_context.get('title') or '',
         'description': job_context.get('description') or '',
         'required_skills': list(job_context.get('required_skills') or []),
-        'required_experience': int(job_context.get('required_experience') or 0),
+        'required_experience': _safe_int(job_context.get('required_experience')),
         'job_level': job_context.get('job_level') or '',
     }
 
@@ -181,42 +189,52 @@ def run_analysis(
             f"{analyzed_count} analyzed, {unprocessed_count} unprocessed"
         )
         
-        # Send completion/cancellation notifications
+        # Send completion/cancellation notifications (webhooks must run even when
+        # created_by_id is unset — e.g. service InitiateAnalysisView uses '' so
+        # Django Channels can broadcast analysis_cancelled / analysis_completed).
         try:
-            user_id = job_context.get('created_by_id', '')
-            if user_id:
-                if cancelled:
-                    notification_service.notify_cancelled(
-                        job_id, user_id,
-                        {
-                            'processed_count': processed_count,
-                            'total_count': total_count,
-                            'preserved_count': analyzed_count,
-                            'timestamp': datetime.now(timezone.utc).isoformat()
-                        }
-                    )
-                    # Create in-app notification
+            user_id = job_context.get('created_by_id', '') or ''
+            ts = datetime.now(timezone.utc).isoformat()
+            if cancelled:
+                notification_service.notify_cancelled(
+                    job_id,
+                    user_id,
+                    {
+                        'processed_count': processed_count,
+                        'total_count': total_count,
+                        'preserved_count': analyzed_count,
+                        'timestamp': ts,
+                    },
+                )
+                if user_id:
                     notification_service.create_in_app_notification(
                         user_id=user_id,
                         title='Analysis Cancelled',
-                        message=f'Analysis cancelled for "{job_context.get("title", "Unknown")}". {analyzed_count} applicants were analyzed before cancellation.'
+                        message=(
+                            f'Analysis cancelled for "{job_context.get("title", "Unknown")}". '
+                            f'{analyzed_count} applicants were analyzed before cancellation.'
+                        ),
                     )
-                else:
-                    notification_service.notify_completed(
-                        job_id, user_id,
-                        {
-                            'processed_count': processed_count,
-                            'total_count': total_count,
-                            'analyzed_count': analyzed_count,
-                            'unprocessed_count': unprocessed_count,
-                            'timestamp': datetime.now(timezone.utc).isoformat()
-                        }
-                    )
-                    # Create in-app notification
+            else:
+                notification_service.notify_completed(
+                    job_id,
+                    user_id,
+                    {
+                        'processed_count': processed_count,
+                        'total_count': total_count,
+                        'analyzed_count': analyzed_count,
+                        'unprocessed_count': unprocessed_count,
+                        'timestamp': ts,
+                    },
+                )
+                if user_id:
                     notification_service.create_in_app_notification(
                         user_id=user_id,
                         title='AI Analysis Completed',
-                        message=f'AI analysis completed for "{job_context.get("title", "Unknown")}"! {analyzed_count} applicants analyzed successfully.'
+                        message=(
+                            f'AI analysis completed for "{job_context.get("title", "Unknown")}"! '
+                            f'{analyzed_count} applicants analyzed successfully.'
+                        ),
                     )
         except Exception as e:
             logger.error(f"Failed to create completion notification: {e}")
@@ -235,17 +253,18 @@ def run_analysis(
         
         # Send failure notification
         try:
-            user_id = job_context.get('created_by_id', 'unknown')
+            user_id = job_context.get('created_by_id', '')
             progress = progress_tracker.get_progress(job_id)
             if progress is None:
                 progress = {'processed': 0, 'total': 0}
-            notification_service.notify_failed(
-                job_id, user_id,
-                'TASK_FAILURE',
-                'Analysis task failed',
-                progress.get('processed', 0),
-                progress.get('total', 0)
-            )
+            if user_id:
+                notification_service.notify_failed(
+                    job_id, user_id,
+                    'TASK_FAILURE',
+                    'Analysis task failed',
+                    progress.get('processed', 0),
+                    progress.get('total', 0)
+                )
         except Exception as notify_error:
             logger.error(f"Failed to send failure notification: {notify_error}")
         
