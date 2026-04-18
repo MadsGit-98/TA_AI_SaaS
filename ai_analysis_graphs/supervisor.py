@@ -47,7 +47,7 @@ def _safe_get(obj, attr_name: str, default=None):
 
 
 def _resolved_applicant_id(applicant) -> str:
-    """String id for result dicts, logs, and applicants_map (never None or empty)."""
+    """String id for result dicts and logs (never None or empty)."""
     return resolve_applicant_id(applicant) or 'unknown'
 
 
@@ -440,8 +440,11 @@ def bulk_persistence_node(
     if applicants:
         applicants_map = {}
         for a in applicants:
-            aid = _resolved_applicant_id(a)
-            applicants_map[aid] = a
+            # Only map real IDs; multiple applicants with no resolvable id would
+            # collide on a synthetic key like 'unknown' (see _resolved_applicant_id).
+            aid = resolve_applicant_id(a)
+            if aid:
+                applicants_map[aid] = a
 
     if not results:
         logger.info(f"No results to persist for job {job_id}")
