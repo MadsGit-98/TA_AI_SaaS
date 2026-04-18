@@ -542,6 +542,12 @@ AI_SERVICE_WEBHOOK_SECRET = env(
     default=_AI_SERVICE_WEBHOOK_SECRET_DEV_DEFAULT,
 )
 
+# Max skew (seconds) for X-Webhook-Timestamp on signed webhooks (replay protection)
+AI_SERVICE_WEBHOOK_TOLERANCE_SECONDS = env.int(
+    'AI_SERVICE_WEBHOOK_TOLERANCE_SECONDS',
+    default=300,
+)
+
 # AI Service request timeout (seconds)
 AI_SERVICE_TIMEOUT = env.int('AI_SERVICE_TIMEOUT', default=30)
 

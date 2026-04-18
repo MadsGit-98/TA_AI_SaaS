@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from typing import Any, Dict
 
 import requests
@@ -57,15 +58,19 @@ def send_webhook(url: str, payload: Dict[str, Any], secret: str, timeout: int = 
         raise ValueError("Webhook secret is required")
 
     body = json.dumps(payload).encode('utf-8')
+    ts = int(time.time())
+    # Must match apps.analysis.internal_service_auth.verify_webhook_signature
+    signing_message = str(ts).encode('ascii') + body
     signature = hmac.new(
         secret.encode('utf-8'),
-        body,
-        hashlib.sha256
+        signing_message,
+        hashlib.sha256,
     ).hexdigest()
 
     headers = {
         'Content-Type': 'application/json',
         'X-Webhook-Signature': f'hmac-sha256={signature}',
+        'X-Webhook-Timestamp': str(ts),
     }
 
     session = _get_webhook_session()
