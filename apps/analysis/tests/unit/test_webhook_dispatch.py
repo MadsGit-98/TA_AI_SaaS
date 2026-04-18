@@ -11,6 +11,7 @@ subscribes to.
 import hashlib
 import hmac
 import json
+import time
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -22,12 +23,15 @@ from apps.analysis.webhook import analysis_webhook
 WEBHOOK_SECRET = 'test-secret-for-dispatch'
 
 
-def _sign(body: bytes, secret: str = WEBHOOK_SECRET) -> str:
-    return 'hmac-sha256=' + hmac.new(
+def _sign(body: bytes, secret: str = WEBHOOK_SECRET) -> tuple[str, str]:
+    ts = int(time.time())
+    signing = str(ts).encode('ascii') + body
+    sig = 'hmac-sha256=' + hmac.new(
         secret.encode('utf-8'),
-        body,
+        signing,
         hashlib.sha256,
     ).hexdigest()
+    return sig, str(ts)
 
 
 @override_settings(AI_SERVICE_WEBHOOK_SECRET=WEBHOOK_SECRET)
@@ -41,11 +45,13 @@ class WebhookDispatchGroupNameTest(TestCase):
 
     def _post(self, payload: dict):
         body = json.dumps(payload).encode('utf-8')
+        sig, ts = _sign(body)
         request = self.factory.post(
             '/api/internal/analysis/webhook/',
             data=body,
             content_type='application/json',
-            HTTP_X_WEBHOOK_SIGNATURE=_sign(body),
+            HTTP_X_WEBHOOK_SIGNATURE=sig,
+            HTTP_X_WEBHOOK_TIMESTAMP=ts,
         )
         return analysis_webhook(request)
 
@@ -161,11 +167,13 @@ class WebhookRejectionTest(TestCase):
         self.factory = RequestFactory()
 
     def _signed_request(self, body: bytes):
+        sig, ts = _sign(body)
         return self.factory.post(
             '/api/internal/analysis/webhook/',
             data=body,
             content_type='application/json',
-            HTTP_X_WEBHOOK_SIGNATURE=_sign(body),
+            HTTP_X_WEBHOOK_SIGNATURE=sig,
+            HTTP_X_WEBHOOK_TIMESTAMP=ts,
         )
 
     def test_invalid_signature_returns_401(self):
@@ -175,6 +183,19 @@ class WebhookRejectionTest(TestCase):
             data=body,
             content_type='application/json',
             HTTP_X_WEBHOOK_SIGNATURE='hmac-sha256=deadbeef',
+            HTTP_X_WEBHOOK_TIMESTAMP=str(int(time.time())),
+        )
+        response = analysis_webhook(request)
+        self.assertEqual(response.status_code, 401)
+
+    def test_missing_timestamp_returns_401(self):
+        body = json.dumps({'event': 'progress', 'job_id': 'x'}).encode('utf-8')
+        sig, _ = _sign(body)
+        request = self.factory.post(
+            '/api/internal/analysis/webhook/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SIGNATURE=sig,
         )
         response = analysis_webhook(request)
         self.assertEqual(response.status_code, 401)
@@ -248,12 +269,14 @@ class WebhookRbacBypassIntegrationTest(TestCase):
             'progress_percentage': 25,
         }
         body = json.dumps(payload).encode('utf-8')
+        sig, ts = _sign(body)
         with patch('apps.analysis.webhook.get_channel_layer', return_value=None):
             response = client.post(
                 '/api/analysis/internal/analysis/webhook/',
                 data=body,
                 content_type='application/json',
-                HTTP_X_WEBHOOK_SIGNATURE=_sign(body),
+                HTTP_X_WEBHOOK_SIGNATURE=sig,
+                HTTP_X_WEBHOOK_TIMESTAMP=ts,
             )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json().get('status'), 'received')

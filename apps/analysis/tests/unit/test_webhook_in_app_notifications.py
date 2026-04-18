@@ -9,6 +9,7 @@ completed/cancelled/failed events. These tests pin down that contract.
 import hashlib
 import hmac
 import json
+import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
@@ -26,12 +27,15 @@ WEBHOOK_SECRET = 'test-secret-for-in-app-notifications'
 User = get_user_model()
 
 
-def _sign(body: bytes, secret: str = WEBHOOK_SECRET) -> str:
-    return 'hmac-sha256=' + hmac.new(
+def _sign(body: bytes, secret: str = WEBHOOK_SECRET) -> tuple[str, str]:
+    ts = int(time.time())
+    signing = str(ts).encode('ascii') + body
+    sig = 'hmac-sha256=' + hmac.new(
         secret.encode('utf-8'),
-        body,
+        signing,
         hashlib.sha256,
     ).hexdigest()
+    return sig, str(ts)
 
 
 @override_settings(AI_SERVICE_WEBHOOK_SECRET=WEBHOOK_SECRET)
@@ -60,11 +64,13 @@ class WebhookInAppNotificationTest(TestCase):
 
     def _post(self, payload: dict):
         body = json.dumps(payload).encode('utf-8')
+        sig, ts = _sign(body)
         request = self.factory.post(
             '/api/internal/analysis/webhook/',
             data=body,
             content_type='application/json',
-            HTTP_X_WEBHOOK_SIGNATURE=_sign(body),
+            HTTP_X_WEBHOOK_SIGNATURE=sig,
+            HTTP_X_WEBHOOK_TIMESTAMP=ts,
         )
         return analysis_webhook(request)
 

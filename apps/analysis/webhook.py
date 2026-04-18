@@ -95,7 +95,8 @@ def analysis_webhook(request):
     POST /api/analysis/internal/analysis/webhook/
 
     Headers:
-        X-Webhook-Signature: hmac-sha256=<hex-signature>
+        X-Webhook-Signature: hmac-sha256=<hex-signature> over (timestamp ASCII + raw body)
+        X-Webhook-Timestamp: Unix epoch seconds (must be within tolerance of server time)
 
     Events:
         - progress: Analysis progress update
