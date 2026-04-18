@@ -68,8 +68,10 @@ DATABASES = {
 # services/config/test_runner.py).
 TEST_RUNNER = 'services.config.test_runner.NoDatabaseTestRunner'
 
-# Redis configuration
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
+# Redis configuration — default DB **must** match Django's ``REDIS_URL`` (see
+# ``x_crewter.settings``) so ``analysis_state:*`` written by this service is
+# visible to ``apps.accounts.redis_utils`` / ``get_analysis_progress``.
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
 # Ollama configuration
 OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
@@ -105,9 +107,25 @@ if AI_SERVICE_MAX_WORKERS < 1:
         "AI_SERVICE_MAX_WORKERS must be >= 1"
     )
 
-# Webhook configuration
+# Webhook configuration (signed POSTs from this service to Django).
+# Must match ``AI_SERVICE_WEBHOOK_SECRET`` in the main Django project.
+_DEFAULT_DEV_WEBHOOK_SECRET = 'shared-webhook-secret-change-me'
+# Mounted at ``/api/analysis/`` + ``internal/analysis/webhook/``; see apps/analysis/api_urls.py
+_DEFAULT_DEV_WEBHOOK_URL = (
+    'http://127.0.0.1:8000/api/analysis/internal/analysis/webhook/'
+)
+
 DJANGO_WEBHOOK_URL = os.environ.get('DJANGO_WEBHOOK_URL', '')
 WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', '')
+
+# Local dev: if neither env var is set, use paired defaults so progress
+# / completion webhooks reach Django without manual wiring (production
+# must set both explicitly).
+_webhook_dev_defaults_applied = False
+if DEBUG and not DJANGO_WEBHOOK_URL and not WEBHOOK_SECRET:
+    DJANGO_WEBHOOK_URL = _DEFAULT_DEV_WEBHOOK_URL
+    WEBHOOK_SECRET = _DEFAULT_DEV_WEBHOOK_SECRET
+    _webhook_dev_defaults_applied = True
 
 # Validate webhook configuration: if URL is set, secret must also be set
 if DJANGO_WEBHOOK_URL and not WEBHOOK_SECRET:
@@ -121,6 +139,11 @@ if DJANGO_WEBHOOK_URL and not WEBHOOK_SECRET:
 logger = logging.getLogger(__name__)
 if DJANGO_WEBHOOK_URL and WEBHOOK_SECRET:
     logger.info("Webhook notifications enabled: Django webhook URL configured.")
+    if _webhook_dev_defaults_applied:
+        logger.info(
+            "Using DEBUG-only default DJANGO_WEBHOOK_URL and WEBHOOK_SECRET; "
+            "override both via environment in production."
+        )
 elif not DJANGO_WEBHOOK_URL:
     logger.info("Webhook notifications disabled: DJANGO_WEBHOOK_URL not set.")
 

@@ -114,13 +114,21 @@ class JobListingSerializer(serializers.ModelSerializer):
         """Check if AI analysis is currently in progress for this job listing.
 
         Checks Redis progress tracking to determine if analysis is running.
+        Counts may show all applicants processed while the worker is still
+        persisting results; in that case ``analysis_state.status`` is still
+        ``queued`` or ``processing``.
         """
         progress = self._get_analysis_progress(obj)
         processed = progress.get('processed', 0)
         total = progress.get('total', 0)
+        status = (progress.get('status') or '').strip().lower()
 
-        # Analysis is in progress if total > 0 and not all processed
-        return total > 0 and processed < total
+        if total <= 0:
+            return False
+        if processed < total:
+            return True
+        # processed >= total but state not cleared yet (persist / finalize)
+        return status in ('queued', 'processing')
 
     def get_progress_percentage(self, obj):
         """Get the current progress percentage for analysis.
@@ -132,7 +140,7 @@ class JobListingSerializer(serializers.ModelSerializer):
         total = progress.get('total', 0)
 
         if total > 0:
-            return int((processed / total) * 100)
+            return min(100, int((processed / total) * 100))
         return 0
 
     def get_applicant_count(self, obj):

@@ -94,6 +94,26 @@ class WebhookDispatchGroupNameTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self._assert_broadcast(captured, 'analysis_progress')
 
+    def test_progress_event_accepts_processed_count_aliases(self):
+        """Service layer uses processed_count/total_count in notify_progress data."""
+        patcher, captured = self._patch_group_send()
+        with patcher:
+            response = self._post({
+                'event': 'progress',
+                'job_id': self.job_id,
+                'processed_count': 3,
+                'total_count': 10,
+                'progress_percentage': 30,
+            })
+
+        self.assertEqual(response.status_code, 200)
+        captured.assert_called_once()
+        args = captured.call_args.args
+        _group_name, event_arg = args
+        self.assertEqual(event_arg.get('type'), 'analysis_progress')
+        self.assertEqual(event_arg.get('applicants_processed'), 3)
+        self.assertEqual(event_arg.get('applicants_total'), 10)
+
     def test_completed_event_dispatches_to_per_job_group(self):
         patcher, captured = self._patch_group_send()
         with patcher:
@@ -209,3 +229,31 @@ class WebhookRejectionTest(TestCase):
         ):
             response = analysis_webhook(self._signed_request(body))
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(AI_SERVICE_WEBHOOK_SECRET=WEBHOOK_SECRET)
+class WebhookRbacBypassIntegrationTest(TestCase):
+    """RBAC middleware must not block HMAC-signed AI service webhooks."""
+
+    def test_anonymous_signed_webhook_not_blocked_by_rbac(self):
+        from django.test import Client
+
+        client = Client()
+        job_id = str(uuid.uuid4())
+        payload = {
+            'event': 'progress',
+            'job_id': job_id,
+            'processed_count': 1,
+            'total_count': 4,
+            'progress_percentage': 25,
+        }
+        body = json.dumps(payload).encode('utf-8')
+        with patch('apps.analysis.webhook.get_channel_layer', return_value=None):
+            response = client.post(
+                '/api/analysis/internal/analysis/webhook/',
+                data=body,
+                content_type='application/json',
+                HTTP_X_WEBHOOK_SIGNATURE=_sign(body),
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json().get('status'), 'received')

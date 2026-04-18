@@ -114,7 +114,7 @@ def analysis_webhook(request):
     """
     Webhook endpoint for receiving AI service updates.
 
-    POST /api/internal/analysis/webhook/
+    POST /api/analysis/internal/analysis/webhook/
 
     Headers:
         X-Webhook-Signature: hmac-sha256=<hex-signature>
@@ -161,10 +161,18 @@ def analysis_webhook(request):
 
     # Handle event types
     if event_type == 'progress':
+        # AI service layer sends ``processed_count`` / ``total_count``; older
+        # payloads used ``applicants_processed`` / ``applicants_total``.
+        applicants_processed = payload.get('applicants_processed')
+        if applicants_processed is None:
+            applicants_processed = payload.get('processed_count', 0)
+        applicants_total = payload.get('applicants_total')
+        if applicants_total is None:
+            applicants_total = payload.get('total_count', 0)
         broadcast_to_websocket(group_name, 'analysis_progress', {
             'job_id': job_id,
-            'applicants_processed': payload.get('applicants_processed', 0),
-            'applicants_total': payload.get('applicants_total', 0),
+            'applicants_processed': applicants_processed,
+            'applicants_total': applicants_total,
             'progress_percentage': payload.get('progress_percentage', 0),
             'category_distribution': payload.get('category_distribution', {}),
         })

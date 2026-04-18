@@ -189,11 +189,19 @@ def _run_analysis_worker(
                 cancellation_checker=cancellation_checker,
                 llm_provider=llm_provider,
             )
+            summary_status = (
+                summary['status'] if isinstance(summary, dict) else summary.status
+            )
+            summary_processed = (
+                summary['processed_count']
+                if isinstance(summary, dict)
+                else summary.processed_count
+            )
             update_job_status(
                 job_id,
-                summary.status,
+                summary_status,
                 r,
-                processed_count=summary.processed_count,
+                processed_count=summary_processed,
             )
         except Exception as exc:
             logger.error(

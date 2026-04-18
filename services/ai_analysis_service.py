@@ -14,7 +14,7 @@ This service handles:
 import logging
 import math
 import uuid
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
 
@@ -223,27 +223,54 @@ def update_analysis_progress(job_id: str, processed_count: int, total_count: int
     pipe.execute()
 
 
-def get_analysis_progress(job_id: str) -> Dict[str, int]:
+def _redis_hash_to_str_dict(raw: dict) -> Dict[str, str]:
+    """Normalize Redis hash keys/values to str (handles bytes or str)."""
+    out: Dict[str, str] = {}
+    for key, val in raw.items():
+        k = key.decode() if isinstance(key, bytes) else key
+        v = val.decode() if isinstance(val, bytes) else val
+        out[str(k)] = v
+    return out
+
+
+def get_analysis_progress(job_id: str) -> Dict[str, Any]:
     """
     Get current progress for an analysis.
+
+    The embedded AI service worker stores counters on ``analysis_state:{job_id}``
+    (``processed_count`` / ``total_count``); older code used
+    ``analysis_progress:{job_id}`` (``processed`` / ``total``). Read both.
 
     Args:
         job_id: UUID of the job listing
 
     Returns:
-        Dict with 'processed' and 'total' counts
+        Dict with 'processed', 'total', and optionally 'status' (from
+        ``analysis_state`` only) for UI "in progress" detection.
     """
     try:
         r = get_redis_client()
     except RedisConnectionError:
         # Return default progress when Redis is unavailable
-        return {'processed': 0, 'total': 0}
+        return {'processed': 0, 'total': 0, 'status': ''}
 
+    # Primary: service layer / redis_utils (see ServiceProgressTracker)
+    state_key = f'analysis_state:{job_id}'
+    state_raw = r.hgetall(state_key)
+    if state_raw:
+        h = _redis_hash_to_str_dict(state_raw)
+        if 'total_count' in h or 'processed_count' in h:
+            processed = int(h.get('processed_count', 0) or 0)
+            total = int(h.get('total_count', 0) or 0)
+            status = (h.get('status') or '').strip().lower()
+            return {'processed': processed, 'total': total, 'status': status}
+
+    # Legacy: analysis_progress:* hash
     progress_key = f"analysis_progress:{job_id}"
     data = r.hgetall(progress_key)
 
     if not data:
-        return {'processed': 0, 'total': 0}
+        return {'processed': 0, 'total': 0, 'status': ''}
 
     # Handle both byte and string keys (decode_responses may be True or False)
     processed = data.get(b'processed') or data.get('processed') or 0
@@ -251,7 +278,8 @@ def get_analysis_progress(job_id: str) -> Dict[str, int]:
 
     return {
         'processed': int(processed),
-        'total': int(total)
+        'total': int(total),
+        'status': '',
     }
 
 

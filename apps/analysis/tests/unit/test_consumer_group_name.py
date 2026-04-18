@@ -20,12 +20,43 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from apps.analysis.consumers import AnalysisNotificationConsumer
+from apps.analysis.consumers import (
+    AnalysisNotificationConsumer,
+    _client_data_from_channel_event,
+)
 from apps.analysis.webhook import broadcast_to_websocket
 from apps.jobs.models import JobListing
 
 
 User = get_user_model()
+
+
+class ClientDataFromChannelEventTest(TestCase):
+    """Tests for _client_data_from_channel_event (webhook vs nested group_send)."""
+
+    def test_prefers_nested_data_dict(self):
+        self.assertEqual(
+            _client_data_from_channel_event({
+                'type': 'analysis_progress',
+                'data': {'job_id': 'j1', 'progress_percentage': 10},
+            }),
+            {'job_id': 'j1', 'progress_percentage': 10},
+        )
+
+    def test_flattens_webhook_style_broadcast(self):
+        self.assertEqual(
+            _client_data_from_channel_event({
+                'type': 'analysis_progress',
+                'job_id': 'j2',
+                'progress_percentage': 25,
+                'applicants_processed': 1,
+            }),
+            {
+                'job_id': 'j2',
+                'progress_percentage': 25,
+                'applicants_processed': 1,
+            },
+        )
 
 
 IN_MEMORY_CHANNEL_LAYERS = {
@@ -150,8 +181,9 @@ class AnalysisConsumerGroupNameTest(TransactionTestCase):
 
             message = await communicator.receive_json_from(timeout=5)
             self.assertEqual(message.get('type'), 'analysis_progress')
-            self.assertEqual(message.get('progress_percentage'), 50)
-            self.assertEqual(message.get('applicants_processed'), 5)
+            inner = message.get('data', {})
+            self.assertEqual(inner.get('progress_percentage'), 50)
+            self.assertEqual(inner.get('applicants_processed'), 5)
         finally:
             await communicator.disconnect()
 
@@ -266,11 +298,19 @@ class ConsumerConnectAndReceiveTest(TestCase):
     def test_analysis_event_handlers_forward_to_socket(self):
         consumer = self._make_consumer()
         event = {'type': 'analysis_completed', 'data': {'job_id': 'x'}}
+        expected_types = (
+            'analysis_completed',
+            'analysis_cancelled',
+            'analysis_failed',
+        )
 
-        for handler in (
-            consumer.analysis_completed,
-            consumer.analysis_cancelled,
-            consumer.analysis_failed,
+        for handler, expected_type in zip(
+            (
+                consumer.analysis_completed,
+                consumer.analysis_cancelled,
+                consumer.analysis_failed,
+            ),
+            expected_types,
         ):
             consumer.send.reset_mock()
             asyncio.run(handler(event))
@@ -278,4 +318,5 @@ class ConsumerConnectAndReceiveTest(TestCase):
             sent_payload = json.loads(
                 consumer.send.await_args.kwargs['text_data']
             )
-            self.assertEqual(sent_payload, event)
+            self.assertEqual(sent_payload.get('type'), expected_type)
+            self.assertEqual(sent_payload.get('data'), {'job_id': 'x'})

@@ -284,9 +284,12 @@ STATICFILES_DIRS = [
     BASE_DIR / 'apps' / 'jobs' / 'static',
 ]
 
+# Shared Redis URL (Celery, Channels, apps.accounts.redis_utils, AI analysis progress).
+REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
+
 # Celery Configuration
-CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -308,7 +311,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [env('REDIS_URL', default='redis://localhost:6379/0')],
+            'hosts': [REDIS_URL],
         },
     },
 }
@@ -526,6 +529,17 @@ _AI_SERVICE_API_KEY_DEV_DEFAULT = 'dev-key-change-me' if DEBUG else ''
 AI_SERVICE_API_KEY = env(
     'AI_SERVICE_API_KEY',
     default=_AI_SERVICE_API_KEY_DEV_DEFAULT,
+)
+
+# HMAC secret for signed webhooks FROM the AI service TO Django
+# (``apps.analysis.webhook.analysis_webhook``). Must match ``WEBHOOK_SECRET``
+# in the standalone service process (``services`` / ``TI_AI_SaaS_Project/services``).
+_AI_SERVICE_WEBHOOK_SECRET_DEV_DEFAULT = (
+    'shared-webhook-secret-change-me' if DEBUG else ''
+)
+AI_SERVICE_WEBHOOK_SECRET = env(
+    'AI_SERVICE_WEBHOOK_SECRET',
+    default=_AI_SERVICE_WEBHOOK_SECRET_DEV_DEFAULT,
 )
 
 # AI Service request timeout (seconds)
