@@ -124,20 +124,64 @@ class InitiateAnalysisViewTest(TestCase):
         self.assertLess(elapsed, 0.5)
 
     @patch('services.api.views.submit_analysis', side_effect=RuntimeError('pool dead'))
+    @patch('services.api.views.release_job_lock')
     @patch('services.api.views.update_job_status')
     @patch('services.api.views.acquire_job_lock')
     @patch('services.api.views.store_job_state')
     @patch('services.api.views.check_job_running', return_value=False)
     @patch('services.api.views.get_redis_client')
-    def test_dispatcher_failure_returns_503_and_marks_failed(
+    def test_dispatcher_failure_returns_503_and_releases_lock(
         self,
         mock_get_redis,
         mock_check_running,
         mock_store_state,
         mock_acquire_lock,
         mock_update_status,
+        mock_release_lock,
         mock_submit,
     ):
+        """When ``submit_analysis`` raises, the view must roll back the
+        lock acquired earlier in the handler; otherwise the user's retry
+        hits a ``duplicate_analysis`` 409 until TTL.
+        """
+        redis_mock = MagicMock()
+        mock_get_redis.return_value = redis_mock
+        payload = _valid_request_payload()
+
+        response = self._post(payload)
+
+        self.assertEqual(
+            response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+        mock_release_lock.assert_called_once_with(payload['job_id'], redis_mock)
+
+        statuses = [c.args[1] for c in mock_update_status.call_args_list]
+        self.assertIn('failed', statuses)
+
+    @patch('services.api.views.submit_analysis', side_effect=RuntimeError('pool dead'))
+    @patch(
+        'services.api.views.release_job_lock',
+        side_effect=RuntimeError('redis blip'),
+    )
+    @patch('services.api.views.update_job_status')
+    @patch('services.api.views.acquire_job_lock')
+    @patch('services.api.views.store_job_state')
+    @patch('services.api.views.check_job_running', return_value=False)
+    @patch('services.api.views.get_redis_client')
+    def test_dispatcher_failure_still_marks_failed_when_unlock_errors(
+        self,
+        mock_get_redis,
+        mock_check_running,
+        mock_store_state,
+        mock_acquire_lock,
+        mock_update_status,
+        mock_release_lock,
+        mock_submit,
+    ):
+        """A flaky ``release_job_lock`` must not prevent the failure
+        status update — the two cleanup steps are independent.
+        """
         mock_get_redis.return_value = MagicMock()
 
         response = self._post(_valid_request_payload())
@@ -145,6 +189,7 @@ class InitiateAnalysisViewTest(TestCase):
         self.assertEqual(
             response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE
         )
+        mock_release_lock.assert_called_once()
         statuses = [c.args[1] for c in mock_update_status.call_args_list]
         self.assertIn('failed', statuses)
 

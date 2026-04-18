@@ -179,12 +179,35 @@ class WorkerErrorHandlingTest(TestCase):
         self.assertIn('failed', statuses)
         mock_release_lock.assert_called_once()
 
+    @patch('services.dispatcher.ServiceNotificationService')
     @patch('services.dispatcher.get_redis_client', side_effect=Exception('no redis'))
-    def test_worker_returns_none_when_redis_unavailable(self, mock_get_redis):
+    def test_worker_notifies_django_when_redis_unavailable(
+        self, mock_get_redis, mock_notification_cls,
+    ):
+        """When Redis is unreachable, the worker must still fire a
+        ``failed`` webhook so Django doesn't wait forever; the Redis
+        lock is left to expire via its TTL because we have no client
+        with which to delete it.
+        """
+        notifier = MagicMock()
+        mock_notification_cls.return_value = notifier
+
         future = dispatcher.submit_analysis(
             job_id='job',
             run_id='run',
             job_context={},
-            applicants=[{'applicant_id': 'a', 'resume_text': 't'}],
+            applicants=[
+                {'applicant_id': 'a', 'resume_text': 't'},
+                {'applicant_id': 'b', 'resume_text': 't2'},
+            ],
         )
+        # The worker must swallow the Redis error and return None.
         self.assertIsNone(future.result(timeout=2.0))
+
+        # And it must have told Django the run failed.
+        notifier.notify_failed.assert_called_once()
+        call_kwargs = notifier.notify_failed.call_args.kwargs
+        self.assertEqual(call_kwargs['job_id'], 'job')
+        self.assertEqual(call_kwargs['error_code'], 'redis_unavailable')
+        self.assertEqual(call_kwargs['processed_count'], 0)
+        self.assertEqual(call_kwargs['total_count'], 2)

@@ -36,11 +36,39 @@ from services.shared.redis_utils import (
     get_job_state,
     set_cancellation_flag,
     acquire_job_lock,
+    release_job_lock,
     update_job_status,
     RedisConnectionError,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _release_lock_and_mark_failed(job_id: str, redis_client) -> None:
+    """Roll back a view-level ``acquire_job_lock`` after an enqueue failure.
+
+    When ``submit_analysis`` raises, the worker never runs — which means
+    its ``finally`` block never executes and the lock acquired by the
+    view stays live until TTL. That's a UX trap: every retry the user
+    attempts in the meantime comes back as 409 Conflict. We therefore
+    release the lock and mark the job ``failed`` *in the view* on this
+    path, each wrapped in its own try/except so a single Redis blip
+    can't prevent the other cleanup step from running.
+    """
+    try:
+        release_job_lock(job_id, redis_client)
+    except Exception:
+        logger.error(
+            f"Failed to release analysis lock for job {job_id} after enqueue failure",
+            exc_info=True,
+        )
+    try:
+        update_job_status(job_id, 'failed', redis_client)
+    except Exception:
+        logger.error(
+            f"Failed to mark job {job_id} as failed after enqueue failure",
+            exc_info=True,
+        )
 
 
 class InitiateAnalysisView(APIView):
@@ -115,7 +143,9 @@ class InitiateAnalysisView(APIView):
                 f"Failed to enqueue analysis for job {job_id}: {str(e)}",
                 exc_info=True,
             )
-            update_job_status(job_id, 'failed', r)
+            # Release the lock before returning; otherwise the user's
+            # retry will hit a ``duplicate_analysis`` 409 until TTL.
+            _release_lock_and_mark_failed(job_id, r)
             return Response(
                 {
                     'error': 'service_unavailable',
@@ -146,6 +176,16 @@ class RerunAnalysisView(APIView):
     POST /api/v1/analysis/{job_id}/rerun/
 
     Re-run analysis for a job listing, deleting previous results.
+
+    Dev/testing note:
+        This view now dispatches real work through ``submit_analysis``
+        just like :class:`InitiateAnalysisView`, so developers can
+        exercise the full rerun path end-to-end (progress webhooks,
+        lock release, final status) before cutover to staging. The
+        Django side is responsible for deleting previous results from
+        its own DB prior to calling this endpoint; the service still
+        reports ``previous_results_deleted=0`` because results don't
+        live here.
     """
 
     def post(self, request, job_id: str):
@@ -159,6 +199,16 @@ class RerunAnalysisView(APIView):
         if not serializer.validated_data.get('confirm'):
             return Response(
                 {'error': 'confirmation_required', 'message': "Must set 'confirm': true to re-run analysis"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        applicants = serializer.validated_data.get('applicants') or []
+        if len(applicants) == 0:
+            # Mirror initiate's guard: without applicants we can't actually
+            # dispatch work, so fail fast instead of holding a lock for a
+            # no-op.
+            return Response(
+                {'error': 'no_applicants', 'message': 'At least one applicant is required to re-run analysis'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -185,20 +235,67 @@ class RerunAnalysisView(APIView):
 
         run_id = str(uuid.uuid4())
 
-        # Acquire the lock in addition to storing state, mirroring
-        # ``InitiateAnalysisView``. Without the lock, a rapid second rerun
-        # would incorrectly slip past ``check_job_running`` and both
+        # Store state + acquire the lock before dispatching to the worker,
+        # mirroring ``InitiateAnalysisView``. Without the lock, a rapid
+        # second rerun would slip past ``check_job_running`` and both
         # requests would be accepted (breaking the duplicate-analysis
         # contract surfaced to Django as 409).
-        store_job_state(job_id, run_id, 0, r)
+        store_job_state(job_id, run_id, len(applicants), r)
         acquire_job_lock(job_id, run_id, r)
+        update_job_status(job_id, 'processing', r)
+
+        job_context = AnalysisJobContext(
+            id=job_id,
+            title=serializer.validated_data.get('job_title', ''),
+            description='',
+            required_skills=serializer.validated_data.get('job_skills', []),
+            required_experience=0,
+            job_level=serializer.validated_data.get('job_experience_level', ''),
+            created_by_id='',
+            owner_id=run_id,
+        )
+
+        # Dispatch the orchestrator to the background worker pool, exactly
+        # like initiate. The worker owns Redis final-status updates, lock
+        # release, and webhook notifications.
+        try:
+            submit_analysis(
+                job_id=job_id,
+                run_id=run_id,
+                job_context=job_context,
+                applicants=applicants,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to enqueue rerun for job {job_id}: {str(e)}",
+                exc_info=True,
+            )
+            # Release the lock before returning; otherwise the user's
+            # retry will hit a ``duplicate_analysis`` 409 until TTL.
+            _release_lock_and_mark_failed(job_id, r)
+            return Response(
+                {
+                    'error': 'service_unavailable',
+                    'message': 'AI analysis worker is unavailable. Please try again.',
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # 6-seconds-per-applicant heuristic matches InitiateAnalysisView so
+        # the UI can surface a consistent ETA regardless of whether the run
+        # was an initial analysis or a rerun.
+        estimated_duration = len(applicants) * 6
+        estimated_completion = datetime.now(timezone.utc).replace(
+            second=0, microsecond=0
+        ) + timedelta(seconds=estimated_duration)
 
         response_serializer = RerunAnalysisResponseSerializer({
             'analysis_run_id': run_id,
             'job_id': job_id,
             'status': 'queued',
             'previous_results_deleted': previous_results_deleted,
-            'applicants_total': 0,
+            'applicants_total': len(applicants),
+            'estimated_completion': estimated_completion,
         })
 
         return Response(response_serializer.data, status=status.HTTP_202_ACCEPTED)

@@ -723,7 +723,16 @@
                 self.addTerminalLine(data.data.message);
                 setTimeout(function() { self.hide(); }, 2000);
             } else {
-                self.addTerminalLine('Error: ' + data.error.message);
+                // ``data.error`` can be missing or null when the server
+                // returns an unexpected failure shape; guard before
+                // dereferencing so we never throw inside the .then (which
+                // would silently fall through to the catch and mask the
+                // real cause). Mirrors the same-file convention used at
+                // the result-detail (L140) and resume-loader (L403) sites.
+                var errorMsg = (data.error && data.error.message)
+                    ? data.error.message
+                    : 'Unknown error';
+                self.addTerminalLine('Error: ' + errorMsg);
             }
         })
         .catch(function(error) {

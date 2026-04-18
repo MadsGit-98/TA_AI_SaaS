@@ -231,12 +231,23 @@ class AIServiceClient:
         response.raise_for_status()
         return response.json()
 
-    def rerun_analysis(self, job_id: str) -> Dict[str, Any]:
+    def rerun_analysis(
+        self,
+        job_id: str,
+        job_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Re-run AI analysis for a job listing (deletes previous results).
 
         Args:
-            job_id: Job listing UUID
+            job_id: Job listing UUID.
+            job_data: Optional analysis request payload, mirroring the
+                shape used by :meth:`initiate_analysis` (``job_title``,
+                ``job_skills``, ``job_experience_level``, ``applicants``).
+                When provided, it is forwarded to the service so the
+                rerun can actually dispatch work on the background
+                worker pool. When omitted, only the ``confirm`` flag is
+                sent (legacy signal-only behavior).
 
         Returns:
             Rerun initiation response dict
@@ -244,14 +255,21 @@ class AIServiceClient:
         Raises:
             AIServiceError: If service unavailable
         """
-        response = self._make_request('post', f'/analysis/{job_id}/rerun/', json={'confirm': True})
+        payload: Dict[str, Any] = {'confirm': True}
+        if job_data:
+            # Merge so callers can't accidentally disable ``confirm``.
+            payload = {**job_data, **payload}
+        response = self._make_request('post', f'/analysis/{job_id}/rerun/', json=payload)
 
         if response.status_code == 400:
-            raise AIServiceError(
-                "Confirmation required for rerun",
-                code='confirmation_required',
-                details=self._safe_json(response),
-            )
+            # The service now returns 400 for multiple reasons
+            # (confirmation_required, no_applicants, validation_error),
+            # so forward the specific code when present instead of always
+            # labelling it as ``confirmation_required``.
+            body = self._safe_json(response) or {}
+            service_code = body.get('error') or 'validation_error'
+            message = body.get('message') or 'Invalid rerun request'
+            raise AIServiceError(message, code=service_code, details=body)
 
         if response.status_code == 409:
             raise AIServiceError(
@@ -259,6 +277,9 @@ class AIServiceClient:
                 code='duplicate_analysis',
                 details=self._safe_json(response),
             )
+
+        if response.status_code == 503:
+            raise AIServiceError("AI service temporarily unavailable", code='service_unavailable')
 
         response.raise_for_status()
         return response.json()
