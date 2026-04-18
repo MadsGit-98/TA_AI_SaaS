@@ -33,6 +33,40 @@ from services.ai_analysis_graphs.types import WorkerState
 logger = logging.getLogger(__name__)
 
 
+def _normalize_employment_dates(raw: Any) -> List[Dict[str, Any]]:
+    """LLM JSON may list strings or mixed types; downstream expects dicts with .get()."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        logger.warning(
+            '[LevelAssessment] employment_dates is not a list (type=%s); using empty list',
+            type(raw).__name__,
+        )
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for i, item in enumerate(raw):
+        if isinstance(item, dict):
+            out.append(item)
+            continue
+        if isinstance(item, str):
+            stripped = item.strip()
+            if stripped.startswith('{'):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, dict):
+                        out.append(parsed)
+                        continue
+                except json.JSONDecodeError:
+                    pass
+        logger.warning(
+            '[LevelAssessment] Skipping non-dict employment entry [%s] type=%s',
+            i,
+            type(item).__name__,
+        )
+    return out
+
+
 def _safe_get(obj, attr_name: str, default=None):
     """Get attribute from model instance or key from dict."""
     if isinstance(obj, dict):
@@ -829,7 +863,9 @@ Output ONLY valid JSON in this exact format:
                 response_text = str(response)
 
             extracted_data = json.loads(response_text)
-            employment_dates = extracted_data.get('employment_dates', [])
+            employment_dates = _normalize_employment_dates(
+                extracted_data.get('employment_dates', []),
+            )
             logger.info(f"[LevelAssessment] Extracted {len(employment_dates)} employment dates for applicant {applicant_id}")
 
             # Log detailed extracted employment dates for verification

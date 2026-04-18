@@ -46,6 +46,11 @@ def _safe_get(obj, attr_name: str, default=None):
     return getattr(obj, attr_name, default)
 
 
+def _resolved_applicant_id(applicant) -> str:
+    """String id for result dicts, logs, and applicants_map (never None or empty)."""
+    return resolve_applicant_id(applicant) or 'unknown'
+
+
 def create_supervisor_graph(
     result_repo: IAnalysisResultRepository,
     notification_service: INotificationService,
@@ -220,7 +225,7 @@ def map_workers_node(
         for future in as_completed(future_to_applicant):
             applicant = future_to_applicant[future]
             results_collected += 1
-            logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {resolve_applicant_id(applicant) or 'unknown'}")
+            logger.info(f"[MapWorkers] Collecting result {results_collected}/{len(future_to_applicant)} for applicant {_resolved_applicant_id(applicant)}")
 
             # Check cancellation during batch processing
             if cancellation_checker.check_cancellation_flag(job_id):
@@ -239,11 +244,11 @@ def map_workers_node(
 
             try:
                 result = future.result()
-                logger.info(f"[MapWorkers] Result received for applicant {resolve_applicant_id(applicant) or 'unknown'}: status={result.get('status', 'Unknown')}, category={result.get('category', 'Unknown')}")
+                logger.info(f"[MapWorkers] Result received for applicant {_resolved_applicant_id(applicant)}: status={result.get('status', 'Unknown')}, category={result.get('category', 'Unknown')}")
 
                 # Check if this applicant was cancelled
                 if result.get('cancelled', False):
-                    logger.info(f"Applicant {resolve_applicant_id(applicant) or 'unknown'} processing cancelled")
+                    logger.info(f"Applicant {_resolved_applicant_id(applicant)} processing cancelled")
                     # Cancel pending futures and avoid blocking on exit
                     for fut in future_to_applicant:
                         fut.cancel()
@@ -285,9 +290,9 @@ def map_workers_node(
 
             except Exception as e:
                 # Handle worker failure - mark as Unprocessed
-                logger.warning(f"Worker failed for applicant {resolve_applicant_id(applicant) or 'unknown'}: {e}", exc_info=True)
+                logger.warning(f"Worker failed for applicant {_resolved_applicant_id(applicant)}: {e}", exc_info=True)
                 new_results.append({
-                    'applicant_id': resolve_applicant_id(applicant),
+                    'applicant_id': _resolved_applicant_id(applicant),
                     'job_listing_id': str(_safe_get(job, 'id', '')),
                     'status': 'Unprocessed',
                     'category': 'Unprocessed',
@@ -327,7 +332,7 @@ def process_single_applicant(
     Returns:
         Analysis result dict
     """
-    applicant_id = resolve_applicant_id(applicant) or 'unknown'
+    applicant_id = _resolved_applicant_id(applicant)
     logger.info(f"[ProcessSingle] Starting processing for applicant {applicant_id}")
 
     try:
@@ -335,7 +340,7 @@ def process_single_applicant(
         if cancellation_checker.check_cancellation_flag(job_id):
             logger.info(f"[ProcessSingle] Cancelled before processing for applicant {applicant_id}")
             return {
-                'applicant_id': resolve_applicant_id(applicant),
+                'applicant_id': applicant_id,
                 'job_listing_id': str(_safe_get(job, 'id', '')),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
@@ -347,7 +352,7 @@ def process_single_applicant(
         if not resume_text:
             logger.warning(f"[ProcessSingle] No resume text for applicant {applicant_id}")
             return {
-                'applicant_id': resolve_applicant_id(applicant),
+                'applicant_id': applicant_id,
                 'job_listing_id': str(_safe_get(job, 'id', '')),
                 'status': 'Unprocessed',
                 'category': 'Unprocessed',
@@ -373,7 +378,7 @@ def process_single_applicant(
 
         # Build result dict
         result = {
-            'applicant_id': resolve_applicant_id(applicant),
+            'applicant_id': applicant_id,
             'job_listing_id': str(_safe_get(job, 'id', '')),
             'education_score': final_state.get('scores', {}).get('education', 0),
             'skills_score': final_state.get('scores', {}).get('skills', 0),
@@ -395,7 +400,7 @@ def process_single_applicant(
     except Exception as e:
         logger.warning(f"Error processing applicant {applicant_id}: {e}", exc_info=True)
         return {
-            'applicant_id': resolve_applicant_id(applicant),
+            'applicant_id': applicant_id,
             'job_listing_id': str(_safe_get(job, 'id', '')),
             'status': 'Unprocessed',
             'category': 'Unprocessed',
@@ -435,9 +440,8 @@ def bulk_persistence_node(
     if applicants:
         applicants_map = {}
         for a in applicants:
-            aid = resolve_applicant_id(a)
-            if aid:
-                applicants_map[aid] = a
+            aid = _resolved_applicant_id(a)
+            applicants_map[aid] = a
 
     if not results:
         logger.info(f"No results to persist for job {job_id}")

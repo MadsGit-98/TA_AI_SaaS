@@ -1,15 +1,13 @@
 """
 Webhook handler for receiving real-time updates from the AI service.
 
-Validates HMAC signatures and broadcasts to WebSocket consumers.
+HMAC is enforced by :func:`internal_service_hmac_required`; see
+``apps.analysis.internal_service_auth``.
 """
 
-import hashlib
-import hmac
 import json
 import logging
 
-from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -18,8 +16,18 @@ from asgiref.sync import async_to_sync
 
 from apps.accounts.models import Notification
 from apps.jobs.models import JobListing
+from apps.analysis.internal_service_auth import (
+    internal_service_hmac_required,
+    verify_webhook_signature,
+)
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    'analysis_webhook',
+    'broadcast_to_websocket',
+    'verify_webhook_signature',
+]
 
 
 def _create_in_app_notification(job_id: str, title: str, message: str) -> None:
@@ -47,37 +55,6 @@ def _create_in_app_notification(job_id: str, title: str, message: str) -> None:
             f"Failed to create in-app notification for job {job_id}: {exc}",
             exc_info=True,
         )
-
-
-def verify_webhook_signature(request_body: bytes, signature_header: str) -> bool:
-    """
-    Verify HMAC-SHA256 signature of webhook payload.
-
-    Args:
-        request_body: Raw request body bytes
-        signature_header: X-Webhook-Signature header value (format: hmac-sha256=<hex>)
-
-    Returns:
-        True if signature is valid
-    """
-    webhook_secret = getattr(settings, 'AI_SERVICE_WEBHOOK_SECRET', '')
-
-    if not webhook_secret:
-        logger.error("Webhook secret not configured - rejecting request")
-        return False
-
-    if not signature_header.startswith('hmac-sha256='):
-        return False
-
-    provided_signature = signature_header.split('=', 1)[1]
-
-    expected_signature = hmac.new(
-        webhook_secret.encode('utf-8'),
-        request_body,
-        hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(provided_signature, expected_signature)
 
 
 def broadcast_to_websocket(group_name: str, event_type: str, data: dict):
@@ -110,6 +87,7 @@ def broadcast_to_websocket(group_name: str, event_type: str, data: dict):
 
 @csrf_exempt
 @require_POST
+@internal_service_hmac_required
 def analysis_webhook(request):
     """
     Webhook endpoint for receiving AI service updates.
@@ -125,15 +103,6 @@ def analysis_webhook(request):
         - cancelled: Analysis cancelled
         - failed: Analysis failed
     """
-    # Verify signature
-    signature = request.headers.get('X-Webhook-Signature', '')
-    if not verify_webhook_signature(request.body, signature):
-        logger.warning("Invalid webhook signature")
-        return JsonResponse(
-            {'error': 'invalid_signature', 'message': 'Webhook signature validation failed'},
-            status=401,
-        )
-
     # Parse payload
     try:
         payload = json.loads(request.body)
@@ -195,11 +164,16 @@ def analysis_webhook(request):
         )
 
     elif event_type == 'cancelled':
-        analyzed_count = payload.get('applicants_processed', 0)
+        analyzed_count = payload.get('applicants_processed')
+        if analyzed_count is None:
+            analyzed_count = payload.get('processed_count', 0)
+        applicants_total = payload.get('applicants_total')
+        if applicants_total is None:
+            applicants_total = payload.get('total_count', 0)
         broadcast_to_websocket(group_name, 'analysis_cancelled', {
             'job_id': job_id,
             'applicants_processed': analyzed_count,
-            'applicants_total': payload.get('applicants_total', 0),
+            'applicants_total': applicants_total,
         })
         _create_in_app_notification(
             job_id,

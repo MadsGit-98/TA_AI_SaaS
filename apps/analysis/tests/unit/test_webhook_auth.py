@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
-from apps.analysis.webhook import verify_webhook_signature
+from apps.analysis.internal_service_auth import verify_webhook_signature
 
 
 class WebhookSignatureTest(TestCase):
