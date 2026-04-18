@@ -29,6 +29,6 @@ urlpatterns = [
     path('jobs/<uuid:job_id>/analysis/re-run/', rerun_analysis, name='api-rerun-analysis'),
     path('jobs/<uuid:job_id>/analysis/statistics/', analysis_statistics, name='api-analysis-statistics'),
 
-    # Webhook endpoint (receives updates FROM AI service)
+    # Webhook endpoint (receives updates FROM AI service; HMAC: internal_service_hmac_required)
     path('internal/analysis/webhook/', analysis_webhook, name='analysis-webhook'),
 ]

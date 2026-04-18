@@ -48,7 +48,8 @@ class RBACMiddleware(MiddlewareMixin):
     """
     Role-Based Access Control middleware to enforce user permissions
     """
-    # Server-to-server routes secured outside session/JWT (e.g. HMAC on the view).
+    # Server-to-server routes: session/JWT skipped; HMAC enforced by
+    # apps.analysis.internal_service_auth on each handler under this prefix.
     RBAC_EXEMPT_PATH_PREFIXES = (
         '/api/analysis/internal/',
     )
