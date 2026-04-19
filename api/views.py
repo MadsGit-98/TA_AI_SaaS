@@ -31,7 +31,6 @@ from services.ai_analysis_graphs.types import AnalysisJobContext
 from services.dispatcher import submit_analysis
 from services.shared.redis_utils import (
     get_redis_client,
-    check_job_running,
     store_job_state,
     get_job_state,
     set_cancellation_flag,
@@ -104,17 +103,17 @@ class InitiateAnalysisView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        # Check for duplicate running job
-        if check_job_running(job_id, r):
+        run_id = str(uuid.uuid4())
+
+        # Atomic lock first (SETNX): avoids TOCTOU between a non-atomic
+        # ``exists`` check and ``store_job_state`` / dispatch.
+        if not acquire_job_lock(job_id, run_id, r):
             return Response(
                 {'error': 'duplicate_analysis', 'message': 'An analysis job is already running for this job listing'},
                 status=status.HTTP_409_CONFLICT,
             )
 
-        run_id = str(uuid.uuid4())
-
         store_job_state(job_id, run_id, len(applicants), r)
-        acquire_job_lock(job_id, run_id, r)
         update_job_status(job_id, 'processing', r)
 
         job_context = AnalysisJobContext(
@@ -221,13 +220,6 @@ class RerunAnalysisView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        # Check for duplicate running job
-        if check_job_running(job_id, r):
-            return Response(
-                {'error': 'duplicate_analysis', 'message': 'An analysis job is already running for this job listing'},
-                status=status.HTTP_409_CONFLICT,
-            )
-
         # Previous-result deletion is owned by Django (results live in its DB).
         # The service simply reports ``0`` here; the client overrides with its
         # own local delete count in the 202 payload surfaced to callers.
@@ -235,13 +227,13 @@ class RerunAnalysisView(APIView):
 
         run_id = str(uuid.uuid4())
 
-        # Store state + acquire the lock before dispatching to the worker,
-        # mirroring ``InitiateAnalysisView``. Without the lock, a rapid
-        # second rerun would slip past ``check_job_running`` and both
-        # requests would be accepted (breaking the duplicate-analysis
-        # contract surfaced to Django as 409).
+        if not acquire_job_lock(job_id, run_id, r):
+            return Response(
+                {'error': 'duplicate_analysis', 'message': 'An analysis job is already running for this job listing'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         store_job_state(job_id, run_id, len(applicants), r)
-        acquire_job_lock(job_id, run_id, r)
         update_job_status(job_id, 'processing', r)
 
         job_context = AnalysisJobContext(

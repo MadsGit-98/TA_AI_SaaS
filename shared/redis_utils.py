@@ -21,21 +21,30 @@ logger = logging.getLogger(__name__)
 
 class DummyRedisClient:
     """A dummy Redis client that provides no-op implementations for Redis operations"""
-    def setex(self, _key, _time, _value):
-        # No-op
-        pass
 
-    def get(self, _key):
-        # Always return None
-        return None
+    def __init__(self):
+        self._strings = {}
 
-    def delete(self, _key):
-        # Always return 0 (indicating no keys were deleted)
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self._strings:
+            return False
+        self._strings[key] = value
+        return True
+
+    def setex(self, key, _time, value):
+        self._strings[key] = value
+
+    def get(self, key):
+        return self._strings.get(key)
+
+    def delete(self, key):
+        if key in self._strings:
+            del self._strings[key]
+            return 1
         return 0
 
-    def exists(self, *_keys):
-        # Always return 0 (indicating no keys exist)
-        return 0
+    def exists(self, *keys):
+        return sum(1 for k in keys if k in self._strings)
 
 
 class RedisConnectionError(Exception):
@@ -116,10 +125,20 @@ def set_cancellation_flag(job_id: str, redis_client):
     redis_client.hset(state_key, 'cancelled', 'true')
 
 
-def acquire_job_lock(job_id: str, run_id: str, redis_client):
-    """Acquire the analysis lock for a job."""
+def acquire_job_lock(job_id: str, run_id: str, redis_client) -> bool:
+    """Acquire the analysis lock for a job (atomic SETNX + TTL).
+
+    Returns True if this caller acquired the lock, False if another run
+    already holds it (same key exists).
+    """
     lock_key = f'{ANALYSIS_LOCK_PREFIX}{job_id}'
-    redis_client.setex(lock_key, ANALYSIS_LOCK_TTL, run_id)
+    acquired = redis_client.set(
+        lock_key,
+        run_id,
+        nx=True,
+        ex=ANALYSIS_LOCK_TTL,
+    )
+    return bool(acquired)
 
 
 def release_job_lock(job_id: str, redis_client):
