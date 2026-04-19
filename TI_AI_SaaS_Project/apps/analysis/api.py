@@ -28,10 +28,8 @@ from apps.jobs.models import JobListing, ScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
 from apps.applications.models import ApplicationAnswer, Applicant
 from django.db.models import Avg, Count
+from apps.accounts.redis_utils import clear_analysis_ui_snapshot, resolve_job_from_analysis_run_id
 from apps.core.ai_service_client import AIServiceClient, AIServiceError
-from services.ai_analysis_service import (
-    resolve_job_from_analysis_run_id,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +210,7 @@ def initiate_analysis_http(request, job_id):
         }
 
         result = client.initiate_analysis(job_data)
+        clear_analysis_ui_snapshot(str(job_id))
         applicant_count = result.get('applicants_total', len(applicants))
         # Estimated duration mirrors the service's own heuristic (6s/applicant)
         # and is surfaced here so the UI can show a deterministic ETA without

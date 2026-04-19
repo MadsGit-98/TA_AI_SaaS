@@ -1,7 +1,8 @@
 """
 AI Analysis Models
 
-Per Constitution §4: Decoupled services located in project root services/ directory.
+Persistence and validation for analysis results; scoring helpers live in
+``apps.analysis.scoring`` (not the standalone ``services/`` package).
 
 This module contains:
 - AIAnalysisResult: Stores AI-powered analysis results for applicants
@@ -12,8 +13,7 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 
-# Import scoring utilities from service layer (single source of truth)
-from services.ai_analysis_service import calculate_overall_score, assign_category
+from apps.analysis.scoring import assign_category, calculate_overall_score
 
 
 class AIAnalysisResult(models.Model):

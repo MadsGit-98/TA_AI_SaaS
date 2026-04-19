@@ -41,7 +41,7 @@ from services.ai_analysis_graphs.worker import (
     result_node,
 )
 from django.contrib.auth import get_user_model
-from services.ai_analysis_service import assign_category, calculate_overall_score
+from apps.analysis.scoring import assign_category, calculate_overall_score
 from uuid import UUID
 from services.ai_analysis_graphs.interfaces import IAnalysisResultRepository
 from services.ai_analysis_graphs.defaults import (

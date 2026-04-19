@@ -15,6 +15,7 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 from apps.accounts.models import Notification
+from apps.accounts.redis_utils import persist_analysis_ui_from_webhook
 from apps.jobs.models import JobListing
 from apps.analysis.internal_service_auth import (
     internal_service_hmac_required,
@@ -131,6 +132,7 @@ def analysis_webhook(request):
 
     # Handle event types
     if event_type == 'progress':
+        persist_analysis_ui_from_webhook('progress', payload)
         # AI service layer sends ``processed_count`` / ``total_count``; older
         # payloads used ``applicants_processed`` / ``applicants_total``.
         applicants_processed = payload.get('applicants_processed')
@@ -148,6 +150,7 @@ def analysis_webhook(request):
         })
 
     elif event_type == 'completed':
+        persist_analysis_ui_from_webhook('completed', payload)
         analyzed_count = payload.get('applicants_processed', 0)
         broadcast_to_websocket(group_name, 'analysis_completed', {
             'job_id': job_id,
@@ -165,6 +168,7 @@ def analysis_webhook(request):
         )
 
     elif event_type == 'cancelled':
+        persist_analysis_ui_from_webhook('cancelled', payload)
         analyzed_count = payload.get('applicants_processed')
         if analyzed_count is None:
             analyzed_count = payload.get('processed_count', 0)
@@ -186,6 +190,7 @@ def analysis_webhook(request):
         )
 
     elif event_type == 'failed':
+        persist_analysis_ui_from_webhook('failed', payload)
         error_message = payload.get('error_message', 'Unknown error')
         broadcast_to_websocket(group_name, 'analysis_failed', {
             'job_id': job_id,

@@ -15,7 +15,7 @@ from django.db.models import Avg, Max, Min
 from apps.jobs.models import JobListing
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import CardLogo, SiteSetting
-from services.ai_analysis_service import get_analysis_progress, check_cancellation_flag
+from apps.accounts.redis_utils import get_analysis_progress, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 

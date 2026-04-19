@@ -18,8 +18,7 @@ from typing import Any, Dict, Optional
 from django.conf import settings
 from langchain_ollama import OllamaLLM
 
-# Import shared Redis utilities from accounts app to avoid code duplication
-from apps.accounts.redis_utils import get_redis_client, DummyRedisClient, RedisConnectionError
+from services.shared.redis_utils import DummyRedisClient, RedisConnectionError, get_redis_client
 
 logger = logging.getLogger(__name__)
 
