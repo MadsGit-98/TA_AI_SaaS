@@ -1,124 +1,113 @@
 # Applications API Documentation
 
-**Feature**: Job Application Submission and Duplication Control  
-**Branch**: 008-job-application-submission  
-**Base URL**: `/api/applications/`
+**Last updated**: 2026-04-19  
+**Base URL**: `/api/applications/`  
+**Implementation**: `apps/applications/api.py`  
+**URL routing**: `apps/applications/api_urls.py`
 
 ---
 
 ## Overview
 
-The Applications API provides public, unauthenticated endpoints for job applicants to submit applications, validate files, and check application status. All endpoints are rate-limited to prevent abuse.
+Endpoints for **public job applications** (submit, validate file, validate contact) and **bulk upload** (separate doc). Public submission endpoints use `AllowAny` and are **IP-throttled** to reduce abuse.
 
-**Authentication**: None (public endpoints)  
-**Rate Limiting**: 5 submissions per hour per IP address  
-**Content-Type**: `multipart/form-data` for submissions, `application/json` for validation
+There is **no** REST endpoint to fetch an application by ID for anonymous users. After a successful submission, the API returns an **`access_token`**; the confirmation page is a **server-rendered** route:
+
+`/application/success/<application_id>/<access_token>/` (see `apps/applications/urls.py`).
+
+---
+
+## Authentication
+
+- **Public endpoints** (`POST /api/applications/`, `validate-file/`, `validate-contact/`): no login required.
+- **CSRF**: For same-site browser `POST` requests, send `X-CSRFToken` with the session cookie.
+- **Bulk upload** (`/api/applications/bulk-upload/...`): authenticated TAS only — see [Bulk Upload API](./api/bulk_upload.md).
+
+---
+
+## Rate limiting
+
+Implemented in `apps/applications/throttles.py`:
+
+| Endpoint group | Throttle class | Rate |
+|----------------|----------------|------|
+| Submit application | `ApplicationSubmissionIPThrottle` | **5 / hour / IP** |
+| Validate file & validate contact | `ApplicationValidationIPThrottle` | **30 / hour / IP** |
+
+Scopes: `application_submission`, `application_validation`. DRF returns **429** when exceeded.
 
 ---
 
 ## Endpoints
 
-### 1. Submit Application
+### 1. Submit application
 
-**Endpoint**: `POST /api/applications/`
+**POST** `/api/applications/`
 
-Submit a complete job application with resume and screening answers.
+**Content-Type**: `multipart/form-data`
 
-**Request Headers**:
-```
-Content-Type: multipart/form-data
-X-CSRFToken: <csrf_token>
-```
+**Fields** (typical):
 
-**Request Body**:
+| Field | Notes |
+|-------|--------|
+| `job_listing_id` | UUID |
+| `first_name`, `last_name` | Text |
+| `email` | Validated email |
+| `phone` | E.164-style validation via project validators |
+| `country_code` | Optional, default `US` |
+| `resume` | File (PDF/DOCX per validation) |
+| `screening_answers` | JSON string: array of `{ "question_id", "answer_text" }` |
+
+**Success (201 Created)**:
+
 ```json
 {
-  "job_listing_id": "uuid",
-  "first_name": "string (max 200 chars)",
-  "last_name": "string (max 200 chars)",
-  "email": "string (valid email)",
-  "phone": "string (E.164 format)",
-  "country_code": "string (ISO 3166-1 alpha-2, default: US)",
-  "resume": "file (PDF/Docx, 50KB-10MB)",
-  "screening_answers": "JSON array"
-}
-```
-
-**Screening Answers Format**:
-```json
-[
-  {
-    "question_id": "uuid",
-    "answer": "string (10-5000 chars)"
-  }
-]
-```
-
-**Success Response (201 Created)**:
-```json
-{
-  "id": "uuid",
+  "id": "<uuid>",
   "status": "submitted",
-  "submitted_at": "datetime",
-  "message": "Application submitted successfully. A confirmation email has been sent to <email>"
+  "submitted_at": "2026-02-25T14:30:00Z",
+  "access_token": "<uuid>",
+  "message": "Application submitted successfully. A confirmation email has been sent to user@example.com"
 }
 ```
 
-**Error Responses**:
+Use `id` and `access_token` to build the success page URL or deep-link.
 
-**400 Bad Request**:
+**Duplicate (409 Conflict)** — generic message (no field-specific leak):
+
+```json
+{
+  "valid": false,
+  "checks": { "duplicate_detected": true },
+  "errors": [
+    {
+      "code": "duplicate_detected",
+      "message": "An application with similar contact information has already been submitted for this job listing. Please use different contact details or contact support."
+    }
+  ]
+}
+```
+
+**Validation error (400)**:
+
 ```json
 {
   "error": "validation_failed",
-  "details": {
-    "email": ["Enter a valid email address."],
-    "resume": ["File size must be between 50KB and 10MB."]
-  }
-}
-```
-
-**409 Conflict** (Duplicate Detected):
-```json
-{
-  "error": "duplicate_submission",
-  "duplicate_type": "resume|email|phone",
-  "message": "This resume has already been submitted for this job listing.",
-  "resolution": "Please upload a different resume or contact support."
-}
-```
-
-**429 Too Many Requests**:
-```json
-{
-  "error": "rate_limit_exceeded",
-  "message": "Too many submission attempts. Please try again later.",
-  "retry_after": 3600
+  "details": { "email": ["…"], "resume": ["…"] }
 }
 ```
 
 ---
 
-### 2. Validate File
+### 2. Validate file
 
-**Endpoint**: `POST /api/applications/validate-file/`
+**POST** `/api/applications/validate-file/`
 
-Validate uploaded file format, size, and check for duplicate resumes before final submission.
+**Content-Type**: `multipart/form-data`
 
-**Request Headers**:
-```
-Content-Type: multipart/form-data
-X-CSRFToken: <csrf_token>
-```
+Fields: `job_listing_id`, `resume`.
 
-**Request Body**:
-```json
-{
-  "job_listing_id": "uuid",
-  "resume": "file"
-}
-```
+**Success (200)**:
 
-**Success Response (200 OK)**:
 ```json
 {
   "valid": true,
@@ -132,91 +121,47 @@ X-CSRFToken: <csrf_token>
 }
 ```
 
-**Error Response (400 Bad Request)**:
-```json
-{
-  "valid": false,
-  "checks": {
-    "format_valid": true,
-    "size_valid": false,
-    "duplicate": false
-  },
-  "errors": [
-    {
-      "field": "resume",
-      "code": "file_too_large",
-      "message": "File size (15MB) exceeds maximum (10MB)."
-    }
-  ]
-}
-```
+`file_format` reflects the detected extension/category from validation (e.g. `pdf`, `docx`).
 
-**Error Response (409 Conflict)**:
-```json
-{
-  "valid": false,
-  "checks": {
-    "format_valid": true,
-    "size_valid": true,
-    "duplicate": true
-  },
-  "errors": [
-    {
-      "field": "resume",
-      "code": "duplicate_resume",
-      "message": "This resume has already been submitted for this job listing."
-    }
-  ]
-}
-```
+**Duplicate resume (409)** includes `code` `duplicate_resume` on the error entry when applicable.
 
 ---
 
-### 3. Validate Contact
+### 3. Validate contact
 
-**Endpoint**: `POST /api/applications/validate-contact/`
+**POST** `/api/applications/validate-contact/`
 
-Validate contact information and check for duplicate email/phone for the job listing.
+**Content-Type**: `application/json`
 
-**Request Headers**:
-```
-Content-Type: application/json
-X-CSRFToken: <csrf_token>
-```
+**Body**:
 
-**Request Body**:
 ```json
 {
-  "job_listing_id": "uuid",
-  "email": "string",
-  "phone": "string"
+  "job_listing_id": "<uuid>",
+  "email": "user@example.com",
+  "phone": "+12025551234"
 }
 ```
 
-**Success Response (200 OK)**:
+**Success (200)**:
+
 ```json
 {
   "valid": true,
-  "checks": {
-    "email_duplicate": false,
-    "phone_duplicate": false
-  }
+  "checks": { "duplicate_detected": false }
 }
 ```
 
-**Error Response (409 Conflict)**:
+**Duplicate (409)** — same generic shape as submit (no per-field disclosure):
+
 ```json
 {
   "valid": false,
-  "checks": {
-    "email_duplicate": true,
-    "phone_duplicate": false
-  },
+  "checks": { "duplicate_detected": true },
   "errors": [
     {
-      "field": "email",
-      "code": "duplicate_email",
-      "message": "An application with this email address has already been submitted for this job listing."
+      "code": "duplicate_detected",
+      "message": "An application with similar contact information has already been submitted for this job listing. Please use different contact details or contact support."
     }
   ]
 }
@@ -224,187 +169,61 @@ X-CSRFToken: <csrf_token>
 
 ---
 
-### 4. Get Application Status
+## Error codes (reference)
 
-**Endpoint**: `GET /api/applications/<uuid:application_id>/`
-
-Retrieve application details by ID (used for confirmation page).
-
-**Request Headers**:
-```
-Content-Type: application/json
-```
-
-**Success Response (200 OK)**:
-```json
-{
-  "id": "uuid",
-  "job_listing": {
-    "id": "uuid",
-    "title": "Senior Developer"
-  },
-  "applicant": {
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john@example.com",
-    "phone": "+12025551234"
-  },
-  "submitted_at": "datetime",
-  "status": "submitted",
-  "confirmation_email_sent": true
-}
-```
-
-**Error Response (404 Not Found)**:
-```json
-{
-  "error": "not_found",
-  "message": "Application not found."
-}
-```
+| Situation | HTTP | Notes |
+|-----------|------|--------|
+| Serializer errors | 400 | `validation_failed` + `details` |
+| Duplicate | 409 | `duplicate_detected` (submit / contact); `duplicate_resume` (file validate) |
+| Rate limit | 429 | DRF throttle |
+| Server error | 500 | Logged server-side |
 
 ---
 
-## Error Codes Reference
+## File upload
 
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `validation_failed` | 400 | General validation error |
-| `invalid_format` | 400 | File format not PDF/Docx |
-| `file_too_large` | 400 | File exceeds 10MB |
-| `file_too_small` | 400 | File below 50KB |
-| `invalid_email` | 400 | Email format invalid or MX check failed |
-| `invalid_phone` | 400 | Phone format invalid |
-| `missing_required_answer` | 400 | Required screening question not answered |
-| `duplicate_submission` | 409 | Duplication detected |
-| `duplicate_resume` | 409 | Resume hash already exists for job |
-| `duplicate_email` | 409 | Email already used for job |
-| `duplicate_phone` | 409 | Phone already used for job |
-| `rate_limit_exceeded` | 429 | IP exceeded 5 submissions/hour |
-| `job_not_accepting_applications` | 503 | Job is inactive or expired |
-| `not_found` | 404 | Resource not found |
-| `internal_error` | 500 | Unexpected server error |
+- **Formats**: PDF and DOCX (magic-byte / parser validation in `DuplicationService` / `ResumeParserService`).
+- **Storage**: `STORAGE_BACKEND` in settings (`local`, `s3`, or `gcs`); temp bulk files use `AWS_TEMP_LOCATION` under `applications/temp/`.
 
 ---
 
-## Rate Limiting
-
-**Policy**: 5 requests per hour per IP address
-
-**Headers**:
-```
-X-RateLimit-Limit: 5
-X-RateLimit-Remaining: 3
-X-RateLimit-Reset: 1645267200
-Retry-After: 3600
-```
-
-**Implementation**:
-- Track via Redis cache with key pattern: `rate_limit:applications:{ip_address}`
-- Sliding window of 1 hour
-- Return 429 when limit exceeded with `retry_after` in response
-
----
-
-## File Upload Specifications
-
-**Accepted Formats**:
-- PDF (`application/pdf`) - validated by magic bytes `%PDF`
-- Docx (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`) - validated by ZIP signature
-
-**Size Limits**:
-- Minimum: 50KB (51,200 bytes)
-- Maximum: 10MB (10,485,760 bytes)
-
-**Storage**:
-- Development: Local filesystem (`media/applications/resumes/{uuid}_{filename}`)
-- Production: S3 or GCS via django-storages backend
-- Filename: UUID-prefixed to prevent collisions
-
----
-
-## Data Retention
-
-**Retention Period**: 90 days from `submitted_at`
-
-**Cleanup Process**:
-- Daily Celery beat task at 2:00 AM
-- Deletes expired applications and associated files
-- Logs deletion count for compliance tracking
-
----
-
-## Example Usage
-
-### JavaScript (Frontend)
+## Example (browser)
 
 ```javascript
-// Submit application
 const formData = new FormData();
 formData.append('job_listing_id', jobId);
 formData.append('first_name', 'John');
 formData.append('last_name', 'Doe');
 formData.append('email', 'john@example.com');
 formData.append('phone', '+12025551234');
-formData.append('country_code', 'US');
 formData.append('resume', resumeFile);
 formData.append('screening_answers', JSON.stringify(answers));
 
 const response = await fetch('/api/applications/', {
   method: 'POST',
   body: formData,
-  headers: {
-    'X-CSRFToken': getCsrfToken()
-  }
+  headers: { 'X-CSRFToken': getCsrfToken() },
+  credentials: 'same-origin'
 });
 
+const data = await response.json();
 if (response.status === 201) {
-  const data = await response.json();
-  window.location.href = `/applications/success/${data.id}/`;
-} else if (response.status === 409) {
-  const data = await response.json();
-  showDuplicateWarning(data.message);
+  window.location.href = `/application/success/${data.id}/${data.access_token}/`;
 }
-```
-
-### Python (Backend Testing)
-
-```python
-import requests
-
-# Submit application
-files = {'resume': open('resume.pdf', 'rb')}
-data = {
-    'job_listing_id': job_id,
-    'first_name': 'John',
-    'last_name': 'Doe',
-    'email': 'john@example.com',
-    'phone': '+12025551234',
-    'screening_answers': json.dumps(answers)
-}
-
-response = requests.post(
-    'http://localhost:8000/api/applications/',
-    files=files,
-    data=data,
-    headers={'X-CSRFToken': csrf_token}
-)
-
-print(response.json())
 ```
 
 ---
 
-## Security Considerations
+## Security notes
 
-1. **CSRF Protection**: All POST requests require CSRF token
-2. **Rate Limiting**: Prevents spam and DoS attacks
-3. **File Validation**: Magic bytes validation prevents extension spoofing
-4. **PII Redaction**: Confidential info removed from parsed resume text
-5. **Database Constraints**: Unique constraints prevent duplicates at DB level
+1. **CSRF** on unsafe methods from the browser.  
+2. **Throttling** by IP for anonymous submission/validation.  
+3. **Duplicate responses** are intentionally generic on submit/contact to limit enumeration.  
+4. **File validation** rejects invalid types and sizes before persistence.  
 
 ---
 
-**Last Updated**: 2026-02-19  
-**Version**: 1.0  
-**Maintained By**: Development Team
+## Related documentation
+
+- [Bulk Upload API](./api/bulk_upload.md)  
+- [AI Analysis API](./api/analysis_api.md)  

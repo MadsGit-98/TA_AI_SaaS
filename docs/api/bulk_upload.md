@@ -1,60 +1,59 @@
 # Bulk Upload API Documentation
 
-**Feature**: 011-bulk-resume-upload  
-**Version**: 1.0.0  
-**Base URL**: `/api/applications/bulk-upload/`
+**Last updated**: 2026-04-19  
+**Base URL**: `/api/applications/bulk-upload/`  
+**Implementation**: `apps/applications/api.py`  
+**URL routing**: `apps/applications/api_urls.py`
 
 ---
 
 ## Overview
 
-The Bulk Upload API allows Talent Acquisition Specialists (TAS) to upload multiple resume files simultaneously, with automatic duplicate detection and batch processing capabilities.
+Talent Acquisition Specialists (TAS) can upload many resumes for a job in batches. Flow: **init** → **upload** (repeat) → **validate** → optional **decisions** (duplicates) → **commit**. **Commit** queues a Celery task (`process_bulk_upload_batch`); applicant creation and parsing continue asynchronously. Progress is delivered over **WebSockets**.
 
-### Authentication
+### Authentication & authorization
 
-All endpoints require:
-- Valid JWT authentication token
-- User must have `is_tas=True` flag
+- **Authentication**: `IsAuthenticated` + `IsTAS` (see `apps/accounts/permissions.py`).
+- **CSRF**: Browser clients must send `X-CSRFToken` (and session cookie) on unsafe methods.
+- **Job access**: The user must **own** the job listing (`job_listing.created_by == request.user`) and the batch (`batch.uploaded_by == request.user`).
 
-### Rate Limiting
+### Throttling
 
-| Endpoint | Limit | Window |
-|----------|-------|--------|
-| `/init/` | 10 requests | per minute |
-| `/upload/` | 100 requests | per minute |
-| `/validate/` | 5 requests | per minute |
-| `/commit/` | 3 requests | per minute |
-| `/cancel/` | 5 requests | per minute |
-| `/status/` | 30 requests | per minute |
+Bulk upload class-based views do **not** attach the custom application throttles. They fall under the project **default DRF throttles** (`AnonRateThrottle` / `UserRateThrottle`) from `REST_FRAMEWORK` in `x_crewter/settings.py` (e.g. `1000/day` for authenticated users unless you change settings).
+
+---
+
+## Job limits (`JobListing`)
+
+From `apps/jobs/models.py`:
+
+| Limit | Value |
+|--------|--------|
+| `MAX_BATCHES` | 3 committed batch slots (enforced by `can_upload_more`) |
+| `MAX_RESUMES` | 300 total resumes per job |
+| Files per batch session | Up to 100 files per batch object (`max_files` in API responses) |
+
+`BulkUploadInitView` uses `job_listing.can_upload_more(0)` so uploads stop when batch count or total resume count hits the limits.
 
 ---
 
 ## Endpoints
 
-### 1. Initialize Upload Session
+### 1. Initialize batch
 
 **POST** `/api/applications/bulk-upload/init/`
 
-Creates a new upload batch and returns a batch ID for subsequent file uploads.
+**Body**:
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-Content-Type: application/json
+```json
+{ "job_listing_id": "<uuid>" }
 ```
 
-**Request Body:**
+**Response (201 Created)**:
+
 ```json
 {
-  "job_listing_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
+  "batch_id": "<uuid>",
   "batch_number": 1,
   "max_files": 100,
   "remaining_capacity": 100,
@@ -62,149 +61,100 @@ Content-Type: application/json
 }
 ```
 
-**Error Responses:**
-
-| Status | Code | Message |
-|--------|------|---------|
-| 400 | `invalid_job_listing` | Job listing not found |
-| 400 | `upload_limits_exceeded` | Maximum batches or resumes reached |
-| 403 | `permission_denied` | User is not a TAS |
+**Errors**: `400` with `error` message string when limits exceeded; `403` if not the job owner.
 
 ---
 
-### 2. Upload Single File
+### 2. Upload one file
 
 **POST** `/api/applications/bulk-upload/upload/`
 
-Uploads a single resume file to temporary storage.
+**Content-Type**: `multipart/form-data`
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-Content-Type: multipart/form-data
-```
+**Fields**:
 
-**Request Body (multipart/form-data):**
-```
-batch_id: 123e4567-e89b-12d3-a456-426614174000
-file: <binary file data>
-```
+- `batch_id` — UUID string  
+- `file` — binary  
 
-**Response (200 OK):**
+**Response (200 OK)** — metadata stored on the batch (includes `temp_path` for server-side use):
+
 ```json
 {
-  "file_id": "file-uuid-here",
+  "file_id": "<uuid>",
   "filename": "resume.pdf",
-  "file_hash": "sha256-hash-string",
+  "file_hash": "<sha256>",
   "size": 102400,
+  "temp_path": "applications/temp/<batch_id>/<uuid>_resume.pdf",
   "status": "uploaded"
 }
 ```
 
-**Error Responses:**
-
-| Status | Code | Message |
-|--------|------|---------|
-| 400 | `invalid_format` | File is not PDF or DOCX |
-| 400 | `file_too_small` | File below 50KB minimum |
-| 400 | `file_too_large` | File exceeds 10MB maximum |
-| 400 | `batch_full` | Batch already contains 100 files |
-| 404 | `batch_not_found` | Upload batch not found |
+**Errors**: `400` with `error` / `message` for validation failures (`invalid_format`, size limits, etc.); `400` if batch is `cancelled` or `committed`.
 
 ---
 
-### 3. Validate Batch and Check Duplicates
+### 3. Validate batch (duplicates)
 
 **POST** `/api/applications/bulk-upload/validate/`
 
-Runs duplicate detection on all uploaded files and returns results for review.
+**Body**:
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-Content-Type: application/json
+```json
+{ "batch_id": "<uuid>" }
 ```
 
-**Request Body:**
+**Response (200 OK)**:
+
 ```json
 {
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
+  "batch_id": "<uuid>",
   "total_files": 20,
   "valid_files": 17,
   "duplicates": [
     {
-      "file_id": "file-uuid-1",
+      "file_id": "<uuid>",
       "filename": "john_doe_resume.pdf",
-      "duplicate_type": "file_hash",
-      "existing_applicant": {
-        "name": "John Doe",
-        "email": "john@example.com"
-      }
+      "duplicate_type": "file_hash"
+    },
+    {
+      "file_id": "<uuid>",
+      "filename": "other.pdf",
+      "duplicate_type": "email",
+      "email": "user@example.com"
     }
   ],
   "status": "awaiting_review"
 }
 ```
 
-**Duplicate Types:**
-- `file_hash` - Exact same resume file
-- `email` - Email address already exists
-- `phone` - Phone number already exists
+`duplicate_type` is one of: `file_hash`, `email`, `phone`.
 
 ---
 
-### 4. Submit Duplicate Decisions
+### 4. Duplicate decisions
 
 **POST** `/api/applications/bulk-upload/decisions/`
 
-Submits user's decisions on how to handle duplicate files.
+**Body**:
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-Content-Type: application/json
-```
-
-**Request Body:**
 ```json
 {
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
+  "batch_id": "<uuid>",
   "decisions": [
-    {
-      "file_id": "file-uuid-1",
-      "action": "skip"
-    },
-    {
-      "file_id": "file-uuid-2",
-      "action": "include"
-    },
-    {
-      "action": "skip_all"
-    }
+    { "file_id": "<uuid>", "action": "skip" },
+    { "file_id": "<uuid>", "action": "include" },
+    { "action": "skip_all" }
   ]
 }
 ```
 
-**Decision Actions:**
-- `skip` - Skip this specific file
-- `include` - Include this specific file
-- `skip_all` - Skip all remaining duplicates
-- `include_all` - Include all remaining duplicates
+Actions: `skip`, `include`, `skip_all`, `include_all`.
 
-**Response (200 OK):**
+**Response (200 OK)**:
+
 ```json
 {
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
+  "batch_id": "<uuid>",
   "decisions_recorded": 3,
   "files_to_process": 18,
   "files_skipped": 2,
@@ -214,356 +164,82 @@ Content-Type: application/json
 
 ---
 
-### 5. Commit Batch
+### 5. Commit batch
 
 **POST** `/api/applications/bulk-upload/commit/`
 
-Commits the batch, creates Applicant instances, and moves files to permanent storage.
+**Body**:
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-Content-Type: application/json
+```json
+{ "batch_id": "<uuid>" }
 ```
 
-**Request Body:**
+Requires batch status `awaiting_review`. Queues Celery processing.
+
+**Response (202 Accepted)**:
+
 ```json
 {
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000"
+  "batch_id": "<uuid>",
+  "status": "processing",
+  "message": "Processing started. You will receive real-time updates via WebSocket.",
+  "total_files": 18
 }
 ```
 
-**Response (200 OK):**
-```json
-{
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
-  "status": "committed",
-  "applicants_created": 18,
-  "applicants": [
-    {
-      "id": "applicant-uuid",
-      "reference_number": "XC-A1B2C3",
-      "filename": "resume.pdf"
-    }
-  ]
-}
-```
-
-**Error Responses:**
-
-| Status | Code | Message |
-|--------|------|---------|
-| 400 | `not_ready` | Batch validation not complete |
-| 500 | `processing_failed` | Failed to process some files |
+**Errors**: `400` if batch not `awaiting_review` or already queued (`processing_task_id` set).
 
 ---
 
-### 6. Cancel Batch
+### 6. Cancel batch
 
 **DELETE** `/api/applications/bulk-upload/cancel/<batch_id>/`
 
-Cancels an in-progress batch and cleans up temporary files.
+**Response (200 OK)**:
 
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-X-CSRFToken: <csrf_token>
-```
-
-**Response (200 OK):**
 ```json
 {
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
+  "batch_id": "<uuid>",
   "status": "cancelled",
   "files_deleted": 15,
   "message": "Batch cancelled successfully"
 }
 ```
 
----
-
-### 7. Get Batch Status
-
-**GET** `/api/applications/bulk-upload/status/<batch_id>/`
-
-Gets real-time status of a batch upload.
-
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200 OK):**
-```json
-{
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
-  "status": "uploading",
-  "progress": {
-    "files_uploaded": 45,
-    "files_total": 100,
-    "files_validated": 40,
-    "files_with_errors": 2
-  },
-  "files": [
-    {
-      "file_id": "uuid-1",
-      "filename": "resume1.pdf",
-      "status": "success"
-    }
-  ]
-}
-```
+Cannot cancel a `committed` batch. Revokes Celery tasks when applicable.
 
 ---
 
-### 8. Get Upload Summary
+## WebSocket
 
-**GET** `/api/applications/bulk-upload/summary/<batch_id>/`
+**URL**: `ws(s)://<host>/ws/bulk-upload/<batch_id>/`  
+**Consumer**: `apps.applications.consumers.BulkUploadConsumer`  
+**Auth**: Must be logged in; user must own the batch.
 
-Gets summary of a completed batch upload.
-
-**Request Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (200 OK):**
-```json
-{
-  "batch_id": "123e4567-e89b-12d3-a456-426614174000",
-  "job_listing": {
-    "id": "job-uuid",
-    "title": "Software Engineer"
-  },
-  "batch_number": 2,
-  "uploaded_at": "2026-03-23T11:00:00Z",
-  "uploaded_by": {
-    "id": "user-uuid",
-    "name": "Jane TAS"
-  },
-  "summary": {
-    "total_files": 50,
-    "successful": 47,
-    "duplicates_skipped": 2,
-    "failed": 1
-  },
-  "applicants": [
-    {
-      "id": "applicant-uuid",
-      "reference_number": "XC-A1B2C3",
-      "filename": "resume.pdf",
-      "parsing_status": "complete"
-    }
-  ]
-}
-```
+Server event types include: `file_progress` (from `upload_progress`), `validation_complete`, `processing_started`, `file_success`, `file_error`, `error`, and batch progress variants—see `consumers.py` for the exact JSON shapes.
 
 ---
 
-## WebSocket Endpoint
+## File requirements
 
-### Real-Time Progress Updates
-
-**WS** `/ws/bulk-upload/<batch_id>/`
-
-Provides real-time progress updates during batch upload.
-
-**Connection:**
-```javascript
-const ws = new WebSocket(`ws://${host}/ws/bulk-upload/${batchId}/`);
-```
-
-**Message Types (Server → Client):**
-
-**File Upload Progress:**
-```json
-{
-  "type": "file_progress",
-  "file_id": "uuid-string",
-  "filename": "resume.pdf",
-  "status": "uploading",
-  "progress_percent": 65
-}
-```
-
-**Batch Progress:**
-```json
-{
-  "type": "batch_progress",
-  "files_uploaded": 45,
-  "files_total": 100,
-  "files_validated": 40,
-  "status": "uploading"
-}
-```
-
-**Validation Complete:**
-```json
-{
-  "type": "validation_complete",
-  "total_files": 50,
-  "valid_files": 47,
-  "duplicates": 3,
-  "failed_files": 0,
-  "ready_for_review": true
-}
-```
-
-**Error:**
-```json
-{
-  "type": "error",
-  "file_id": "uuid-string",
-  "error": "processing_failed",
-  "message": "File corrupted or unreadable"
-}
-```
-
----
-
-## File Requirements
+Aligned with `DuplicationService.validate_resume_file` / project rules:
 
 | Property | Requirement |
 |----------|-------------|
-| Formats | PDF (.pdf), DOCX (.docx) |
-| Minimum Size | 50 KB |
-| Maximum Size | 10 MB |
-| Files per Batch | 100 maximum |
-| Batches per Job | 3 maximum |
-| Total Resumes per Job | 300 maximum |
+| Formats | PDF, DOCX |
+| Size | Within configured min/max (typically 50 KB–10 MB; see validation utilities) |
+| Per batch | Up to 100 files in one `UploadBatch` |
 
 ---
 
-## Batch Status Values
+## Batch status values
 
-| Status | Description |
-|--------|-------------|
-| `pending` | Batch created, no files uploaded yet |
-| `uploading` | Files are being uploaded |
-| `validating` | Duplicate detection in progress |
-| `awaiting_review` | Duplicates found, waiting for user decisions |
-| `committed` | Batch processed, applicants created |
-| `cancelled` | Batch cancelled by user |
-| `failed` | Batch processing failed |
+Typical `UploadBatch.status` values: `pending`, `uploading`, `awaiting_review`, `processing`, `committed`, `cancelled` (and `failed` where applicable).
 
 ---
 
-## Error Handling
+## Related documentation
 
-All API errors follow a consistent format:
-
-```json
-{
-  "error": "error_code",
-  "message": "Human-readable error message"
-}
-```
-
-### Common Error Codes
-
-| Error Code | HTTP Status | Description |
-|------------|-------------|-------------|
-| `invalid_job_listing` | 400 | Job listing not found or invalid |
-| `upload_limits_exceeded` | 400 | Batch or resume limits exceeded |
-| `permission_denied` | 403 | User not authorized (not a TAS) |
-| `invalid_format` | 400 | File format not PDF/DOCX |
-| `file_too_small` | 400 | File below 50KB minimum |
-| `file_too_large` | 400 | File exceeds 10MB maximum |
-| `batch_full` | 400 | Batch already has 100 files |
-| `batch_not_found` | 404 | Upload batch not found |
-| `not_ready` | 400 | Batch not ready for commit |
-| `processing_failed` | 500 | Server processing error |
-| `duplicate_detected` | 409 | Duplicate resume found |
-
----
-
-## Integration Example
-
-### JavaScript Frontend Integration
-
-```javascript
-class BulkUploadClient {
-  constructor(jobListingId, csrfToken) {
-    this.jobListingId = jobListingId;
-    this.csrfToken = csrfToken;
-    this.batchId = null;
-  }
-
-  async initialize() {
-    const response = await fetch('/api/applications/bulk-upload/init/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': this.csrfToken
-      },
-      body: JSON.stringify({ job_listing_id: this.jobListingId })
-    });
-    
-    const data = await response.json();
-    this.batchId = data.batch_id;
-    return data;
-  }
-
-  async uploadFile(file) {
-    const formData = new FormData();
-    formData.append('batch_id', this.batchId);
-    formData.append('file', file);
-
-    const response = await fetch('/api/applications/bulk-upload/upload/', {
-      method: 'POST',
-      headers: { 'X-CSRFToken': this.csrfToken },
-      body: formData
-    });
-
-    return response.json();
-  }
-
-  async validate() {
-    const response = await fetch('/api/applications/bulk-upload/validate/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': this.csrfToken
-      },
-      body: JSON.stringify({ batch_id: this.batchId })
-    });
-
-    return response.json();
-  }
-
-  async commit() {
-    const response = await fetch('/api/applications/bulk-upload/commit/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': this.csrfToken
-      },
-      body: JSON.stringify({ batch_id: this.batchId })
-    });
-
-    return response.json();
-  }
-}
-```
-
----
-
-## Security Considerations
-
-1. **Authentication**: All endpoints require valid JWT tokens
-2. **Authorization**: Only users with `is_tas=True` can access bulk upload endpoints
-3. **CSRF Protection**: All POST/DELETE requests require CSRF tokens
-4. **File Validation**: All files are validated for format, size, and content
-5. **Duplicate Detection**: Prevents duplicate submissions via hash, email, and phone checks
-6. **Rate Limiting**: Prevents abuse through request throttling
-7. **Temporary Storage**: Uncommitted files stored in isolated temp directory
-8. **Cleanup**: Cancelled batches automatically delete temporary files
-
----
-
-## Related Documentation
-
-- [Quickstart Guide](../../../docs/quickstart.md)
-- [Data Model](../../../data-model.md)
-- [API Contracts](../../../contracts/api-contracts.md)
+- [Applications API](../applications-api.md) (public apply flow)  
+- [AI Analysis API](./analysis_api.md)  
+- [`TI_AI_SaaS_Project/services/README.md`](../../TI_AI_SaaS_Project/services/README.md) (AI worker, separate process)  

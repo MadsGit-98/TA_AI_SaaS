@@ -1,263 +1,109 @@
 # User Guide: AI Analysis & Scoring
 
-**For**: Talent Acquisition Specialists  
-**Version**: 1.0.0  
-**Last Updated**: 2026-02-28
+**Audience**: Talent Acquisition Specialists  
+**Last updated**: 2026-04-19  
 
 ---
 
 ## Overview
 
-The AI Analysis & Scoring feature automatically processes and scores job applicants using artificial intelligence. It analyzes resumes against job requirements and provides:
+AI Analysis scores applicants against a job’s requirements using a dedicated **AI analysis service** (LangGraph + LLM, typically Ollama in development). Django stores results and serves the dashboard; **progress** is shown via **in-app notifications and WebSockets** (`/ws/analysis-notifications/`), not a separate “status” REST button.
 
-- **Quantitative Scores** (0-100) for Education, Skills, and Experience
-- **Match Categories**: Best Match, Good Match, Partial Match, or Mismatched
-- **Textual Justifications** explaining each score
-- **Bulk Processing**: Analyze all applicants at once (10+ resumes/minute)
+You get:
 
----
-
-## When to Use AI Analysis
-
-**You can start AI analysis when:**
-- ✅ Job listing expiration date has passed, OR
-- ✅ Job listing has been manually deactivated
-
-**You cannot start analysis when:**
-- ❌ Job is still active (not expired and not deactivated)
+- **Scores** (0–100) for Education, Skills, Experience, plus Supplemental context where applicable  
+- **Match categories**: Best Match, Good Match, Partial Match, Mismatched  
+- **Text justifications** for each metric  
+- **Bulk run**: one action processes all current applicants for the job  
 
 ---
 
-## Step-by-Step Guide
+## When you can start analysis
 
-### Step 1: Navigate to Job Listing
+You can start analysis when the job has **at least one applicant** and you are allowed to run the action from the dashboard. The backend **does not** require the job to be expired or deactivated before starting analysis—expiration controls **new applications**, not whether you can score existing applicants. (Marketing copy on older screens may still mention “active job” warnings; trust the live app rules.)
 
-**From Dashboard:**
-1. Go to your Dashboard
-2. Find the job listing you want to analyze
-3. Ensure the job shows "Expired" or "Inactive" status
-
-**From Job Detail:**
-1. Click on the job title
-2. Verify the job is expired or deactivated
+If a run is **already in progress** for that job, the API returns a conflict until it finishes or you cancel.
 
 ---
 
-### Step 2: Initiate AI Analysis
+## Step-by-step
 
-**From Dashboard:**
-1. Click the **"Start AI Analysis"** button on the job card
-2. If the job is still active, you'll see a warning
+### 1. Open the job
 
-**From Job Detail:**
-1. Click the **"Start AI Analysis"** button
-2. Confirm you want to proceed
+From **Dashboard**, open the job you want to score. You must be the owner of the listing (or staff).
 
-**What happens next:**
-- System validates job eligibility
-- Redis lock prevents duplicate analysis
-- Celery task starts processing all applicants
-- Loading indicator appears
+### 2. Start analysis
 
----
+Use **Start AI Analysis** (or equivalent) from the dashboard or job detail UI. The server returns **202 Accepted** and enqueues work on the AI service; the UI should direct you to monitor progress via notifications / the analysis views.
 
-### Step 3: Monitor Progress
+### 3. Monitor progress
 
-**Loading Indicator Shows:**
-- Progress percentage (e.g., "Processing... [|||||] 45%")
-- Number of applicants processed
-- Estimated time remaining
-- Terminal-style output
+- **WebSocket**: `/ws/analysis-notifications/` delivers updates to your logged-in session.  
+- You may **cancel** a run from the UI where supported; completed rows are kept according to the cancel logic in the API.  
+- You can **navigate away**; processing continues server-side.
 
-**You can:**
-- ✅ **Cancel** analysis (preserves completed results)
-- ✅ **Navigate away** (analysis continues in background)
-- ✅ **Check status** from Dashboard
+### 4. View results
 
-**When complete:**
-- ✅ In-app notification appears
-- ✅ "Done" tag appears on job card
-- ✅ Results available for viewing
+Use the analysis **list** and **detail** pages under `/analysis/` (see `apps/analysis/ui_urls.py`). The results table shows scores, categories, and links to **View details** for full justifications.
+
+**AI disclaimer** (always apply): scores are **assistive** only. Use human judgment for hiring decisions.
+
+### 5. Reporting
+
+The **reporting** view (`/analysis/reporting/<job_id>/`) summarizes distributions and metric averages when results exist.
+
+### 6. Re-run
+
+If applicants change or you need a fresh scoring pass, use **Re-run analysis** where the UI offers it. You must **confirm**—the API requires `"confirm": true` and will delete previous `AIAnalysisResult` rows **after** the AI service accepts the new run.
 
 ---
 
-### Step 4: View Results
+## Understanding scores
 
-**From Results Page:**
-1. Click **"View Results"** on the job card or notification
-2. See all applicants with scores and categories
+### Formula (worker implementation)
 
-**Results Table Shows:**
-- Applicant name and reference number
-- Overall score (0-100)
-- Match category badge
-- Individual metric scores (Education, Skills, Experience)
-- Actions (View Details)
+The analysis service computes:
 
-**Filter Results:**
-- By category (Best Match, Good Match, etc.)
-- By score range (min/max)
-- By status (Analyzed, Unprocessed)
+**Overall score** = floor(Experience × 0.50 + Skills × 0.30 + Education × 0.20)
 
----
+Supplemental information is surfaced in the UI but does not feed this weighted sum.
 
-### Step 5: Review Candidate Details
+### Category bands (typical)
 
-**Click "View Details" to see:**
-- Full score breakdown
-- Justifications for each metric
-- Overall justification
-- Category assignment reasoning
-
-**AI Disclaimer:**
-> "These results are generated by artificial intelligence and should be used as supplementary information only. Do not rely solely on AI scores for hiring decisions. Always conduct human review."
-
----
-
-### Step 6: Access Reporting Page
-
-**For comprehensive analysis:**
-1. Click **"View Report"** on the job card
-2. See statistics dashboard:
-   - Category distribution
-   - Score statistics (average, median, min, max)
-   - Processing metrics
-
-**Toggle Views:**
-- **Table View**: Detailed list with all information
-- **Comparison View**: Side-by-side candidate comparison
-
-**Print Report:**
-- Click **"Print Report"** button
-- Generates printer-friendly PDF
-
----
-
-## Understanding Scores
-
-### Scoring Formula
-
-**Overall Score** = (Experience × 50%) + (Skills × 30%) + (Education × 20%)
-
-*Note: Supplemental information is tracked separately and not included in overall score.*
-
-### Category Ranges
-
-| Category | Score Range | Meaning |
+| Category | Score range | Meaning |
 |----------|-------------|---------|
-| **Best Match** | 90-100 | Exceptional alignment with requirements |
-| **Good Match** | 70-89 | Strong qualifications, recommended for review |
-| **Partial Match** | 50-69 | Some gaps, may require additional screening |
-| **Mismatched** | 0-49 | Significant gaps, likely not suitable |
-
-### Example Scores
-
-**Candidate A:**
-- Education: 85 (Master's degree)
-- Skills: 90 (All required skills matched)
-- Experience: 95 (7 years, exceeds 5-year requirement)
-- **Overall**: floor(95×0.50 + 90×0.30 + 85×0.20) = floor(91.5) = **91** → **Best Match**
-
-**Candidate B:**
-- Education: 70 (Bachelor's degree)
-- Skills: 75 (Most skills matched)
-- Experience: 60 (3 years, below 5-year requirement)
-- **Overall**: floor(60×0.50 + 75×0.30 + 70×0.20) = floor(66.5) = **66** → **Partial Match**
+| Best Match | 90–100 | Strong alignment |
+| Good Match | 70–89 | Solid fit |
+| Partial Match | 50–69 | Mixed fit |
+| Mismatched | 0–49 | Weak fit |
 
 ---
 
-## Handling Unprocessed Applicants
+## Unprocessed rows
 
-**Why applicants may be Unprocessed:**
-- Corrupted or password-protected PDF
-- Unsupported file format
-- LLM parsing failure
-- Network timeout
-
-**What to do:**
-1. Check error message in results
-2. Request updated resume from applicant
-3. Manually review if needed
-4. Re-run analysis after uploading new resume
-
----
-
-## Re-running Analysis
-
-**When to re-run:**
-- New applicants have applied
-- Job requirements changed
-- Previous analysis had many failures
-
-**How to re-run:**
-1. Go to job detail or results page
-2. Click **"Re-run Analysis"**
-3. Confirm (this deletes previous results)
-4. Wait for new analysis to complete
-
----
-
-## Tips for Best Results
-
-### 1. Write Clear Job Requirements
-- Specify required skills explicitly
-- Define experience level clearly
-- Include must-have qualifications
-
-### 2. Review Justifications
-- Don't rely solely on scores
-- Read AI justifications for context
-- Consider edge cases (career changers, etc.)
-
-### 3. Use Filters Effectively
-- Filter by "Best Match" for top candidates
-- Review "Good Match" for hidden gems
-- Check "Partial Match" for transferable skills
-
-### 4. Combine with Human Review
-- Use AI scores as initial screening
-- Conduct phone/video interviews
-- Consider cultural fit and soft skills
+Applicants may show **Unprocessed** when parsing failed, the file was unusable, or the worker errored. Retry after fixing the resume, or re-run analysis after uploads change.
 
 ---
 
 ## Troubleshooting
 
-### "Job Still Active" Error
-**Solution**: Wait for job to expire or manually deactivate it.
-
-### "No Applicants" Error
-**Solution**: Wait for applicants to apply before starting analysis.
-
-### Analysis Taking Too Long
-**Expected Time**: ~6 seconds per applicant (10 resumes/minute)
-**If slower**: Check Ollama server status and network connectivity.
-
-### High Unprocessed Rate
-**Solutions**:
-- Ensure resumes are PDF or DOCX format
-- Check that files are not password-protected
-- Verify Ollama server is running
+| Issue | What to check |
+|--------|----------------|
+| “Analysis already running” | Wait, cancel, or retry after cancel completes |
+| “No applicants” | No applicants on the job yet |
+| Service unavailable | AI service down or misconfigured (`AI_SERVICE_BASE_URL`, `AI_SERVICE_API_KEY`); Ollama/model on the worker host |
+| Slow throughput | Roughly **~6 seconds per applicant** in estimates; GPU/CPU load and model size matter |
+| WebSocket not updating | Login session, same origin, Redis/Channels running |
 
 ---
 
-## Privacy & Compliance
+## Privacy & compliance
 
-**AI Disclaimer**: AI results are supplementary only. Always conduct human review before making hiring decisions.
-
-**Data Protection**: Applicant data is processed securely and not shared with third parties.
-
-**Audit Trail**: All analysis results are stored with timestamps for compliance.
+Treat AI output as **non-deterministic assistance**. Keep audit trails (stored results and timestamps) as required by your process.
 
 ---
 
-## Support
+## Further reading
 
-For technical issues or questions:
-- Check the [API Documentation](../api/analysis_api.md)
-- Review [Quickstart Guide](../../specs/009-ai-analysis-scoring/quickstart.md)
-- Contact technical support
-
----
-
-**Remember**: AI is a tool to assist your decision-making, not replace it. Use scores and justifications as one input among many in your hiring process.
+- [Analysis API reference](../api/analysis_api.md)  
+- [Standalone AI service README](../../TI_AI_SaaS_Project/services/README.md)  
