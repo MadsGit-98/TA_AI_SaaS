@@ -15,7 +15,7 @@ from django.db.models import Avg, Max, Min
 from apps.jobs.models import JobListing
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import CardLogo, SiteSetting
-from services.ai_analysis_service import get_analysis_progress, check_cancellation_flag
+from apps.accounts.redis_utils import get_analysis_progress, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +96,12 @@ def reporting_page_view(request, job_id):
         if job_listing.created_by != request.user:
             raise PermissionDenied("You do not have permission to view analysis for this job.")
 
-        # Get all analysis results
+        # Get all analysis results (unfiltered base queryset)
         results = AIAnalysisResult.objects.filter(
             job_listing=job_listing
         ).select_related('applicant', 'job_listing')
+
+        global_analyzed_count = results.filter(status='Analyzed').count()
 
         # Apply filters from query parameters
         category = request.GET.get('category')
@@ -195,6 +197,7 @@ def reporting_page_view(request, job_id):
 
         statistics = {
             'total_applicants': total,
+            'global_analyzed_count': global_analyzed_count,
             'analyzed_count': analyzed.count(),
             'unprocessed_count': results.filter(status='Unprocessed').count(),
             'best_match_count': analyzed.filter(category='Best Match').count(),
@@ -205,7 +208,7 @@ def reporting_page_view(request, job_id):
             'median_score': _calculate_median(analyzed.values_list('overall_score', flat=True)),
             'max_score': analyzed.aggregate(Max('overall_score'))['overall_score__max'] or 0,
             'min_score': analyzed.aggregate(Min('overall_score'))['overall_score__min'] or 0,
-            'success_rate': round((analyzed.count() / total * 100) if total > 0 else 0, 1),
+            'success_rate': round((global_analyzed_count / total * 100) if total > 0 else 0, 1),
         }
 
         # Calculate percentages
@@ -223,9 +226,11 @@ def reporting_page_view(request, job_id):
         # Get footer context
         footer_context = _get_footer_context()
 
-        # Check if analysis is complete (based on global total, not filtered results)
-        # Use precomputed statistics['analyzed_count'] to avoid redundant DB queries
-        analysis_complete = statistics['analyzed_count'] > 0 and statistics['analyzed_count'] >= total
+        # Complete = all applicants analyzed (job-wide), not merely the filtered table slice
+        analysis_complete = (
+            statistics['global_analyzed_count'] > 0
+            and statistics['global_analyzed_count'] >= total
+        )
 
         # Check if analysis is currently running (Redis progress tracking)
         progress = get_analysis_progress(str(job_id))

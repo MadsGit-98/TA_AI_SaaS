@@ -5,13 +5,88 @@ This module contains the AnalysisNotificationConsumer class for broadcasting
 real-time analysis status updates to connected clients.
 """
 
+import hashlib
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_user_id(user_id):
+    """Return a short, irreversible hash of a user id for log correlation.
+
+    We log an anonymized fingerprint instead of the raw id so support
+    engineers can still correlate events for the same user across log
+    lines without exposing PII (the raw id is enough to pivot into the
+    user's account in the admin).
+
+    SHA256 is irreversible; truncating to 12 hex chars (~48 bits) keeps
+    logs compact while still making collisions astronomically unlikely
+    across a realistic user base.
+    """
+    return hashlib.sha256(str(user_id).encode('utf-8')).hexdigest()[:12]
+
+
+# Cap on how many characters of a user-controlled payload may appear in a
+# log line. Long enough to diagnose common malformed-JSON mistakes (a typo,
+# a stray character, a truncated frame), short enough to bound log volume
+# when a client spams megabyte-sized garbage.
+_LOG_PAYLOAD_MAX_CHARS = 64
+
+
+def _sanitize_payload_for_log(payload):
+    """Produce a safe, bounded representation of user input for logging.
+
+    Mitigates three real risks when client-controlled WebSocket frames
+    reach the logger:
+
+    * **Log injection** — raw newlines/CR/other control chars let an
+      attacker forge fake log lines. We escape them via ``repr``.
+    * **Log bloat** — a malicious or confused client can send multi-MB
+      frames; we truncate to ``_LOG_PAYLOAD_MAX_CHARS`` and mark the
+      truncation so readers know there was more.
+    * **Accidental PII capture** — even well-meaning clients may attach
+      identifiers or free-form text; a 64-char snippet is rarely enough
+      to expose useful PII but still lets engineers diagnose parse
+      errors.
+
+    Non-string inputs (e.g. ``bytes``) are coerced safely.
+    """
+    if payload is None:
+        return '<none>'
+    if isinstance(payload, bytes):
+        try:
+            payload = payload.decode('utf-8', errors='replace')
+        except Exception:
+            payload = repr(payload)
+    try:
+        text = str(payload)
+    except Exception:
+        return '<unprintable>'
+    truncated = len(text) > _LOG_PAYLOAD_MAX_CHARS
+    snippet = text[:_LOG_PAYLOAD_MAX_CHARS]
+    # ``repr`` escapes control characters (\n, \r, \x00, ...), quoting the
+    # result. Slice off repr's surrounding quotes for a cleaner log line.
+    safe = repr(snippet)
+    if safe.startswith(("'", '"')):
+        safe = safe[1:-1]
+    if truncated:
+        safe += f'... (truncated, original_length={len(text)})'
+    return safe
+
+
+def _client_data_from_channel_event(event: dict) -> dict:
+    """Build the ``data`` object for the browser from a channel-layer event.
+
+    ``apps.analysis.webhook.broadcast_to_websocket`` sends a flat payload
+    (``type`` plus job fields). Older tests send a nested ``data`` dict.
+    The static JS client always expects ``{type, data}`` on the wire.
+    """
+    nested = event.get('data')
+    if isinstance(nested, dict):
+        return nested
+    return {k: v for k, v in event.items() if k != 'type'}
 
 
 class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
@@ -24,9 +99,25 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
     - Analysis cancellation
     - Analysis failure
     
-    Group naming convention: analysis_{job_id}_{user_id}
+    Group naming convention: analysis_{job_id}
     """
-    
+
+    def _log_user_hash(self):
+        """Return the log-safe fingerprint for ``self.user_id``.
+
+        Computed lazily so code paths that don't go through ``connect()``
+        (notably unit tests that instantiate the consumer directly and
+        assign ``user_id`` by hand) still get a valid hash. Returns the
+        literal string ``'unknown'`` when no user has been attached yet.
+        """
+        if not getattr(self, 'user_id', None):
+            return 'unknown'
+        cached = getattr(self, 'user_id_hash', None)
+        if cached:
+            return cached
+        self.user_id_hash = _hash_user_id(self.user_id)
+        return self.user_id_hash
+
     async def connect(self):
         """
         Accept WebSocket connection if user is authenticated.
@@ -37,9 +128,12 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         """
         if self.scope["user"].is_authenticated:
             self.user_id = str(self.scope["user"].id)
-            # Accept the connection
+            # ``user_id_hash`` is the log-safe fingerprint; ``self.user_id``
+            # stays intact for authorization checks (e.g. comparing against
+            # ``job.created_by_id``) but must never be logged directly.
+            self.user_id_hash = _hash_user_id(self.user_id)
             await self.accept()
-            logger.info(f"WebSocket connected for user {self.user_id}")
+            logger.info(f"WebSocket connected for user_hash={self._log_user_hash()}")
         else:
             # Close connection for unauthenticated users
             logger.warning("WebSocket connection rejected - unauthenticated user")
@@ -57,7 +151,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 )
                 logger.info(f"Removed from group: {group_name}")
         
-        logger.info(f"WebSocket disconnected for user {getattr(self, 'user_id', 'unknown')}")
+        logger.info(f"WebSocket disconnected for user_hash={self._log_user_hash()}")
     
     async def subscribe_to_job(self, job_id):
         """
@@ -77,7 +171,9 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             job = await JobListing.objects.aget(id=job_id)
             # Check if user is the owner or has staff privileges
             if str(job.created_by_id) != self.user_id and not self.scope["user"].is_staff:
-                logger.warning(f"User {self.user_id} attempted to subscribe to unauthorized job {job_id}")
+                logger.warning(
+                    f"User user_hash={self._log_user_hash()} attempted to subscribe to unauthorized job {job_id}"
+                )
                 await self.send(text_data=json.dumps({
                     'type': 'error',
                     'error_code': 'PERMISSION_DENIED',
@@ -85,7 +181,9 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 }))
                 return False
         except ObjectDoesNotExist:
-            logger.warning(f"Job {job_id} not found for subscription by user {self.user_id}")
+            logger.warning(
+                f"Job {job_id} not found for subscription by user_hash={self._log_user_hash()}"
+            )
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'error_code': 'JOB_NOT_FOUND',
@@ -104,7 +202,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         if not hasattr(self, 'subscribed_groups'):
             self.subscribed_groups = set()
 
-        group_name = f"analysis_{job_id}_{self.user_id}"
+        group_name = f"analysis_{job_id}"
 
         if group_name not in self.subscribed_groups:
             await self.channel_layer.group_add(
@@ -112,7 +210,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
             self.subscribed_groups.add(group_name)
-            logger.info(f"User {self.user_id} subscribed to job {job_id}")
+            logger.info(f"User user_hash={self._log_user_hash()} subscribed to job {job_id}")
         
         return True
     
@@ -123,7 +221,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
         Args:
             job_id: UUID string of the job listing
         """
-        group_name = f"analysis_{job_id}_{self.user_id}"
+        group_name = f"analysis_{job_id}"
 
         if hasattr(self, 'subscribed_groups') and group_name in self.subscribed_groups:
             await self.channel_layer.group_discard(
@@ -131,7 +229,7 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
             self.subscribed_groups.discard(group_name)
-            logger.info(f"User {self.user_id} unsubscribed from job {job_id}")
+            logger.info(f"User user_hash={self._log_user_hash()} unsubscribed from job {job_id}")
     
     async def receive(self, text_data):
         """
@@ -160,8 +258,16 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
                             }
                         }))
 
-        except json.JSONDecodeError:
-            logger.error(f"Invalid JSON received: {text_data}")
+        except json.JSONDecodeError as err:
+            # Never log the raw frame — it's attacker-controlled and may
+            # contain control characters (log injection), PII, or large
+            # payloads. We log a bounded, control-char-escaped snippet
+            # plus the parser's own error context so operators can still
+            # diagnose malformed-JSON issues.
+            logger.error(
+                f"Invalid JSON received: {_sanitize_payload_for_log(text_data)} "
+                f"(error={err.msg}, pos={err.pos})"
+            )
         except Exception as e:
             logger.error(f"Error processing message: {e}")
     
@@ -185,7 +291,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_progress',
+            'data': data,
+        }))
     
     async def analysis_completed(self, event):
         """
@@ -205,7 +315,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_completed',
+            'data': data,
+        }))
     
     async def analysis_cancelled(self, event):
         """
@@ -224,7 +338,11 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_cancelled',
+            'data': data,
+        }))
     
     async def analysis_failed(self, event):
         """
@@ -244,150 +362,8 @@ class AnalysisNotificationConsumer(AsyncWebsocketConsumer):
             }
         }
         """
-        await self.send(text_data=json.dumps(event))
-    
-    # Class methods for server-initiated notifications
-    
-    @classmethod
-    def notify_progress(cls, job_id, user_id, data):
-        """
-        Send progress update notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with progress data (progress_percentage, processed_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping progress notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_progress',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'processing',
-                        **data
-                    }
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to send progress notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_completed(cls, job_id, user_id, data):
-        """
-        Send completion notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with completion data (analyzed_count, unprocessed_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping completion notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_completed',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'completed',
-                        **data
-                    }
-                }
-            )
-            logger.info(f"Sent completion notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send completion notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_cancelled(cls, job_id, user_id, data):
-        """
-        Send cancellation notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            data: Dict with cancellation data (processed_count, preserved_count, etc.)
-        """
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping cancellation notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_cancelled',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'cancelled',
-                        **data
-                    }
-                }
-            )
-            logger.info(f"Sent cancellation notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send cancellation notification to {group_name}: {e}")
-    
-    @classmethod
-    def notify_failed(cls, job_id, user_id, error_code, error_message, processed_count=0, total_count=0):
-        """
-        Send failure notification to a specific user for a job.
-        
-        Args:
-            job_id: UUID string of the job
-            user_id: User ID string
-            error_code: Machine-readable error code (e.g., 'TASK_TIMEOUT')
-            error_message: Human-readable error description
-            processed_count: Number of applicants processed before failure
-            total_count: Total applicants to process
-        """
-        from datetime import datetime, timezone
-        
-        channel_layer = get_channel_layer()
-        
-        if channel_layer is None:
-            logger.warning("Channel layer not available, skipping failure notification")
-            return
-        
-        group_name = f"analysis_{job_id}_{user_id}"
-        
-        try:
-            async_to_sync(channel_layer.group_send)(
-                group_name,
-                {
-                    'type': 'analysis_failed',
-                    'data': {
-                        'job_id': job_id,
-                        'status': 'failed',
-                        'error_code': error_code,
-                        'error_message': error_message,
-                        'processed_count': processed_count,
-                        'total_count': total_count,
-                        'timestamp': datetime.now(timezone.utc).isoformat()
-                    }
-                }
-            )
-            logger.info(f"Sent failure notification to {group_name}")
-        except Exception as e:
-            logger.error(f"Failed to send failure notification to {group_name}: {e}")
+        data = _client_data_from_channel_event(event)
+        await self.send(text_data=json.dumps({
+            'type': 'analysis_failed',
+            'data': data,
+        }))

@@ -6,7 +6,7 @@ in the Resume Parsing Service.
 """
 
 from django.test import SimpleTestCase
-from services.resume_parsing_service import ConfidentialInfoFilter
+from apps.applications.services.resume_parser import ConfidentialInfoFilter
 
 
 class TestConfidentialInfoFilterPhoneTests(SimpleTestCase):

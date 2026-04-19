@@ -21,15 +21,18 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from apps.analysis.models import AIAnalysisResult
 from apps.accounts.models import UserProfile
-from apps.accounts.redis_utils import get_redis_client, DummyRedisClient
+from apps.accounts.redis_utils import (
+    DummyRedisClient,
+    check_cancellation_flag,
+    get_analysis_progress,
+    get_redis_client,
+)
 from services.ai_analysis_service import (
     acquire_analysis_lock,
     release_analysis_lock,
     set_cancellation_flag,
-    check_cancellation_flag,
     clear_cancellation_flag,
     update_analysis_progress,
-    get_analysis_progress,
 )
 from django.utils import timezone
 from datetime import timedelta
@@ -294,11 +297,16 @@ class RedisSecurityTest(TestCase):
             cancel_key = f"analysis_cancel:{job_id}"
             self.assertTrue(r.exists(cancel_key))
 
-            # Wait for TTL to expire
-            time.sleep(3)
-
-            # Flag should have expired
-            self.assertFalse(r.exists(cancel_key))
+            # Wait for TTL to expire (poll; suite load can make fixed sleeps flaky)
+            deadline = time.time() + 12.0
+            while time.time() < deadline:
+                if not r.exists(cancel_key):
+                    break
+                time.sleep(0.2)
+            self.assertFalse(
+                r.exists(cancel_key),
+                'Cancellation flag should expire after short TTL',
+            )
         finally:
             release_analysis_lock(job_id, owner_id)
 

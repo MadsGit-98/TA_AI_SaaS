@@ -31,7 +31,6 @@ from apps.analysis.api import (
     AnalysisThrottle,
     AnalysisResultDetailThrottle,
     initiate_analysis,
-    analysis_status,
     analysis_results,
     analysis_result_detail,
     cancel_analysis,
@@ -192,7 +191,7 @@ class AnalysisThrottleIntegrationTest(TestCase):
 
     def test_throttle_separate_limits_per_ip(self):
         """Test that different IPs have separate throttle cache keys."""
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
         factory = APIRequestFactory()
 
         # Create request from IP 1
@@ -220,7 +219,6 @@ class AnalysisThrottleIntegrationTest(TestCase):
         # List of endpoint functions that should have throttle
         endpoints = {
             'initiate_analysis': initiate_analysis,
-            'analysis_status': analysis_status,
             'analysis_results': analysis_results,
             'analysis_result_detail': analysis_result_detail,
             'cancel_analysis': cancel_analysis,
@@ -243,7 +241,6 @@ class AnalysisThrottleIntegrationTest(TestCase):
         unauthenticated_client = Client()
 
         endpoints = [
-            f'/api/analysis/jobs/{self.job.id}/analysis/status/',
             f'/api/analysis/jobs/{self.job.id}/analysis/results/',
             f'/api/analysis/results/{self.analysis_result.id}/',
         ]
@@ -261,7 +258,6 @@ class AnalysisThrottleIntegrationTest(TestCase):
             self.fail("Login failed")
 
         endpoints = [
-            (f'/api/analysis/jobs/{self.job.id}/analysis/status/', 'get'),
             (f'/api/analysis/jobs/{self.job.id}/analysis/results/', 'get'),
             (f'/api/analysis/results/{self.analysis_result.id}/', 'get'),
         ]
@@ -291,23 +287,13 @@ class AnalysisThrottleIntegrationTest(TestCase):
         analysis_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
         self.assertIn('/', analysis_rate)
 
-        # Check that 'analysis_status' rate is configured for polling
-        self.assertIn('analysis_status', settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'])
-        status_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
-        self.assertIn('/', status_rate)
-
         # Check that 'analysis_result_detail' rate is configured with higher limit
         self.assertIn('analysis_result_detail', settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'])
         detail_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_result_detail']
         self.assertIn('/', detail_rate)
 
-        # Verify status rate is higher than general analysis rate (for polling)
-        status_count = int(status_rate.split('/')[0])
-        analysis_count = int(analysis_rate.split('/')[0])
-        self.assertGreater(status_count, analysis_count,
-                          "analysis_status throttle limit should be higher than analysis limit")
-
         # Verify detail rate is higher than general analysis rate
+        analysis_count = int(analysis_rate.split('/')[0])
         detail_count = int(detail_rate.split('/')[0])
         self.assertGreater(detail_count, analysis_count,
                           "analysis_result_detail throttle limit should be higher than analysis limit")
@@ -331,89 +317,13 @@ class AnalysisThrottleIntegrationTest(TestCase):
         # Same IP should produce same cache key
         self.assertEqual(cache_key1, cache_key2)
 
-    def test_throttle_returns_429_when_limit_exceeded(self):
-        """Test that API returns 429 Too Many Requests when throttle limit is exceeded."""
-        # Login first (uses separate IP to not affect analysis throttle)
-        if not self._login():
-            self.fail("Login failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-
-        # Get the configured throttle rate for status endpoint (e.g., '600/hour')
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
-        rate_count = int(throttle_rate.split('/')[0])
-
-        # Make requests up to the limit (all from same IP 127.0.0.1)
-        # The login used a different IP, so it doesn't count towards this limit
-        for i in range(rate_count):
-            response = self.client.get(url)
-            # Should not be throttled yet (requests 1 to rate_count)
-            self.assertNotEqual(response.status_code, 429, f"Request {i+1} should not be throttled")
-
-        # Next request (rate_count + 1) should be throttled
-        throttled_response = self.client.get(url)
-        self.assertEqual(throttled_response.status_code, 429, "Request should be throttled after limit exceeded")
-
-    def test_throttle_429_response_format(self):
-        """Test that 429 response contains proper error message."""
-        # Login first (uses separate IP to not affect analysis throttle)
-        if not self._login():
-            self.fail("Login failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-
-        # Get the configured throttle rate for status endpoint
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
-        rate_count = int(throttle_rate.split('/')[0])
-
-        # Exhaust the throttle limit (all from same IP)
-        for i in range(rate_count):
-            self.client.get(url)
-
-        # Make one more request to trigger throttle
-        response = self.client.get(url)
-
-        # Verify 429 status code
-        self.assertEqual(response.status_code, 429)
-
-        # Verify response contains error message
-        response_data = response.json()
-        self.assertIn('detail', response_data)
-        self.assertIn('Request was throttled', response_data['detail'])
-
-    def test_throttle_separate_limits_per_ip_integration(self):
-        """Test that different IPs have separate throttle limits (integration test)."""
-        # Login first (uses separate IP to not affect analysis throttle)
-        if not self._login():
-            self.fail("Login failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-
-        # Get the configured throttle rate for status endpoint
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis_status']
-        rate_count = int(throttle_rate.split('/')[0])
-
-        # Make requests from IP 1 up to the limit
-        for i in range(rate_count):
-            response = self.client.get(url, HTTP_X_FORWARDED_FOR='192.168.1.1')
-            # Should not be throttled yet
-            self.assertNotEqual(response.status_code, 429, f"IP1 Request {i+1} should not be throttled")
-
-        # IP 1 should now be throttled (one more request to exceed)
-        response_ip1 = self.client.get(url, HTTP_X_FORWARDED_FOR='192.168.1.1')
-        self.assertEqual(response_ip1.status_code, 429, "IP1 should be throttled after limit exceeded")
-
-        # IP 2 should still be able to make requests (separate limit)
-        response_ip2 = self.client.get(url, HTTP_X_FORWARDED_FOR='192.168.1.2')
-        self.assertNotEqual(response_ip2.status_code, 429, "IP2 should not be throttled (separate limit)")
-
     def test_throttle_cache_key_manual_verification(self):
         """Test throttle cache key by manually checking cache state."""
         # Login first
         if not self._login():
             self.fail("Login failed")
 
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/results/'
 
         # Make a request
         response = self.client.get(url)
@@ -428,23 +338,3 @@ class AnalysisThrottleIntegrationTest(TestCase):
 
         # Verify cache key format
         self.assertIn('analysis_scope:', cache_key)
-
-    def test_throttle_allows_requests_under_limit(self):
-        """Test that requests under the limit are successful."""
-        # Login first (uses separate IP to not affect analysis throttle)
-        if not self._login():
-            self.fail("Login failed")
-
-        url = f'/api/analysis/jobs/{self.job.id}/analysis/status/'
-
-        # Get the configured throttle rate
-        throttle_rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['analysis']
-        rate_count = int(throttle_rate.split('/')[0])
-
-        # Make a few requests (well under the limit)
-        # Login uses separate IP, so we can make (rate_count - 1) requests
-        requests_to_make = max(1, rate_count - 1)
-        for i in range(requests_to_make):
-            response = self.client.get(url)
-            # Should not be throttled
-            self.assertNotEqual(response.status_code, 429, f"Request {i+1} should not be throttled")

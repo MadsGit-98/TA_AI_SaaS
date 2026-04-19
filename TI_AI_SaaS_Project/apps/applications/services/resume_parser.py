@@ -1,7 +1,8 @@
 """
-Resume Parsing Service
+Resume Parser
 
-Per Constitution §4: Decoupled services located in project root services/ directory.
+Moved from services/resume_parsing_service.py as part of Feature 013
+(Service Layer Separation). Non-AI service moved to application layer.
 
 This service handles:
 1. PDF text extraction using PyPDF2
@@ -309,14 +310,19 @@ class ResumeParserService:
         """
         Generate a placeholder email from filename when extraction fails.
 
+        Includes a short UUID suffix to prevent collisions between
+        filenames that sanitize to the same base (e.g., "John Doe.pdf" vs "John_Doe.pdf").
+
         Args:
             filename: Resume filename
 
         Returns:
             Placeholder email address
         """
+        suffix = uuid.uuid4().hex[:8]
+
         if not filename:
-            return f"unknown_{uuid.uuid4().hex[:8]}@placeholder.local"
+            return f"unknown_{suffix}@placeholder.local"
 
         # Extract base name without extension
         base_name = os.path.splitext(filename)[0]
@@ -324,7 +330,7 @@ class ResumeParserService:
         # Sanitize: replace non-alphanumeric with underscores
         safe_filename = re.sub(r'[^a-zA-Z0-9]', '_', base_name).lower()
 
-        return f"{safe_filename}@placeholder.local"
+        return f"{safe_filename}_{suffix}@placeholder.local"
 
 
 class ConfidentialInfoFilter:

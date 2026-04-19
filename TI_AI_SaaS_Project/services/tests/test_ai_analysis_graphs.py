@@ -16,6 +16,7 @@ from services.ai_analysis_graphs.supervisor import (
 from services.ai_analysis_graphs.worker import create_worker_graph
 from services.ai_analysis_graphs.defaults import (
     DefaultCancellationChecker,
+    DefaultLLMProvider,
     StubResultRepository,
     DefaultNotificationService,
     DefaultProgressTracker,
@@ -32,12 +33,14 @@ class SupervisorGraphServiceTest(TestCase):
         notification_service = DefaultNotificationService()
         progress_tracker = DefaultProgressTracker()
         cancellation_checker = DefaultCancellationChecker()
+        llm_provider = DefaultLLMProvider()
 
         graph = create_supervisor_graph(
             result_repo=result_repo,
             notification_service=notification_service,
             progress_tracker=progress_tracker,
             cancellation_checker=cancellation_checker,
+            llm_provider=llm_provider,
         )
 
         self.assertIsNotNone(graph)
@@ -143,8 +146,12 @@ class WorkerGraphServiceTest(TestCase):
     def test_create_worker_graph_with_interfaces(self):
         """Test that worker graph can be created with interface implementations."""
         cancellation_checker = DefaultCancellationChecker()
-        
-        graph = create_worker_graph(cancellation_checker=cancellation_checker)
+        llm_provider = DefaultLLMProvider()
+
+        graph = create_worker_graph(
+            cancellation_checker=cancellation_checker,
+            llm_provider=llm_provider,
+        )
 
         self.assertIsNotNone(graph)
         self.assertIn('retrieval', graph.nodes)

@@ -48,7 +48,13 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-!pb3r7=&&dk(awxk2jmv#$kf
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=True)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+ALLOWED_HOSTS = env.list(
+    'ALLOWED_HOSTS',
+    default=['localhost', '127.0.0.1', '[::1]'],
+)
+# In development, accept any Host (LAN IPs, etc.) unless '*' is explicitly omitted from env.
+if DEBUG and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, '*']
 
 
 # Application definition
@@ -104,6 +110,15 @@ CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Same-origin browser posts when using a LAN IP (e.g. http://192.168.x.x:8000/) require a trusted Origin.
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS',
+    default=[
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ],
+)
+
 # Specify which headers can be used during the actual request
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -150,7 +165,6 @@ REST_FRAMEWORK = {
         'application_validation': '30/hour',  # 30 validation requests per hour per IP
         # AI Analysis throttles
         'analysis': '10/hour',  # 10 analysis requests per hour per IP
-        'analysis_status': '600/hour',  # 600 status checks per hour (10/min for polling during analysis)
         'analysis_result_detail': '100/hour',  # 100 result detail views per hour per IP (higher limit for reviewing applicants)
     },
     'NUM_PROXIES': 1,  # Number of trusted proxies in the infrastructure
@@ -285,9 +299,12 @@ STATICFILES_DIRS = [
     BASE_DIR / 'apps' / 'jobs' / 'static',
 ]
 
+# Shared Redis URL (Celery, Channels, apps.accounts.redis_utils, AI analysis progress).
+REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
+
 # Celery Configuration
-CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -309,7 +326,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [env('REDIS_URL', default='redis://localhost:6379/0')],
+            'hosts': [REDIS_URL],
         },
     },
 }
@@ -508,3 +525,47 @@ LOGGING = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ==========================================
+# AI Service Layer Configuration (Feature 013)
+# ==========================================
+# AI Service base URL for HTTP client communication
+AI_SERVICE_BASE_URL = env('AI_SERVICE_BASE_URL', default='http://localhost:9000/api/v1')
+
+# AI Service API key for authentication.
+#
+# In DEBUG mode we fall back to the dev key also used as the default in
+# services/.env.example (``dev-key-change-me``) so ``python manage.py
+# test`` works out-of-box against a locally-started service without
+# requiring two matching env vars to be set by hand. Production must
+# override via the ``AI_SERVICE_API_KEY`` environment variable; this
+# value never matches a key that would be configured on a real service.
+_AI_SERVICE_API_KEY_DEV_DEFAULT = 'dev-key-change-me' if DEBUG else ''
+AI_SERVICE_API_KEY = env(
+    'AI_SERVICE_API_KEY',
+    default=_AI_SERVICE_API_KEY_DEV_DEFAULT,
+)
+
+# HMAC secret for signed webhooks FROM the AI service TO Django
+# (``apps.analysis.webhook.analysis_webhook``). Must match ``WEBHOOK_SECRET``
+# in the standalone service process (``services`` / ``TI_AI_SaaS_Project/services``).
+_AI_SERVICE_WEBHOOK_SECRET_DEV_DEFAULT = (
+    'shared-webhook-secret-change-me' if DEBUG else ''
+)
+AI_SERVICE_WEBHOOK_SECRET = env(
+    'AI_SERVICE_WEBHOOK_SECRET',
+    default=_AI_SERVICE_WEBHOOK_SECRET_DEV_DEFAULT,
+)
+
+# Max skew (seconds) for X-Webhook-Timestamp on signed webhooks (replay protection)
+AI_SERVICE_WEBHOOK_TOLERANCE_SECONDS = env.int(
+    'AI_SERVICE_WEBHOOK_TOLERANCE_SECONDS',
+    default=300,
+)
+
+# AI Service request timeout (seconds)
+AI_SERVICE_TIMEOUT = env.int('AI_SERVICE_TIMEOUT', default=30)
+
+# AI Service circuit breaker configuration
+AI_SERVICE_CIRCUIT_BREAKER_FAILURE_THRESHOLD = env.int('AI_SERVICE_CIRCUIT_BREAKER_FAILURE_THRESHOLD', default=5)
+AI_SERVICE_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = env.int('AI_SERVICE_CIRCUIT_BREAKER_RECOVERY_TIMEOUT', default=30)

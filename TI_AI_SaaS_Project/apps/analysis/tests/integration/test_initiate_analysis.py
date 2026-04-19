@@ -111,17 +111,20 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
-        # Allow background thread to start without holding DB lock
+        # Allow background worker to start without holding DB lock
         time.sleep(0.1)
 
-        # Should return 202 Accepted (or 200 if celery is not configured)
-        # The key is that it should succeed, not fail with validation error
-        self.assertIn(response.status_code, [200, 202])
+        # The Django view returns 202 Accepted after successfully dispatching
+        # the analysis to the AI service's background worker pool.
+        self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['job_id'], str(self.job.id))
         self.assertEqual(response.data['data']['applicant_count'], 3)
         self.assertIn('task_id', response.data['data'])
-        self.assertIn('estimated_duration_seconds', response.data['data'])
+        self.assertEqual(
+            response.data['data']['estimated_duration_seconds'],
+            3 * 6,  # 6 seconds per applicant * 3 applicants
+        )
 
         # Verify that task_id (analysis_run_id) is a valid UUID
         task_id = response.data['data']['task_id']
@@ -131,16 +134,6 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         except ValueError:
             valid_uuid = False
         self.assertTrue(valid_uuid, "task_id should be a valid UUID")
-
-        # Verify the analysis_run_id is persisted by checking status endpoint
-        # The task_id can be used to track the analysis via the status endpoint
-        status_url = f'/api/analysis/jobs/{self.job.id}/analysis/status/?analysis_run_id={task_id}'
-        status_response = self.client.get(status_url, content_type='application/json')
-        # Status should succeed and return the same job_id
-        self.assertIn(status_response.status_code, [200, 404])  # 404 is ok if analysis completes quickly
-        if status_response.status_code == 200:
-            self.assertTrue(status_response.data['success'])
-            self.assertEqual(status_response.data['data']['job_id'], str(self.job.id))
 
     def test_initiate_analysis_no_applicants(self):
         """Test analysis initiation fails when job has no applicants."""
@@ -248,12 +241,20 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
-        # Allow background thread to start without holding DB lock
+        # Allow background worker to start without holding DB lock
         time.sleep(0.1)
 
-        # Staff should be able to initiate analysis
-        self.assertIn(response.status_code, [200, 202])
+        # Staff users take the same success path as job owners, so the
+        # expected status is 202 Accepted.
+        self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['job_id'], str(self.job.id))
+        self.assertEqual(response.data['data']['applicant_count'], 1)
+        self.assertIn('task_id', response.data['data'])
+        self.assertEqual(
+            response.data['data']['estimated_duration_seconds'],
+            1 * 6,
+        )
 
     def test_initiate_analysis_active_job(self):
         """Test analysis can be initiated on active job (not expired/deactivated)."""
@@ -285,13 +286,19 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         url = f'/api/analysis/jobs/{active_job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
-        # Allow background thread to start without holding DB lock
+        # Allow background worker to start without holding DB lock
         time.sleep(0.1)
 
-        # Should succeed - expiration/deactivation is not required
-        self.assertIn(response.status_code, [200, 202])
+        # Analysis on active (non-expired) jobs must also return 202 Accepted;
+        # expiration and deactivation only gate new applications, not analysis.
+        self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['job_id'], str(active_job.id))
         self.assertEqual(response.data['data']['applicant_count'], 1)
+        self.assertEqual(
+            response.data['data']['estimated_duration_seconds'],
+            1 * 6,
+        )
 
     def test_initiate_analysis_multiple_applicants(self):
         """Test analysis initiation with multiple applicants calculates correct duration."""
@@ -311,11 +318,12 @@ class InitiateAnalysisAPIIntegrationTest(TransactionTestCase):
         url = f'/api/analysis/jobs/{self.job.id}/analysis/initiate/'
         response = self.client.post(url, content_type='application/json')
 
-        # Allow background thread to start without holding DB lock
+        # Allow background worker to start without holding DB lock
         time.sleep(0.1)
 
-        self.assertIn(response.status_code, [200, 202])
+        # Definitive: the endpoint must answer 202 Accepted with the full
+        # success payload shape; 10 applicants * 6s = 60s estimated duration.
+        self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['applicant_count'], 10)
-        # Estimated duration: 6 seconds per applicant = 60 seconds for 10 applicants
         self.assertEqual(response.data['data']['estimated_duration_seconds'], 60)

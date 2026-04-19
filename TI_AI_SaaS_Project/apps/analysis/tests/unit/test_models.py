@@ -18,7 +18,7 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from django.utils import timezone
 from datetime import timedelta
-from services.ai_analysis_service import assign_category
+from apps.analysis.scoring import assign_category
 from django.contrib.auth import get_user_model
 
 
@@ -104,6 +104,28 @@ class AIAnalysisResultModelTest(TestCase):
             result.full_clean()
 
         self.assertIn('overall_score', context.exception.error_dict)
+
+    def test_unprocessed_status_requires_unprocessed_category(self):
+        """Unprocessed status must use CATEGORY_UNPROCESSED (matches DB CheckConstraint)."""
+        missing_category = AIAnalysisResult(
+            applicant=self.applicant,
+            job_listing=self.job,
+            status=AIAnalysisResult.STATUS_UNPROCESSED,
+            category=None,
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            missing_category.full_clean()
+        self.assertIn('category', ctx.exception.error_dict)
+
+        wrong_category = AIAnalysisResult(
+            applicant=self.applicant,
+            job_listing=self.job,
+            status=AIAnalysisResult.STATUS_UNPROCESSED,
+            category=AIAnalysisResult.CATEGORY_BEST_MATCH,
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            wrong_category.full_clean()
+        self.assertIn('category', ctx.exception.error_dict)
 
     def test_auto_calculation_on_save(self):
         """Test that overall_score and category are auto-calculated on save."""

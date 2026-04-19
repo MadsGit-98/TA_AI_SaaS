@@ -238,9 +238,12 @@
             })
             .then(function(data) {
                 if (data.success) {
-                    // Stop progress tracking
-                    stopProgressTracking(jobId);
-
+                    // Progress tracking is owned by the WebSocket consumer
+                    // (see analysis-websocket.js / reporting_progress.js); the
+                    // page reload below tears down this page's listeners, and
+                    // the reloaded page re-subscribes based on the job's new
+                    // ``analysis_status``. No explicit stop call is needed.
+                    //
                     // Wait a moment to ensure cancellation flag is set in Redis
                     // Then reload to get fresh data from server
                     setTimeout(() => {
@@ -334,100 +337,6 @@
     window.confirmRerunAnalysis = confirmRerunAnalysis;
     window.initiateAnalysis = initiateAnalysis;
     window.cancelAnalysis = cancelAnalysis;
-
-    // =============================================================================
-    // DEPRECATED: Progress Tracking Functions - Use analysis-websocket.js instead
-    // =============================================================================
-
-    // Track jobs currently being analyzed (jobId -> intervalId mapping)
-    const analyzingJobs = new Map();
-
-    /**
-     * Check analysis status for a job
-     * @deprecated Use analysis-websocket.js instead
-     */
-    async function checkAnalysisStatus(jobId) {
-        console.warn('DEPRECATED: checkAnalysisStatus() is deprecated. Use analysis-websocket.js instead.');
-        try {
-            const response = await fetch(`/api/analysis/jobs/${jobId}/analysis/status/`, {
-                method: 'GET',
-                headers: {
-                    'X-CSRFToken': getCsrfToken(),
-                },
-                credentials: 'include'
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    return data.data;
-                }
-            }
-            return null;
-        } catch (error) {
-            console.error('Error checking analysis status:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Start progress tracking for a job analysis
-     * @deprecated Use analysis-websocket.js instead
-     */
-    function startProgressTracking(jobId) {
-        console.warn('DEPRECATED: startProgressTracking() is deprecated. Use analysis-websocket.js instead.');
-        // WebSocket handles progress tracking automatically
-        console.log('WebSocket will handle progress tracking automatically');
-    }
-
-    /**
-     * Stop progress tracking for a job
-     * @deprecated Use analysis-websocket.js instead
-     */
-    function stopProgressTracking(jobId) {
-        console.warn('DEPRECATED: stopProgressTracking() is deprecated. Use analysis-websocket.js instead.');
-        const intervalId = analyzingJobs.get(jobId);
-        if (intervalId) {
-            clearInterval(intervalId);
-            analyzingJobs.delete(jobId);
-            console.log('Stopped progress tracking for job', jobId);
-        }
-    }
-
-    /**
-     * Update the progress tag UI for a specific job
-     * @deprecated Use analysis-websocket.js instead
-     */
-    function updateJobProgress(jobId, percentage) {
-        console.warn('DEPRECATED: updateJobProgress() is deprecated. Use analysis-websocket.js instead.');
-        // Find all progress tags and update the one for this job
-        const progressTags = document.querySelectorAll('[data-progress-type="in-progress"]');
-        progressTags.forEach(tag => {
-            if (tag.getAttribute('data-job-id') === jobId) {
-                // Update the percentage text
-                const textSpan = tag.querySelector('.text-gray-900');
-                if (textSpan) {
-                    textSpan.textContent = 'Analyzing... ' + percentage + '%';
-                }
-                console.log('Updated progress for job', jobId, 'to', percentage + '%');
-            }
-        });
-    }
-
-    /**
-     * Initialize progress tracking for jobs that are already in progress
-     * @deprecated Use analysis-websocket.js instead
-     */
-    function initProgressTracking() {
-        console.warn('DEPRECATED: initProgressTracking() is deprecated. Use analysis-websocket.js instead.');
-        // WebSocket handles progress tracking automatically on page load
-        console.log('WebSocket will handle progress tracking automatically');
-    }
-
-    // Expose progress tracking functions globally (deprecated)
-    window.startProgressTracking = startProgressTracking;
-    window.stopProgressTracking = stopProgressTracking;
-    window.initProgressTracking = initProgressTracking;
 
     // Note: No auto-initialization needed here
     // WebSocket auto-initializes in analysis-websocket.js when page loads

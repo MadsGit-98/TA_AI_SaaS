@@ -30,6 +30,8 @@ import json
 import uuid
 import time
 
+from apps.core.ai_service_client import AIServiceError
+
 User = get_user_model()
 
 
@@ -96,8 +98,33 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         """Clean up cache after each test."""
         cache.clear()
 
+    def _create_applicants(self, count=1):
+        """Create ``count`` applicants on ``self.job``.
+
+        Rerun now dispatches real work through the service's background
+        worker pool, which requires at least one applicant — same
+        contract as initiate. Tests that previously relied on the
+        service's legacy "signal-only" rerun (no applicants needed)
+        use this helper to seed realistic test data.
+        """
+        applicants = []
+        for i in range(count):
+            applicants.append(Applicant.objects.create(
+                job_listing=self.job,
+                first_name=f'Applicant{i}',
+                last_name=f'Test{i}',
+                email=f'applicant{i}@example.com',
+                phone=f'+1-555-10{i:02d}',
+                resume_file=f'test{i}.pdf',
+                resume_file_hash=f'hash{i}',
+                resume_parsed_text='Test resume text',
+            ))
+        return applicants
+
     def test_rerun_analysis_success(self):
         """Test successful analysis re-run with confirmation."""
+        self._create_applicants(1)
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
@@ -111,6 +138,7 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         self.assertIn('task_id', response.data['data'])
         self.assertIn('previous_results_deleted', response.data['data'])
         self.assertIn('applicant_count', response.data['data'])
+        self.assertEqual(response.data['data']['applicant_count'], 1)
 
     def test_rerun_analysis_confirmation_required(self):
         """Test re-run fails without confirmation."""
@@ -176,8 +204,57 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         # Verify results were deleted
         self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 0)
 
+    def test_rerun_analysis_service_error_preserves_existing_results(self):
+        """If the service rejects the rerun, local ``AIAnalysisResult`` rows must remain."""
+        for i in range(3):
+            applicant = Applicant.objects.create(
+                job_listing=self.job,
+                first_name=f'Applicant{i}',
+                last_name=f'Test{i}',
+                email=f'preserve{i}@example.com',
+                phone=f'+1-555-20{i}',
+                resume_file=f'pres{i}.pdf',
+                resume_file_hash=f'phash{i}',
+                resume_parsed_text='Test resume text',
+            )
+            AIAnalysisResult.objects.create(
+                applicant=applicant,
+                job_listing=self.job,
+                education_score=80,
+                skills_score=85,
+                experience_score=75,
+                supplemental_score=70,
+                overall_score=80,
+                category='Good Match',
+                status='Analyzed',
+                education_justification='Test',
+                skills_justification='Test',
+                experience_justification='Test',
+                overall_justification='Test',
+            )
+
+        self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 3)
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
+
+        with patch(
+            'apps.analysis.api.AIServiceClient.rerun_analysis',
+            side_effect=AIServiceError(
+                'Analysis already running',
+                code='duplicate_analysis',
+            ),
+        ):
+            response = self.client.post(
+                url, data=json.dumps({'confirm': True}), content_type='application/json'
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 3)
+
     def test_rerun_analysis_no_existing_results(self):
         """Test re-run works without existing results."""
+        self._create_applicants(1)
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
@@ -261,6 +338,8 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         )
         self.assertEqual(login_response.status_code, 200)
 
+        self._create_applicants(1)
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 
@@ -272,37 +351,46 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         self.assertTrue(response.data['success'])
 
     def test_rerun_analysis_multiple_times(self):
-        """Test that multiple re-run requests are handled."""
-        # Create an applicant so analysis actually runs and holds the lock
-        applicant = Applicant.objects.create(
-            job_listing=self.job,
-            first_name='Applicant1',
-            last_name='Test1',
-            email='app1@example.com',
-            phone='+1-555-001',
-            resume_file='test1.pdf',
-            resume_file_hash='hash1',
-            resume_parsed_text='Test resume text for multiple rerun test'
-        )
+        """Test that a second rerun while one is in-flight is rejected.
+
+        The service's background worker releases the Redis lock in its
+        ``finally`` block, which can fire in <50ms when the dev stack's
+        LLM path fast-fails — well before the second HTTP call arrives.
+        That makes a live 409 race inherently non-deterministic in
+        integration tests. We therefore exercise the Django view's
+        ``duplicate_analysis`` error mapping directly by mocking the
+        second client call to raise ``AIServiceError('duplicate_analysis')``,
+        which is exactly what the service emits in production when the
+        lock is still held.
+        """
+        self._create_applicants(1)
 
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
 
-        # First re-run
+        # First re-run hits the real service path and succeeds.
         response1 = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
-        # Allow background thread to start and acquire lock
-        time.sleep(0.2)
+        time.sleep(0.1)
         self.assertEqual(response1.status_code, 202)
         self.assertTrue(response1.data['success'])
 
-        # Second re-run while first is still running (should return 409 Conflict)
-        # This is expected behavior because the analysis lock is still active
-        response2 = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+        # Second re-run — simulate the service seeing an active lock.
+        with patch(
+            'apps.analysis.api.AIServiceClient.rerun_analysis',
+            side_effect=AIServiceError(
+                'Analysis already running',
+                code='duplicate_analysis',
+            ),
+        ):
+            response2 = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
+
         self.assertEqual(response2.status_code, 409)
         self.assertFalse(response2.data['success'])
         self.assertEqual(response2.data['error']['code'], 'ANALYSIS_ALREADY_RUNNING')
 
     def test_rerun_analysis_response_structure(self):
         """Test that response has correct structure."""
+        self._create_applicants(1)
+
         url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
         response = self.client.post(url, data=json.dumps({'confirm': True}), content_type='application/json')
 

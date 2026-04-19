@@ -1,8 +1,8 @@
 /**
  * WebSocket Client for AI Analysis Status Updates
- * 
+ *
  * Provides real-time analysis progress monitoring via WebSocket connection
- * with automatic reconnection, fallback to polling, and cross-tab synchronization.
+ * with automatic reconnection and cross-tab synchronization.
  */
 
 (function() {
@@ -21,9 +21,7 @@
         this.baseDelay = 1000; // 1 second
         this.maxDelay = 30000; // 30 seconds
         this.reconnectTimer = null;
-        this.connectionState = 'disconnected'; // disconnected, connecting, connected, reconnecting, failed, fallback_mode
-        this.fallbackPollingInterval = null;
-        this.fallbackPollingDelay = 5000; // 5 seconds
+        this.connectionState = 'disconnected'; // disconnected, connecting, connected, reconnecting, failed
         this.callbacks = {
             onProgress: null,
             onCompleted: null,
@@ -93,7 +91,14 @@
         } catch (error) {
             console.error('Failed to create WebSocket:', error);
             this.setConnectionState('failed');
-            this.fallbackToPolling();
+            if (this.callbacks.onFailed) {
+                this.callbacks.onFailed({
+                    job_id: this.jobId,
+                    status: 'failed',
+                    error_code: 'WS_CONNECT_FAILED',
+                    error_message: 'WebSocket connection failed'
+                });
+            }
             return false;
         }
     };
@@ -209,7 +214,14 @@
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('Max reconnection attempts reached');
             this.setConnectionState('failed');
-            this.fallbackToPolling();
+            if (this.callbacks.onFailed) {
+                this.callbacks.onFailed({
+                    job_id: this.jobId,
+                    status: 'failed',
+                    error_code: 'WS_CONNECT_FAILED',
+                    error_message: 'WebSocket connection failed'
+                });
+            }
             return;
         }
         
@@ -228,119 +240,6 @@
         this.reconnectTimer = setTimeout(function() {
             self.connect(self.jobId);
         }, delay);
-    };
-
-    /**
-     * Fallback to HTTP polling if WebSocket fails
-     */
-    AnalysisWebSocket.prototype.fallbackToPolling = function() {
-        var self = this;
-
-        if (this.fallbackPollingInterval) {
-            return; // Already polling
-        }
-
-        this.setConnectionState('fallback_mode');
-        console.log('Falling back to HTTP polling');
-
-        // Start polling
-        this.fallbackPollingInterval = setInterval(function() {
-            if (self.jobId) {
-                self.pollAnalysisStatus(self.jobId);
-            }
-        }, this.fallbackPollingDelay);
-    };
-
-    /**
-     * Stop fallback polling
-     * Clears the polling interval and resets the state
-     */
-    AnalysisWebSocket.prototype.stopFallbackPolling = function() {
-        if (this.fallbackPollingInterval) {
-            clearInterval(this.fallbackPollingInterval);
-            this.fallbackPollingInterval = null;
-            console.log('Stopped fallback polling');
-        }
-    };
-
-    /**
-     * Poll analysis status via HTTP
-     * @param {string} jobId - Job ID to poll
-     */
-    AnalysisWebSocket.prototype.pollAnalysisStatus = function(jobId) {
-        var self = this;
-
-        fetch('/api/analysis/jobs/' + jobId + '/analysis/status/', {
-            method: 'GET',
-            credentials: 'include'
-        })
-        .then(function(response) {
-            if (response.ok) {
-                return response.json();
-            }
-            throw new Error('Network response was not ok');
-        })
-        .then(function(data) {
-            if (data.success) {
-                // Convert polling response to WebSocket message format
-                var status = data.data.status;
-
-                if (status === 'processing') {
-                    if (self.callbacks.onProgress) {
-                        self.callbacks.onProgress({
-                            job_id: jobId,
-                            status: 'processing',
-                            progress_percentage: data.data.progress_percentage,
-                            processed_count: data.data.processed_count,
-                            total_count: data.data.total_count
-                        });
-                    }
-                } else if (status === 'completed') {
-                    if (self.callbacks.onCompleted) {
-                        self.callbacks.onCompleted({
-                            job_id: jobId,
-                            status: 'completed',
-                            processed_count: data.data.processed_count,
-                            total_count: data.data.total_count,
-                            analyzed_count: data.data.results_summary ?
-                                (data.data.results_summary.analyzed_count || 0) : 0,
-                            unprocessed_count: data.data.results_summary ?
-                                (data.data.results_summary.unprocessed_count || 0) : 0
-                        });
-                    }
-                    // Stop polling for terminal state
-                    self.stopFallbackPolling();
-                } else if (status === 'cancelled') {
-                    if (self.callbacks.onCancelled) {
-                        self.callbacks.onCancelled({
-                            job_id: jobId,
-                            status: 'cancelled',
-                            processed_count: data.data.processed_count,
-                            total_count: data.data.total_count,
-                            preserved_count: data.data.processed_count
-                        });
-                    }
-                    // Stop polling for terminal state
-                    self.stopFallbackPolling();
-                } else if (status === 'failed') {
-                    if (self.callbacks.onFailed) {
-                        self.callbacks.onFailed({
-                            job_id: jobId,
-                            status: 'failed',
-                            error_code: data.data.error_code || 'UNKNOWN_ERROR',
-                            error_message: data.data.error || data.data.failure_reason || 'Analysis failed',
-                            processed_count: data.data.processed_count || 0,
-                            total_count: data.data.total_count || 0
-                        });
-                    }
-                    // Stop polling for terminal state
-                    self.stopFallbackPolling();
-                }
-            }
-        })
-        .catch(function(error) {
-            console.error('Polling error:', error);
-        });
     };
 
     /**
@@ -404,12 +303,7 @@
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        
-        if (this.fallbackPollingInterval) {
-            clearInterval(this.fallbackPollingInterval);
-            this.fallbackPollingInterval = null;
-        }
-        
+
         if (this.socket) {
             this.socket.close(1000, 'Client closed');
             this.socket = null;

@@ -48,7 +48,19 @@ class RBACMiddleware(MiddlewareMixin):
     """
     Role-Based Access Control middleware to enforce user permissions
     """
+    # Server-to-server routes: session/JWT skipped; HMAC enforced by
+    # apps.analysis.internal_service_auth on each handler under this prefix.
+    RBAC_EXEMPT_PATH_PREFIXES = (
+        '/api/analysis/internal/',
+    )
+
     def process_request(self, request):
+        if any(
+            request.path.startswith(prefix)
+            for prefix in self.RBAC_EXEMPT_PATH_PREFIXES
+        ):
+            return None
+
         # Define protected paths that require specific roles
         protected_paths = [
             '/api/analysis/',  # Dashboard and analysis endpoints

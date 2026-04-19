@@ -23,10 +23,55 @@ import math
 from datetime import datetime
 from typing import Any, Dict, Literal, List
 from langgraph.graph import StateGraph, END
+from services.ai_analysis_graphs.applicant_access import (
+    resolve_applicant_id,
+    resolve_resume_text,
+)
 from services.ai_analysis_graphs.interfaces import ICancellationChecker, ILLMProvider
 from services.ai_analysis_graphs.types import WorkerState
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_employment_dates(raw: Any) -> List[Dict[str, Any]]:
+    """LLM JSON may list strings or mixed types; downstream expects dicts with .get()."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        logger.warning(
+            '[LevelAssessment] employment_dates is not a list (type=%s); using empty list',
+            type(raw).__name__,
+        )
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for i, item in enumerate(raw):
+        if isinstance(item, dict):
+            out.append(item)
+            continue
+        if isinstance(item, str):
+            stripped = item.strip()
+            if stripped.startswith('{'):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, dict):
+                        out.append(parsed)
+                        continue
+                except json.JSONDecodeError:
+                    pass
+        logger.warning(
+            '[LevelAssessment] Skipping non-dict employment entry [%s] type=%s',
+            i,
+            type(item).__name__,
+        )
+    return out
+
+
+def _safe_get(obj, attr_name: str, default=None):
+    """Get attribute from model instance or key from dict."""
+    if isinstance(obj, dict):
+        return obj.get(attr_name, default)
+    return getattr(obj, attr_name, default)
 
 
 def create_worker_graph(
@@ -177,7 +222,7 @@ def retrieval_node(state: WorkerState) -> dict:
     # Defensive access with validation
     applicant = state.get('applicant')
     job_listing = state.get('job_listing')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[Retrieval] Starting for applicant {applicant_id}")
     logger.info(f"[Retrieval] State check - applicant: {'present' if applicant else 'MISSING'}, job_listing: {'present' if job_listing else 'MISSING'}")
@@ -196,8 +241,7 @@ def retrieval_node(state: WorkerState) -> dict:
             'error_message': 'Internal error: missing job listing data',
         }
 
-    # Get resume parsed text
-    resume_text = applicant.resume_parsed_text or ''
+    resume_text = resolve_resume_text(applicant, state.get('resume_text'))
     logger.info(f"[Retrieval] Resume text length: {len(resume_text)} chars for applicant {applicant_id}")
 
     if not resume_text:
@@ -208,11 +252,11 @@ def retrieval_node(state: WorkerState) -> dict:
         }
 
     job_requirements = {
-        'title': job_listing.title,
-        'description': job_listing.description,
-        'required_skills': job_listing.required_skills or [],
-        'required_experience': job_listing.required_experience or 0,
-        'job_level': job_listing.job_level,
+        'title': _safe_get(job_listing, 'title', 'Unknown'),
+        'description': _safe_get(job_listing, 'description', ''),
+        'required_skills': _safe_get(job_listing, 'required_skills', []) or [],
+        'required_experience': _safe_get(job_listing, 'required_experience', 0) or 0,
+        'job_level': _safe_get(job_listing, 'job_level', ''),
     }
     logger.info(f"[Retrieval] Job requirements extracted: title={job_requirements['title']}, skills={len(job_requirements['required_skills'])}")
     logger.info(f"[Retrieval] Returning state update with resume_text ({len(resume_text)} chars) and job_requirements (keys: {list(job_requirements.keys())})")
@@ -243,7 +287,7 @@ def classification_node(state: WorkerState, llm_provider: ILLMProvider) -> dict:
     """
     resume_text = state.get('resume_text', '')
     applicant = state.get('applicant')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[Classification] Starting for applicant {applicant_id}")
     logger.info(f"[Classification] State check - resume_text length: {len(resume_text) if resume_text else 0}")
@@ -730,7 +774,7 @@ def level_assessment_node(state: WorkerState, llm_provider: ILLMProvider = None)
     classified_data = state.get('classified_data', {})
     job_requirements = state.get('job_requirements', {})
     applicant = state.get('applicant')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[LevelAssessment] Starting for applicant {applicant_id}")
 
@@ -819,7 +863,9 @@ Output ONLY valid JSON in this exact format:
                 response_text = str(response)
 
             extracted_data = json.loads(response_text)
-            employment_dates = extracted_data.get('employment_dates', [])
+            employment_dates = _normalize_employment_dates(
+                extracted_data.get('employment_dates', []),
+            )
             logger.info(f"[LevelAssessment] Extracted {len(employment_dates)} employment dates for applicant {applicant_id}")
 
             # Log detailed extracted employment dates for verification
@@ -912,7 +958,7 @@ def elimination_node(state: WorkerState, llm_provider: ILLMProvider = None) -> d
     level_assessment = state.get('level_assessment', {})
     experience_level_match = state.get('experience_level_match', 'meets')
     applicant = state.get('applicant')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[Elimination] Starting relevance assessment for applicant {applicant_id}")
     logger.info(f"[Elimination] State check - classified_data keys: {list(classified_data.keys()) if classified_data else 'None'}")
@@ -1179,7 +1225,7 @@ def scoring_node(state: WorkerState, llm_provider: ILLMProvider = None) -> dict:
     experience_level_match = state.get('experience_level_match', 'meets')
     total_experience_years = state.get('total_experience_years', 0.0)
     applicant = state.get('applicant')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[Scoring] Starting for applicant {applicant_id}")
     logger.info(f"[Scoring] Relevance level: {relevance_level}, Experience level match: {experience_level_match}")
@@ -1428,7 +1474,7 @@ def justification_node(state: WorkerState, llm_provider: ILLMProvider = None) ->
     experience_level_match = state.get('experience_level_match', 'meets')
     total_experience_years = state.get('total_experience_years', 0.0)
     applicant = state.get('applicant')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     logger.info(f"[Justification] Starting for applicant {applicant_id}")
     logger.info(f"[Justification] Relevance level: {relevance_level}, Experience level match: {experience_level_match}")
@@ -1602,7 +1648,7 @@ def result_node(state: WorkerState) -> dict:
     """
     applicant = state.get('applicant')
     job_listing = state.get('job_listing')
-    applicant_id = getattr(applicant, 'id', 'unknown') if applicant else 'unknown'
+    applicant_id = resolve_applicant_id(applicant) or 'unknown'
 
     # Check if analysis was cancelled (set by edge functions)
     cancelled = state.get('cancelled', False)
