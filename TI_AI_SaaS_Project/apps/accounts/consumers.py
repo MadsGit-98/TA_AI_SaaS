@@ -8,6 +8,22 @@ from asgiref.sync import async_to_sync
 User = get_user_model()
 
 logger = logging.getLogger(__name__)
+
+
+class RejectEmptyPathWebSocketConsumer(AsyncWebsocketConsumer):
+    """
+    Handles upgrades to ws://host/ (empty path) so URLRouter does not raise.
+    Typical sources: browser extensions, probes, or misconfigured clients.
+    """
+
+    async def connect(self):
+        logger.debug(
+            'Closing WebSocket with empty path; client=%s',
+            self.scope.get('client'),
+        )
+        await self.close(code=1008)
+
+
 class TokenNotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Check if user is authenticated before accepting the connection

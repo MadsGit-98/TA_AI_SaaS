@@ -41,17 +41,28 @@ class RedisConnectionError(Exception):
 
 def get_redis_client():
     """
-    Lazy-initialize Redis client with retry/backoff.
-    Returns a real Redis client if connection succeeds, otherwise raises an exception.
+    Initialize Redis client with retry/backoff.
+
+    Each attempt builds a client from ``REDIS_URL`` and calls :meth:`~redis.Redis.ping`
+    so the connection is validated before returning (``from_url`` alone is lazy).
     """
     max_retries = 3
     base_delay = 0.5  # seconds
+    redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
 
     for attempt in range(max_retries):
         try:
-            return redis.from_url(getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0'))
+            client = redis.from_url(redis_url)
+            client.ping()
+            return client
         except Exception as e:
-            logger.error(f"Failed to connect to Redis (attempt {attempt + 1}/{max_retries}): {str(e)}")
+            logger.error(
+                'Failed to connect to Redis (attempt %s/%s): %s',
+                attempt + 1,
+                max_retries,
+                e,
+                exc_info=True,
+            )
             if attempt < max_retries - 1:  # Don't sleep on the last attempt
                 delay = base_delay * (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff with jitter
                 time.sleep(delay)
@@ -176,13 +187,15 @@ def persist_analysis_ui_from_webhook(event_type: str, payload: dict) -> None:
                 'updated_at': ts,
             }
         elif event_type == 'failed':
+            applicants_processed = payload.get('applicants_processed')
+            if applicants_processed is None:
+                applicants_processed = payload.get('processed_count', 0)
+            applicants_total = payload.get('applicants_total')
+            if applicants_total is None:
+                applicants_total = payload.get('total_count', 0)
             mapping = {
-                'processed_count': str(
-                    int(payload.get('applicants_processed', 0) or payload.get('processed_count', 0))
-                ),
-                'total_count': str(
-                    int(payload.get('applicants_total', 0) or payload.get('total_count', 0))
-                ),
+                'processed_count': str(int(applicants_processed)),
+                'total_count': str(int(applicants_total)),
                 'progress_percentage': '0',
                 'status': 'failed',
                 'error_message': str(payload.get('error_message', ''))[:500],

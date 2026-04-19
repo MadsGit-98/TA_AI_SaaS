@@ -48,7 +48,13 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-!pb3r7=&&dk(awxk2jmv#$kf
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=True)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+ALLOWED_HOSTS = env.list(
+    'ALLOWED_HOSTS',
+    default=['localhost', '127.0.0.1', '[::1]'],
+)
+# In development, accept any Host (LAN IPs, etc.) unless '*' is explicitly omitted from env.
+if DEBUG and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, '*']
 
 
 # Application definition
@@ -103,6 +109,15 @@ CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
 ])
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Same-origin browser posts when using a LAN IP (e.g. http://192.168.x.x:8000/) require a trusted Origin.
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS',
+    default=[
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ],
+)
 
 # Specify which headers can be used during the actual request
 CORS_ALLOW_HEADERS = [
