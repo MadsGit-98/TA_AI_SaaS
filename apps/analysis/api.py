@@ -766,16 +766,17 @@ def rerun_analysis_http(request, job_id):
        the service for unconfirmed requests).
     2. Load the ``JobListing`` locally (404 if missing).
     3. Authorize: only the owner or a staff user may re-run.
-    4. Delete existing ``AIAnalysisResult`` rows for the job — results are
-       the canonical copy and live in Django's DB, so deletion must happen
-       here, not on the service side.
-    5. Delegate to :class:`AIServiceClient` by forwarding the same
+    4. Delegate to :class:`AIServiceClient` by forwarding the same
        ``job_data`` payload used by ``initiate_analysis_http`` (job title,
        skills, level, and full applicant list). The service's rerun
        endpoint dispatches real work through the same background worker
        pool as initiate, so developers can exercise the end-to-end rerun
        path (progress webhooks, lock release, final status) during
        development and integration testing.
+    5. Only after the service accepts the rerun (no :class:`AIServiceError`),
+       delete existing ``AIAnalysisResult`` rows for the job (Django owns
+       result storage), then clear the analysis UI snapshot so a stale
+       terminal state cannot mask the new run.
     6. Report the *local* ``previous_results_deleted`` and ``applicant_count``
        (the service returns zeros for the former because Django owns result
        storage).
@@ -808,13 +809,10 @@ def rerun_analysis_http(request, job_id):
             }
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # Step 4: delete previous results locally. The AI service always reports
-    # ``previous_results_deleted=0`` because Django owns result storage.
-    previous_results_deleted, _ = AIAnalysisResult.objects.filter(
-        job_listing=job
-    ).delete()
-
-    # Step 5: build the same payload as initiate and kick off the new run.
+    # Step 4: build the same payload as initiate and call the service. Do not
+    # delete ``AIAnalysisResult`` rows until the service accepts the rerun —
+    # otherwise errors such as ``duplicate_analysis`` or ``service_unavailable``
+    # would wipe local results without a successful new run.
     job_data = {
         'job_id': str(job_id),
         'job_title': job.title,
@@ -834,6 +832,9 @@ def rerun_analysis_http(request, job_id):
     client = AIServiceClient()
     try:
         result = client.rerun_analysis(str(job_id), job_data=job_data)
+        previous_results_deleted, _ = AIAnalysisResult.objects.filter(
+            job_listing=job
+        ).delete()
         _safe_clear_analysis_ui_snapshot_for_job(job_id, 'rerun_analysis_http')
 
         # Step 6: prefer locally computed counts; service returns zeros

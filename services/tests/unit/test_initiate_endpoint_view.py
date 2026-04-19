@@ -57,14 +57,12 @@ class InitiateAnalysisViewTest(TestCase):
 
     @patch('services.api.views.submit_analysis')
     @patch('services.api.views.update_job_status')
-    @patch('services.api.views.acquire_job_lock')
+    @patch('services.api.views.acquire_job_lock', return_value=True)
     @patch('services.api.views.store_job_state')
-    @patch('services.api.views.check_job_running', return_value=False)
     @patch('services.api.views.get_redis_client')
     def test_returns_202_and_dispatches_once(
         self,
         mock_get_redis,
-        mock_check_running,
         mock_store_state,
         mock_acquire_lock,
         mock_update_status,
@@ -87,23 +85,21 @@ class InitiateAnalysisViewTest(TestCase):
         self.assertEqual(kwargs['job_context']['title'], 'Senior Engineer')
         self.assertEqual(kwargs['job_context']['job_level'], 'senior')
 
-        # Redis side effects required for the background worker handoff.
-        mock_store_state.assert_called_once()
+        # Lock must be acquired before state is written (atomic duplicate guard).
         mock_acquire_lock.assert_called_once()
+        mock_store_state.assert_called_once()
         mock_update_status.assert_called_with(
             payload['job_id'], 'processing', mock_get_redis.return_value
         )
 
     @patch('services.api.views.submit_analysis')
     @patch('services.api.views.update_job_status')
-    @patch('services.api.views.acquire_job_lock')
+    @patch('services.api.views.acquire_job_lock', return_value=True)
     @patch('services.api.views.store_job_state')
-    @patch('services.api.views.check_job_running', return_value=False)
     @patch('services.api.views.get_redis_client')
     def test_view_returns_quickly_even_if_dispatcher_is_slow(
         self,
         mock_get_redis,
-        mock_check_running,
         mock_store_state,
         mock_acquire_lock,
         mock_update_status,
@@ -126,14 +122,12 @@ class InitiateAnalysisViewTest(TestCase):
     @patch('services.api.views.submit_analysis', side_effect=RuntimeError('pool dead'))
     @patch('services.api.views.release_job_lock')
     @patch('services.api.views.update_job_status')
-    @patch('services.api.views.acquire_job_lock')
+    @patch('services.api.views.acquire_job_lock', return_value=True)
     @patch('services.api.views.store_job_state')
-    @patch('services.api.views.check_job_running', return_value=False)
     @patch('services.api.views.get_redis_client')
     def test_dispatcher_failure_returns_503_and_releases_lock(
         self,
         mock_get_redis,
-        mock_check_running,
         mock_store_state,
         mock_acquire_lock,
         mock_update_status,
@@ -165,14 +159,12 @@ class InitiateAnalysisViewTest(TestCase):
         side_effect=RuntimeError('redis blip'),
     )
     @patch('services.api.views.update_job_status')
-    @patch('services.api.views.acquire_job_lock')
+    @patch('services.api.views.acquire_job_lock', return_value=True)
     @patch('services.api.views.store_job_state')
-    @patch('services.api.views.check_job_running', return_value=False)
     @patch('services.api.views.get_redis_client')
     def test_dispatcher_failure_still_marks_failed_when_unlock_errors(
         self,
         mock_get_redis,
-        mock_check_running,
         mock_store_state,
         mock_acquire_lock,
         mock_update_status,
@@ -194,10 +186,11 @@ class InitiateAnalysisViewTest(TestCase):
         self.assertIn('failed', statuses)
 
     @patch('services.api.views.submit_analysis')
-    @patch('services.api.views.check_job_running', return_value=True)
+    @patch('services.api.views.acquire_job_lock', return_value=False)
+    @patch('services.api.views.store_job_state')
     @patch('services.api.views.get_redis_client')
     def test_duplicate_job_does_not_dispatch(
-        self, mock_get_redis, mock_check_running, mock_submit
+        self, mock_get_redis, mock_store_state, mock_acquire_lock, mock_submit
     ):
         mock_get_redis.return_value = MagicMock()
 
@@ -205,6 +198,8 @@ class InitiateAnalysisViewTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         mock_submit.assert_not_called()
+        mock_store_state.assert_not_called()
+        mock_acquire_lock.assert_called_once()
 
     @patch('services.api.views.submit_analysis')
     def test_invalid_payload_does_not_dispatch(self, mock_submit):

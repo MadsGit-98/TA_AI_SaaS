@@ -204,6 +204,53 @@ class RerunAnalysisAPIIntegrationTest(TransactionTestCase):
         # Verify results were deleted
         self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 0)
 
+    def test_rerun_analysis_service_error_preserves_existing_results(self):
+        """If the service rejects the rerun, local ``AIAnalysisResult`` rows must remain."""
+        for i in range(3):
+            applicant = Applicant.objects.create(
+                job_listing=self.job,
+                first_name=f'Applicant{i}',
+                last_name=f'Test{i}',
+                email=f'preserve{i}@example.com',
+                phone=f'+1-555-20{i}',
+                resume_file=f'pres{i}.pdf',
+                resume_file_hash=f'phash{i}',
+                resume_parsed_text='Test resume text',
+            )
+            AIAnalysisResult.objects.create(
+                applicant=applicant,
+                job_listing=self.job,
+                education_score=80,
+                skills_score=85,
+                experience_score=75,
+                supplemental_score=70,
+                overall_score=80,
+                category='Good Match',
+                status='Analyzed',
+                education_justification='Test',
+                skills_justification='Test',
+                experience_justification='Test',
+                overall_justification='Test',
+            )
+
+        self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 3)
+        url = f'/api/analysis/jobs/{self.job.id}/analysis/re-run/'
+
+        with patch(
+            'apps.analysis.api.AIServiceClient.rerun_analysis',
+            side_effect=AIServiceError(
+                'Analysis already running',
+                code='duplicate_analysis',
+            ),
+        ):
+            response = self.client.post(
+                url, data=json.dumps({'confirm': True}), content_type='application/json'
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(AIAnalysisResult.objects.filter(job_listing=self.job).count(), 3)
+
     def test_rerun_analysis_no_existing_results(self):
         """Test re-run works without existing results."""
         self._create_applicants(1)
