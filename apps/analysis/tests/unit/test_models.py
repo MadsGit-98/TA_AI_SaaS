@@ -18,7 +18,7 @@ from apps.jobs.models import JobListing
 from apps.applications.models import Applicant
 from django.utils import timezone
 from datetime import timedelta
-from services.ai_analysis_service import assign_category
+from apps.analysis.scoring import assign_category
 from django.contrib.auth import get_user_model
 
 

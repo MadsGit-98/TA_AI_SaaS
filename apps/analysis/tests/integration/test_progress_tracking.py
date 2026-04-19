@@ -15,11 +15,14 @@ from django.utils import timezone
 from datetime import timedelta
 from apps.jobs.models import JobListing
 from apps.jobs.serializers import JobListingSerializer
-from services.ai_analysis_service import (
-    update_analysis_progress,
+from apps.accounts.redis_utils import (
+    ANALYSIS_UI_HASH_PREFIX,
+    clear_analysis_ui_snapshot,
     get_analysis_progress,
     get_redis_client,
+    persist_analysis_ui_from_webhook,
 )
+from services.ai_analysis_service import update_analysis_progress
 
 User = get_user_model()
 
@@ -126,6 +129,54 @@ class ProgressTrackingTest(TestCase):
             self.assertEqual(ser.get_progress_percentage(self.job), 100)
         finally:
             r.delete(state_key)
+
+    def test_serializer_not_in_progress_when_cancelled_partial_counts(self):
+        """Cancelled runs must not show as analyzing when processed < total."""
+        job_id = str(self.job.id)
+        r = get_redis_client()
+        ui_key = f'{ANALYSIS_UI_HASH_PREFIX}{job_id}'
+        persist_analysis_ui_from_webhook(
+            'cancelled',
+            {
+                'job_id': job_id,
+                'applicants_processed': 0,
+                'applicants_total': 4,
+            },
+        )
+        try:
+            ser = JobListingSerializer()
+            self.assertFalse(ser.get_analysis_in_progress(self.job))
+        finally:
+            r.delete(ui_key)
+
+    def test_clear_analysis_ui_snapshot_falls_through_to_analysis_state(self):
+        """Stale cancelled UI hash must not hide active worker ``analysis_state``."""
+        job_id = str(self.job.id)
+        r = get_redis_client()
+        ui_key = f'{ANALYSIS_UI_HASH_PREFIX}{job_id}'
+        state_key = f'analysis_state:{job_id}'
+        persist_analysis_ui_from_webhook(
+            'cancelled',
+            {'job_id': job_id, 'applicants_processed': 0, 'applicants_total': 4},
+        )
+        self.assertEqual(get_analysis_progress(job_id).get('status'), 'cancelled')
+        clear_analysis_ui_snapshot(job_id)
+        r.hset(
+            state_key,
+            mapping={
+                'processed_count': '1',
+                'total_count': '4',
+                'status': 'processing',
+            },
+        )
+        try:
+            prog = get_analysis_progress(job_id)
+            self.assertEqual(prog.get('status'), 'processing')
+            self.assertEqual(prog.get('processed'), 1)
+            self.assertEqual(prog.get('total'), 4)
+        finally:
+            r.delete(state_key)
+            r.delete(ui_key)
 
     def test_progress_ttl_set(self):
         """Test that progress key has TTL set."""

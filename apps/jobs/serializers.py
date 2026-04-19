@@ -1,8 +1,7 @@
 from rest_framework import serializers
-from django.db.models import Exists, OuterRef
 from .models import JobListing, ScreeningQuestion, CommonScreeningQuestion
 from apps.analysis.models import AIAnalysisResult
-from services.ai_analysis_service import get_analysis_progress
+from apps.accounts.redis_utils import get_analysis_progress
 
 
 class DateValidationMixin:
@@ -117,6 +116,9 @@ class JobListingSerializer(serializers.ModelSerializer):
         Counts may show all applicants processed while the worker is still
         persisting results; in that case ``analysis_state.status`` is still
         ``queued`` or ``processing``.
+
+        Terminal webhook/worker statuses (``cancelled``, ``failed``, etc.) must
+        not be treated as in-progress even when ``processed`` < ``total``.
         """
         progress = self._get_analysis_progress(obj)
         processed = progress.get('processed', 0)
@@ -124,11 +126,16 @@ class JobListingSerializer(serializers.ModelSerializer):
         status = (progress.get('status') or '').strip().lower()
 
         if total <= 0:
-            return False
-        if processed < total:
-            return True
-        # processed >= total but state not cleared yet (persist / finalize)
-        return status in ('queued', 'processing')
+            result = False
+        elif status in ('cancelled', 'cancelling', 'failed', 'completed'):
+            result = False
+        elif processed < total:
+            result = True
+        else:
+            # processed >= total but state not cleared yet (persist / finalize)
+            result = status in ('queued', 'processing')
+
+        return result
 
     def get_progress_percentage(self, obj):
         """Get the current progress percentage for analysis.

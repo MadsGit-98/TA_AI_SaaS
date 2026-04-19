@@ -10,11 +10,10 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import DatabaseError
 from django.db.utils import OperationalError
-from django.utils import timezone
 from apps.jobs.models import JobListing
 from apps.accounts.models import CardLogo, SiteSetting
 from apps.analysis.models import AIAnalysisResult
-from services.ai_analysis_service import get_analysis_progress, check_cancellation_flag
+from apps.accounts.redis_utils import get_analysis_progress, check_cancellation_flag
 
 logger = logging.getLogger(__name__)
 

@@ -226,12 +226,19 @@ function createJobElement(job, container) {
     if (job.analysis_in_progress) {
         const progressTag = document.createElement('span');
         progressTag.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 border-l-[3px] border-yellow-400 rounded font-mono text-xs font-semibold text-gray-900 shadow-sm';
-        progressTag.title = 'AI Analysis in Progress';
         progressTag.setAttribute('data-job-id', job.id);
         progressTag.setAttribute('data-progress-type', 'in-progress');
+        const isCancellingTag = cancellingJobs.has(String(job.id));
+        progressTag.title = isCancellingTag
+            ? 'Stopping analysis; please wait for the service to finish cancelling'
+            : 'AI Analysis in Progress';
         const progressPercent = job.progress_percentage || 0;
-        progressTag.innerHTML = '<span class="inline-flex items-center justify-center w-4 h-4 text-yellow-600 animate-spin" aria-label="Loading">⟳</span>' +
-            '<span class="text-gray-900 tracking-wide uppercase">Analyzing... ' + progressPercent + '%</span>';
+        const statusLine = isCancellingTag
+            ? '<span class="text-gray-600 tracking-wide uppercase">Cancelling...</span>'
+            : '<span class="text-gray-900 tracking-wide uppercase">Analyzing... ' + progressPercent + '%</span>';
+        progressTag.innerHTML =
+            '<span class="inline-flex items-center justify-center w-4 h-4 text-yellow-600 animate-spin" aria-label="Loading">⟳</span>' +
+            statusLine;
         tagsContainer.appendChild(progressTag);
     }
     // AI Analysis Done tag (if analysis is complete)
@@ -319,7 +326,7 @@ function createJobElement(job, container) {
     // Check if analysis is in progress
     if (job.analysis_in_progress) {
         // Check if this job is being cancelled
-        const isCancelling = cancellingJobs.has(job.id);
+        const isCancelling = cancellingJobs.has(String(job.id));
         
         // Show Cancel Analysis button when analysis is running
         analysisButton.textContent = 'Cancel Analysis';
@@ -656,6 +663,7 @@ async function initiateAnalysis(jobId) {
  * @param {string} jobId - The job ID to cancel analysis for
  */
 async function cancelAnalysis(jobId) {
+    jobId = String(jobId);
     if (cancellingJobs.has(jobId)) {
         console.log('Already cancelling job', jobId);
         return;
@@ -680,7 +688,10 @@ async function cancelAnalysis(jobId) {
         })
         .then(data => {
             if (data.success) {
-                showMessageModal('Success', data.data.message || 'Analysis cancellation requested.', 'success');
+                // Keep cancellingJobs and WebSocket until analysis_cancelled fires; only refresh the list.
+                showMessageModal('Success', data.data.message || 'Analysis cancellation requested.', 'success', function() {
+                    loadJobListings();
+                });
             } else {
                 const errorMessage = data.error ? data.error.message : 'Failed to cancel analysis';
                 showMessageModal('Error', `Error: ${errorMessage}`, 'error', function() {
@@ -781,6 +792,12 @@ function finalizeJobListingsProgressUi(jobsList) {
     restoreActiveAnalysisTags();
     initProgressTracking();
     resumeTrackingFromSessionStorage();
+    (jobsList || []).forEach(function (job) {
+        if (job.analysis_in_progress && cancellingJobs.has(String(job.id))) {
+            updateJobProgress(String(job.id), null, true);
+            updateCancelButtonState(String(job.id), true);
+        }
+    });
 }
 
 /**
@@ -808,12 +825,19 @@ function ensureProgressTagForJob(jobId) {
     const progressTag = document.createElement('span');
     progressTag.className =
         'inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 border-l-[3px] border-yellow-400 rounded font-mono text-xs font-semibold text-gray-900 shadow-sm';
-    progressTag.title = 'AI Analysis in Progress';
+    const jid = String(jobId);
+    const isCancellingTag = cancellingJobs.has(jid);
+    progressTag.title = isCancellingTag
+        ? 'Stopping analysis; please wait for the service to finish cancelling'
+        : 'AI Analysis in Progress';
     progressTag.setAttribute('data-job-id', jobId);
     progressTag.setAttribute('data-progress-type', 'in-progress');
+    const line = isCancellingTag
+        ? '<span class="text-gray-600 tracking-wide uppercase">Cancelling...</span>'
+        : '<span class="text-gray-900 tracking-wide uppercase">Analyzing... 0%</span>';
     progressTag.innerHTML =
         '<span class="inline-flex items-center justify-center w-4 h-4 text-yellow-600 animate-spin" aria-label="Loading">⟳</span>' +
-        '<span class="text-gray-900 tracking-wide uppercase">Analyzing... 0%</span>';
+        line;
     tagsContainer.appendChild(progressTag);
 }
 
@@ -920,6 +944,7 @@ function stopProgressTracking(jobId) {
  * @param {string} jobId - The job ID
  */
 function markJobAsCancelling(jobId) {
+    jobId = String(jobId);
     cancellingJobs.set(jobId, {started: Date.now(), lastStatus: 'cancelling'});
     // Update UI immediately - both progress tag and button
     updateJobProgress(jobId, null, true);
