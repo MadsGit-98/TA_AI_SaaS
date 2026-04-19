@@ -22,11 +22,13 @@ if settings.DEBUG:
     django_asgi_app = ASGIStaticFilesHandler(django_asgi_app)
 
 from channels.routing import ProtocolTypeRouter, URLRouter
+from django.urls import path
 
 # Import routing after Django initialization
 from apps.accounts import routing as accounts_routing
 from apps.analysis import routing as analysis_routing
 from apps.applications import routing as applications_routing
+from apps.accounts.consumers import RejectEmptyPathWebSocketConsumer
 # Import custom JWT authentication middleware for WebSockets
 from apps.accounts.websocket_auth import JWTAuthMiddleware
 
@@ -36,7 +38,8 @@ application = ProtocolTypeRouter({
         URLRouter(
             accounts_routing.websocket_urlpatterns +
             analysis_routing.websocket_urlpatterns +
-            applications_routing.websocket_urlpatterns
+            applications_routing.websocket_urlpatterns +
+            [path('', RejectEmptyPathWebSocketConsumer.as_asgi())]
         )
     ),
 })

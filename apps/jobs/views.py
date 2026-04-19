@@ -36,6 +36,14 @@ def _get_footer_context():
         currency_display = currency_setting.setting_value
     except SiteSetting.DoesNotExist:
         currency_display = "USD, EUR, GBP"  # Default value
+    except (DatabaseError, OperationalError) as e:
+        logger.error(
+            "_get_footer_context: database error when fetching SiteSetting "
+            "setting_key=currency_display: %s",
+            e,
+            exc_info=True,
+        )
+        currency_display = "USD, EUR, GBP"
 
     return {
         'card_logos': card_logos,

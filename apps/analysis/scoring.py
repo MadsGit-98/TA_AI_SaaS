@@ -23,10 +23,13 @@ def validate_score(score: Union[int, float], metric_name: str = "score") -> int:
         Clamped score (0-100)
 
     Raises:
-        ValueError: If score is not a valid number
+        ValueError: If score is not a valid finite number
     """
     if not isinstance(score, (int, float)):
         raise ValueError(f"{metric_name} must be a number")
+
+    if not math.isfinite(score):
+        raise ValueError(f"{metric_name} must be a finite number")
 
     return max(0, min(100, int(score)))
 

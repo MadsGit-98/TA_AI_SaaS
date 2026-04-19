@@ -54,6 +54,20 @@ def _map_job_level_for_service(job_level):
     return _JOB_LEVEL_TO_SERVICE.get(job_level, 'mid')
 
 
+def _safe_clear_analysis_ui_snapshot_for_job(job_id, log_context: str) -> None:
+    """Clear webhook UI hash after the service accepted work; failures must not fail the HTTP response."""
+    try:
+        clear_analysis_ui_snapshot(str(job_id))
+    except Exception as e:
+        logger.warning(
+            '%s: could not clear analysis UI snapshot (job_id=%s): %s',
+            log_context,
+            job_id,
+            e,
+            exc_info=True,
+        )
+
+
 # The analysis POST endpoints (``initiate_analysis``, ``rerun_analysis``,
 # ``cancel_analysis``) build their service payloads from DB state rather than
 # the request body, so DRF's lazy parser-negotiation (which only fires on
@@ -210,7 +224,7 @@ def initiate_analysis_http(request, job_id):
         }
 
         result = client.initiate_analysis(job_data)
-        clear_analysis_ui_snapshot(str(job_id))
+        _safe_clear_analysis_ui_snapshot_for_job(job_id, 'initiate_analysis_http')
         applicant_count = result.get('applicants_total', len(applicants))
         # Estimated duration mirrors the service's own heuristic (6s/applicant)
         # and is surfaced here so the UI can show a deterministic ETA without
@@ -820,6 +834,7 @@ def rerun_analysis_http(request, job_id):
     client = AIServiceClient()
     try:
         result = client.rerun_analysis(str(job_id), job_data=job_data)
+        _safe_clear_analysis_ui_snapshot_for_job(job_id, 'rerun_analysis_http')
 
         # Step 6: prefer locally computed counts; service returns zeros
         # for ``previous_results_deleted`` and now mirrors our applicant

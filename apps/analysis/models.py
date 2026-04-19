@@ -263,11 +263,14 @@ class AIAnalysisResult(models.Model):
                     'category': f'Category must be {expected_category} for overall score {self.overall_score}'
                 })
         
-        # Validate Unprocessed status has correct category
+        # Validate Unprocessed status has correct category (matches CheckConstraint
+        # ``category_status_consistency``: Unprocessed status requires category Unprocessed)
         elif self.status == self.STATUS_UNPROCESSED:
-            if self.category is not None and self.category != self.CATEGORY_UNPROCESSED:
+            if self.category != self.CATEGORY_UNPROCESSED:
                 raise ValidationError({
-                    'category': 'Unprocessed results must have category "Unprocessed" or None'
+                    'category': (
+                        f'Unprocessed status requires category "{self.CATEGORY_UNPROCESSED}".'
+                    ),
                 })
 
     def save(self, *args, run_full_clean=False, **kwargs):
