@@ -3,7 +3,7 @@
 #   pip install -r services/requirements.txt
 #
 # This is a slim subset of the root requirements.txt. It intentionally
-# excludes Django-app-only deps (channels, celery, djoser, social-auth,
+# excludes Django-app-only deps (channels, celery, social-auth,
 # django-storages, selenium, pypdf, python-docx, etc.) so the service
 # can run on a GPU host without the full web stack.
 
