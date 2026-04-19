@@ -1,139 +1,176 @@
-# TA_AI_SaaS - AI Talent Acquisition Platform
+# TA_AI_SaaS — AI-assisted talent acquisition
 
-## Project Overview
+This repository contains **X Crewter / TA_AI_SaaS**, a Django-based Talent Acquisition platform with server-rendered UI (DTL), REST APIs, real-time updates over WebSockets, background work via Celery, and an optional **standalone AI analysis service** that runs LangGraph workloads (often on a separate GPU host) and talks to the web app over HTTP.
 
-TA_AI_SaaS is an intelligent Talent Acquisition Software as a Service platform that leverages cutting-edge AI technologies to revolutionize the recruitment process. This platform enables recruiters and hiring managers to efficiently manage job listings, process applications, and analyze candidate resumes using advanced AI-powered scoring and matching algorithms.
+## Repository layout
 
-### 🎯 Purpose
+| Path | Purpose |
+|------|---------|
+| [`TI_AI_SaaS_Project/`](TI_AI_SaaS_Project/) | Main Django project (`manage.py`, `x_crewter/`, `apps/`). **This is where you install dependencies and run the app.** |
+| [`TI_AI_SaaS_Project/services/`](TI_AI_SaaS_Project/services/) | Standalone AI service (Django + DRF, Redis, LangGraph/Ollama). See [`TI_AI_SaaS_Project/services/README.md`](TI_AI_SaaS_Project/services/README.md). |
+| [`docs/`](docs/) | Additional API and user documentation (bulk upload, analysis API, guides). |
+| [`specs/`](specs/), [`.specify/`](.specify/) | Specification and planning assets. |
 
-The platform is designed to streamline talent acquisition workflows by:
-- Automating resume analysis and candidate evaluation
-- Providing intelligent candidate-job matching
-- Reducing time-to-hire through AI-powered insights
-- Enabling data-driven hiring decisions
+The Git root folder name is `TA_AI_SaaS`; the runnable application code lives under **`TI_AI_SaaS_Project/`**.
 
-## ✨ Key Features
+## What the main application does
 
-### User Authentication & Account Management
-- Secure JWT-based authentication with HTTP-only cookies
-- User registration and email verification
-- Password reset functionality
-- "Remember Me" functionality for extended sessions
-- Social authentication integration (python-social-auth)
+- **Accounts**: Registration, activation, login, password reset, JWT in HTTP-only cookies (with optional header-based JWT for migration), session timeout, RBAC middleware, Google / LinkedIn / Microsoft social auth (env-driven).
+- **Jobs**: Job listings, dashboard for subscribers, screening questions, application links.
+- **Applications**: Public apply flow, resume upload, bulk upload, duplication detection, throttles.
+- **Analysis**: Initiate/cancel/rerun bulk AI analysis, results and progress; integrates with the standalone service and Channels for live updates.
+- **Subscription**: Landing and subscription-oriented routes for non-subscribed users.
 
-### Job Management Dashboard
-- Create and manage job listings
-- Track job applications in real-time
-- View candidate metrics and analytics
-- Subscription-based access for job posting
+## Architecture (high level)
 
-### AI-Powered Resume Analysis
-- Intelligent resume parsing and analysis using LangChain and LangGraph
-- Automated candidate scoring based on job requirements
-- Real-time analysis progress tracking via WebSocket
-- Support for multiple document formats (PDF, DOCX, TXT)
-- Candidate ranking and matching algorithms
+```mermaid
+flowchart LR
+  subgraph web["Django web app :8000"]
+    UI[DTL + shadcn_django UI]
+    API[REST APIs]
+    WS[Channels WebSockets]
+  end
+  Redis[(Redis)]
+  subgraph ai["AI service :9000 optional"]
+    LG[LangGraph / Ollama]
+  end
+  UI --> API
+  API --> Redis
+  WS --> Redis
+  API -->|"REST + API key"| ai
+  ai -->|"HMAC webhooks"| API
+  ai --> Redis
+```
 
-### Real-time Updates
-- WebSocket-based real-time analysis status updates
-- Live progress notifications during resume processing
-- Fallback polling for legacy browser support
-- Efficient message delivery with minimal server overhead
+For local development, run the web app and (if you need real analysis runs) the AI service and **Ollama** on the same machine; Redis URLs must stay aligned between [`x_crewter/settings.py`](TI_AI_SaaS_Project/x_crewter/settings.py) and [`services/config/settings.py`](TI_AI_SaaS_Project/services/config/settings.py).
 
-### Application Management
-- Online application form submission
-- File upload support for resumes and documents
-- Application tracking and status management
-- Candidate communication workflows
+## Technology stack (main project)
 
-### File Management
-- Secure file upload and storage
-- Amazon S3 / Google Cloud Storage integration
-- Local development media storage
-- File validation and security checks
+Versions are pinned in [`TI_AI_SaaS_Project/requirements.txt`](TI_AI_SaaS_Project/requirements.txt).
 
-## 🛠️ Technology Stack
+- **Runtime**: Python 3.11+ (see project constraints in code; LangChain notes exist for newer Python).
+- **Web**: Django 5.2.x, Django REST Framework, **Django Channels** (ASGI WebSockets), `django-cors-headers`, `django-csp`.
+- **Auth**: `djangorestframework-simplejwt`, Djoser, `social-auth-app-django`, Argon2 password hashing.
+- **Async / tasks**: Celery 5.4, Redis 7.x (broker, Channels layer, shared analysis progress helpers).
+- **AI (in-app client + graphs)**: LangChain 1.x, LangGraph 1.x; document parsing uses **pypdf**, **python-docx**.
+- **UI**: Django templates, **Tailwind CSS** (Play CDN in templates), **shadcn-django**; optional local Tailwind tooling via [`package.json`](TI_AI_SaaS_Project/package.json) / [`tailwind.config.mjs`](TI_AI_SaaS_Project/tailwind.config.mjs).
+- **Storage**: Local filesystem by default; **Amazon S3** or **Google Cloud Storage** via `django-storages` when configured.
+- **Testing**: Python `unittest` via Django’s test runner; **Selenium** + Chrome for E2E flows; `webdriver-manager` is listed for driver management.
 
-### Backend
-- **Framework**: Django 5.2.9, Django REST Framework 3.15.2
-- **Language**: Python 3.11
-- **Authentication**: djangorestframework-simplejwt, djoser, python-social-auth
-- **Task Queue**: Celery 5.4.0
-- **Cache/Messaging**: Redis 7.1.0
-- **Database**: SQLite3 (initial), upgradeable to PostgreSQL
+## Prerequisites
 
-### Frontend
-- **Language**: JavaScript (ES6)
-- **Styling**: Tailwind CSS
-- **Components**: shadcn_django
-- **Real-time Communication**: WebSocket with fallback mechanisms
+- **Python 3.11+**
+- **Redis** (same URL for Celery, Channels, and analysis-related Redis usage)
+- **Mail**: Default settings in [`x_crewter/settings.py`](TI_AI_SaaS_Project/x_crewter/settings.py) point SMTP to `127.0.0.1:1025` (typical for [MailHog](https://github.com/mailhog/MailHog) or similar); adjust for your environment.
+- **AI service path**: [Ollama](https://ollama.com/) (or compatible) for the standalone service — defaults in settings use `http://localhost:11434` and a `phi4-mini`-style model name.
+- **E2E tests**: Google Chrome (or Chromium) available on the machine running Selenium tests.
 
-### AI & Machine Learning
-- **LLM Integration**: LangChain 1.1.x
-- **Graph Processing**: LangGraph 1.0.x
-- **Text Processing**: python-hashlib
-- **Document Processing**: python-docx, PyPDF2
+## Quick start (main Django app)
 
-### Real-time Features
-- **WebSocket**: Django Channels 4.x
-- **Message Broker**: Redis 7.1.0
-- **Session Management**: Redis with JWT tokens
+From the **repository root**:
 
-### File Storage
-- **Cloud Storage**: Amazon S3 / Google Cloud Storage (via django-storages)
-- **Local Development**: Media directory storage
-- **File Type Support**: PDF, DOCX, TXT, and other document formats
+```bash
+cd TI_AI_SaaS_Project
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Linux/macOS:
+# source .venv/bin/activate
 
-### Development & DevOps
-- **Version Control**: Git
-- **Task Automation**: Celery with Redis
-- **Testing**: Django test runner (python manage.py test)
+pip install -r requirements.txt
+cp .env.example .env
+# Windows (PowerShell): Copy-Item .env.example .env
+# Edit .env: SECRET_KEY, ALLOWED_HOSTS, REDIS_URL, STORAGE_BACKEND, OAuth secrets if used, etc.
 
-## 📦 Installation & Setup
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
 
-### Prerequisites
-- Python 3.11 or higher
-- Redis 7.1.0 or higher
-- Node.js (for frontend dependencies, optional)
-- Virtual environment management tool (venv or conda)
+`runserver` is extended by Channels for ASGI, so WebSockets work in development without a separate process.
 
-### Step 1: Clone the Repository
+### Celery (background tasks)
+
+Celery uses the same `REDIS_URL` as the rest of the app. On Windows the project sets `CELERY_WORKER_POOL = 'solo'`. Example:
+
+```bash
+cd TI_AI_SaaS_Project
+celery -A x_crewter worker -l info
+celery -A x_crewter beat -l info
+```
+
+### Standalone AI service (optional)
+
+Use this when exercising bulk analysis end-to-end or developing the GPU-side worker.
+
+```bash
+cd TI_AI_SaaS_Project
+pip install -r services/requirements.txt
+cp services/.env.example services/.env
+# Windows: Copy-Item services\.env.example services\.env
+# Align API_KEYS / WEBHOOK_SECRET with Django's AI_SERVICE_* settings; see services/README.md
+
+python services/manage.py runserver 0.0.0.0:9000
+```
+
+Full detail: [`TI_AI_SaaS_Project/services/README.md`](TI_AI_SaaS_Project/services/README.md).
+
+### Environment variables (main app)
+
+Copy [`TI_AI_SaaS_Project/.env.example`](TI_AI_SaaS_Project/.env.example) to `.env`. Commonly adjusted values:
+
+- `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`
+- `REDIS_URL` — shared with Celery, Channels, and AI progress
+- `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` — especially if you use a LAN IP or a separate origin
+- `STORAGE_BACKEND` — `local` (default), `s3`, or `gcs`, plus cloud credentials when not local
+- Social auth: `GOOGLE_OAUTH2_*`, `LINKEDIN_OAUTH2_*`, `MICROSOFT_GRAPH_*`
+- AI integration: `AI_SERVICE_BASE_URL`, `AI_SERVICE_API_KEY`, `AI_SERVICE_WEBHOOK_SECRET`, `AI_SERVICE_WEBHOOK_TOLERANCE_SECONDS`, timeouts and circuit breaker thresholds (see [`x_crewter/settings.py`](TI_AI_SaaS_Project/x_crewter/settings.py))
+- LLM defaults: `OLLAMA_BASE_URL`, `OLLAMA_MODEL`
+
+Optional attributes such as `FRONTEND_URL` / `BACKEND_URL` are referenced in account flows for absolute links; add them in settings if you need non-default URLs in emails or redirects.
+
+## API and UI entry points
+
+- **Health**: `GET /api/health/`
+- **Accounts API**: under `/api/accounts/`
+- **Applications API**: under `/api/applications/`
+- **Analysis API**: under `/api/analysis/`; analysis UI under `/analysis/`
+- **Dashboard**: `/dashboard/` (jobs)
+- **Public apply routes**: `/apply/`, `/application/` (see URL conf in [`x_crewter/urls.py`](TI_AI_SaaS_Project/x_crewter/urls.py))
+
+## Testing
+
+Run the full suite from `TI_AI_SaaS_Project`:
+
+```bash
+python manage.py test
+```
+
+- **Selenium E2E** tests under `apps/*/tests/e2e/` require Chrome and may be slower; run a subset when iterating, e.g. `python manage.py test apps.accounts.tests.e2e`.
+- **Coverage**: A helper script exists at [`apps/accounts/tests/test_coverage.py`](TI_AI_SaaS_Project/apps/accounts/tests/test_coverage.py); it expects the `coverage` package (`pip install coverage`). Project rules target high line coverage for new work.
+
+Service-only tests:
+
+```bash
+python services/manage.py test services.tests
+```
+
+## Documentation
+
+- [`docs/api/analysis_api.md`](docs/api/analysis_api.md)
+- [`docs/api/bulk_upload.md`](docs/api/bulk_upload.md)
+- [`docs/applications-api.md`](docs/applications-api.md)
+- [`docs/user/ai_analysis_guide.md`](docs/user/ai_analysis_guide.md)
+- AI service: [`TI_AI_SaaS_Project/services/README.md`](TI_AI_SaaS_Project/services/README.md)
+
+## License
+
+[MIT License](LICENSE) — Copyright (c) 2025 MadsGit-98
+
+## Contributing / clone
+
 ```bash
 git clone https://github.com/MadsGit-98/TA_AI_SaaS.git
 cd TA_AI_SaaS
+```
 
-### Step 2: Install Python Dependencies
-pip install -r requirements.txt
-
-### Step 3: Configure Environment Variables
-Create a .env file in the project root:
-
-
-# Django Settings
-SECRET_KEY=your-secret-key-here
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# Database
-DATABASE_URL=sqlite:///db.sqlite3
-# For PostgreSQL: postgresql://user:password@localhost:5432/ta_ai_saas
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
-# Email Configuration
-EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-DEFAULT_FROM_EMAIL=noreply@x-crewter.com
-
-# AWS S3 (optional)
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_STORAGE_BUCKET_NAME=your-bucket-name
-
-# Google Cloud Storage (optional)
-GOOGLE_CLOUD_PROJECT=your-project-id
-GOOGLE_CLOUD_STORAGE_BUCKET=your-bucket-name
-
-# Frontend URLs
-FRONTEND_URL=http://localhost:3000
-BACKEND_URL=http://localhost:8000
+All application commands assume the working directory is `TA_AI_SaaS/TI_AI_SaaS_Project` unless noted.
