@@ -1,0 +1,60 @@
+name: Service CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run service unit tests
+        env:
+          AI_SERVICE_DEBUG: "True"
+          API_KEYS: "ci-service-key"
+          REDIS_URL: "redis://localhost:6379/0"
+          OLLAMA_BASE_URL: "http://localhost:11434"
+          OLLAMA_MODEL: "phi4-mini"
+        run: python manage.py test services.tests --verbosity=2
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: service-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy service to staging
+        run: |
+          echo "Implement GPU staging deployment here"
+          echo "Target URL: ${{ secrets.SERVICE_STAGING_URL }}"
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    environment: service-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy service to production
+        run: |
+          echo "Implement GPU production deployment here"
+          echo "Target URL: ${{ secrets.SERVICE_PRODUCTION_URL }}"
