@@ -1,0 +1,72 @@
+name: App CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run app unit tests
+        env:
+          DEBUG: "True"
+          SECRET_KEY: "ci-secret-key"
+          REDIS_URL: "redis://localhost:6379/0"
+          AI_SERVICE_BASE_URL: "http://127.0.0.1:9000/api/v1"
+          AI_SERVICE_API_KEY: "ci-service-key"
+          AI_SERVICE_WEBHOOK_SECRET: "ci-webhook-secret"
+        run: python manage.py test --verbosity=2
+
+  compatibility-smoke:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: app-staging
+    steps:
+      - name: Check service health endpoint
+        run: |
+          curl --fail "${{ secrets.SERVICE_BASE_URL }}/health"
+          curl --fail "${{ secrets.SERVICE_BASE_URL }}/ready"
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [compatibility-smoke]
+    runs-on: ubuntu-latest
+    environment: app-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy app to staging
+        run: |
+          echo "Implement web app staging deployment here"
+          echo "Target URL: ${{ secrets.APP_STAGING_URL }}"
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    environment: app-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy app to production
+        run: |
+          echo "Implement web app production deployment here"
+          echo "Target URL: ${{ secrets.APP_PRODUCTION_URL }}"
